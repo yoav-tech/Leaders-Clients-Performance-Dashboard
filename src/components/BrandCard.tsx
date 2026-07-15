@@ -1,5 +1,6 @@
 import type { BrandConfig } from "@/lib/brands";
 import type { BrandMetrics, Channel } from "@/lib/types";
+import type { StoreAnalytics } from "@/lib/storeAnalytics";
 import { formatIls, formatNumber, formatRoas, roasTone } from "@/lib/metrics";
 import Sparkline from "./Sparkline";
 
@@ -29,9 +30,11 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: stri
 export default function BrandCard({
   brand,
   metrics,
+  store,
 }: {
   brand: BrandConfig;
   metrics: BrandMetrics;
+  store?: StoreAnalytics | null;
 }) {
   const { total, channels, blendedRoas } = metrics;
   const totalTone = roasTone(total.roas, brand.targetRoas);
@@ -90,6 +93,49 @@ export default function BrandCard({
           })}
         </div>
       </div>
+
+      {store && <StoreInsights store={store} />}
+    </div>
+  );
+}
+
+function pctTone(v: number | null): string {
+  if (v === null) return "none";
+  return v >= 0 ? "good" : "bad";
+}
+
+function formatPct(v: number | null): string {
+  if (v === null) return "—";
+  return `${v >= 0 ? "+" : ""}${Math.round(v)}%`;
+}
+
+// QuickShop store insights (fixed last-30-days snapshot from /analytics).
+function StoreInsights({ store }: { store: StoreAnalytics }) {
+  return (
+    <div className="mt-3 border-t border-[var(--card-border)] pt-3">
+      <div className="mb-2 text-[11px] uppercase tracking-wide text-[var(--muted)]">
+        Store · last 30 days
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <Kpi label="AOV" value={formatIls(store.aov)} />
+        <Kpi label="New customers" value={formatNumber(store.newCustomers)} />
+        <Kpi
+          label="Rev vs prev"
+          value={formatPct(store.revenueGrowthPct)}
+          tone={pctTone(store.revenueGrowthPct)}
+        />
+      </div>
+      {store.topProducts.length > 0 && (
+        <div className="mt-2 text-xs">
+          <div className="text-[var(--muted)]">Top products</div>
+          {store.topProducts.map((p) => (
+            <div key={p.name} className="flex justify-between gap-2 py-0.5">
+              <span className="truncate">{p.name}</span>
+              <span className="shrink-0 tabular-nums text-[var(--muted)]">{formatIls(p.revenue)}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

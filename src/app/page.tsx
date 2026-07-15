@@ -1,5 +1,6 @@
 import { BRANDS, getBrand } from "@/lib/brands";
 import { getBrandMetrics, getLastUpdated } from "@/lib/queries";
+import { fetchQuickShopAnalytics, type StoreAnalytics } from "@/lib/storeAnalytics";
 import { hasDb } from "@/lib/db";
 import type { Period } from "@/lib/types";
 import AgencyStrip from "@/components/AgencyStrip";
@@ -20,10 +21,14 @@ export default async function Home({
     ? (sp.period as Period)
     : "30d";
 
-  const [metrics, lastUpdated] = await Promise.all([
+  const [metrics, lastUpdated, storeEntries] = await Promise.all([
     getBrandMetrics(period),
     getLastUpdated(),
+    Promise.all(
+      BRANDS.map(async (b) => [b.id, await fetchQuickShopAnalytics(b)] as const),
+    ),
   ]);
+  const storeAnalytics: Record<string, StoreAnalytics | null> = Object.fromEntries(storeEntries);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6">
@@ -53,7 +58,14 @@ export default async function Home({
       <section className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {metrics.map((m) => {
           const brand = getBrand(m.brandId) ?? BRANDS[0];
-          return <BrandCard key={m.brandId} brand={brand} metrics={m} />;
+          return (
+            <BrandCard
+              key={m.brandId}
+              brand={brand}
+              metrics={m}
+              store={storeAnalytics[m.brandId] ?? null}
+            />
+          );
         })}
       </section>
     </main>
