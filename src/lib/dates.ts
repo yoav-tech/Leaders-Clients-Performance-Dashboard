@@ -1,5 +1,3 @@
-import type { Period } from "./types";
-
 const TZ = "Asia/Jerusalem";
 
 // Today's date (YYYY-MM-DD) in the agency's timezone, independent of server locale.
@@ -35,26 +33,54 @@ export function localDate(ts: string | Date): string {
   }).format(new Date(ts));
 }
 
-// Inclusive [from, to] date bounds for a period.
-export function periodRange(period: Period): { from: string; to: string } {
-  const to = today();
-  switch (period) {
-    case "today":
-      return { from: to, to };
-    case "7d":
-      return { from: addDays(to, -6), to };
-    case "30d":
-      return { from: addDays(to, -29), to };
-    case "mtd": {
-      const from = to.slice(0, 8) + "01";
-      return { from, to };
-    }
-  }
+export type RangeKey = "today" | "7d" | "30d" | "this_month" | "last_month" | "custom";
+
+export interface RangePreset {
+  key: RangeKey;
+  label: string;
 }
 
-export const PERIOD_LABELS: Record<Period, string> = {
-  today: "Today",
-  "7d": "7 days",
-  "30d": "30 days",
-  mtd: "Month to date",
-};
+// Preset buttons shown in the date-range picker (Google-Ads-style).
+export const RANGE_PRESETS: RangePreset[] = [
+  { key: "today", label: "Today" },
+  { key: "7d", label: "Last 7 days" },
+  { key: "30d", label: "Last 30 days" },
+  { key: "this_month", label: "This month" },
+  { key: "last_month", label: "Last month" },
+];
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Resolve a concrete inclusive [from, to] range + key from URL params. Presets via
+// ?range=<key>; a custom range via ?range=custom&from=YYYY-MM-DD&to=YYYY-MM-DD.
+export function resolveRange(sp: {
+  range?: string;
+  from?: string;
+  to?: string;
+}): { key: RangeKey; from: string; to: string } {
+  const t = today();
+
+  if (sp.from && sp.to && DATE_RE.test(sp.from) && DATE_RE.test(sp.to)) {
+    const from = sp.from <= sp.to ? sp.from : sp.to;
+    const to = sp.from <= sp.to ? sp.to : sp.from;
+    return { key: "custom", from, to };
+  }
+
+  switch (sp.range) {
+    case "today":
+      return { key: "today", from: t, to: t };
+    case "7d":
+      return { key: "7d", from: addDays(t, -6), to: t };
+    case "30d":
+      return { key: "30d", from: addDays(t, -29), to: t };
+    case "last_month": {
+      const firstThis = t.slice(0, 8) + "01";
+      const to = addDays(firstThis, -1); // last day of previous month
+      const from = to.slice(0, 8) + "01";
+      return { key: "last_month", from, to };
+    }
+    case "this_month":
+    default:
+      return { key: "this_month", from: t.slice(0, 8) + "01", to: t };
+  }
+}
