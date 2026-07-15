@@ -1,4 +1,4 @@
-import { getSql, hasDb } from "./db";
+import { getSupabase, hasDb } from "./db";
 import { BRANDS, type BrandConfig } from "./brands";
 import { CHANNEL_FIELDS } from "./channelFields";
 import { fetchUsdIlsRate, toIls } from "./fx";
@@ -8,7 +8,7 @@ import { today } from "./dates";
 import type { Channel } from "./types";
 
 type DailyAgg = { spend: number; purchases: number; revenue: number };
-type Sql = ReturnType<typeof getSql>;
+type Sb = ReturnType<typeof getSupabase>;
 
 export interface IngestResult {
   ok: boolean;
@@ -72,36 +72,32 @@ function aggregateByDate(
 
 // Upsert a brand/channel's daily aggregates (converting native currency to ILS).
 async function upsertDaily(
-  sql: Sql,
+  sb: Sb,
   brand: BrandConfig,
   channel: Channel,
   byDate: Map<string, DailyAgg>,
   usdIls: number,
 ): Promise<number> {
-  let n = 0;
   const currency = brand.nativeCurrency;
-  for (const [date, agg] of byDate) {
-    const spendIls = toIls(agg.spend, currency, usdIls);
-    const revenueIls = toIls(agg.revenue, currency, usdIls);
-    await sql`
-      INSERT INTO daily_metrics
-        (date, brand_id, channel, spend, purchases, revenue,
-         native_currency, spend_ils, revenue_ils, fetched_at)
-      VALUES
-        (${date}, ${brand.id}, ${channel}, ${agg.spend}, ${agg.purchases}, ${agg.revenue},
-         ${currency}, ${spendIls}, ${revenueIls}, now())
-      ON CONFLICT (date, brand_id, channel) DO UPDATE SET
-        spend = EXCLUDED.spend,
-        purchases = EXCLUDED.purchases,
-        revenue = EXCLUDED.revenue,
-        native_currency = EXCLUDED.native_currency,
-        spend_ils = EXCLUDED.spend_ils,
-        revenue_ils = EXCLUDED.revenue_ils,
-        fetched_at = now()
-    `;
-    n += 1;
-  }
-  return n;
+  const now = new Date().toISOString();
+  const rows = Array.from(byDate, ([date, agg]) => ({
+    date,
+    brand_id: brand.id,
+    channel,
+    spend: agg.spend,
+    purchases: agg.purchases,
+    revenue: agg.revenue,
+    native_currency: currency,
+    spend_ils: toIls(agg.spend, currency, usdIls),
+    revenue_ils: toIls(agg.revenue, currency, usdIls),
+    fetched_at: now,
+  }));
+  if (rows.length === 0) return 0;
+  const { error } = await sb.from("daily_metrics").upsert(rows, {
+    onConflict: "date,brand_id,channel",
+  });
+  if (error) throw new Error(error.message);
+  return rows.length;
 }
 
 export async function runIngest(opts?: { from?: string; to?: string }): Promise<IngestResult> {
@@ -119,18 +115,16 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
 
   if (!hasDb()) {
     result.ok = false;
-    result.errors.push({ brand: "-", channel: "google", error: "No DATABASE_URL configured" });
+    result.errors.push({ brand: "-", channel: "google", error: "Supabase env not configured" });
     return result;
   }
 
-  const sql = getSql();
+  const sb = getSupabase();
   const usdIls = await fetchUsdIlsRate();
   result.usdIls = usdIls;
-  await sql`
-    INSERT INTO fx_rates (date, base, quote, rate)
-    VALUES (${to}, 'USD', 'ILS', ${usdIls})
-    ON CONFLICT (date, base, quote) DO UPDATE SET rate = EXCLUDED.rate
-  `;
+  await sb
+    .from("fx_rates")
+    .upsert({ date: to, base: "USD", quote: "ILS", rate: usdIls }, { onConflict: "date,base,quote" });
 
   for (const brand of BRANDS) {
     for (const channel of ["google", "meta", "tiktok", "site"] as Channel[]) {
@@ -146,7 +140,7 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
           for (const [date, agg] of orders) {
             byDate.set(date, { spend: 0, purchases: agg.orders, revenue: agg.revenue });
           }
-          result.upserts += await upsertDaily(sql, brand, channel, byDate, usdIls);
+          result.upserts += await upsertDaily(sb, brand, channel, byDate, usdIls);
         } catch (e) {
           result.ok = false;
           result.errors.push({
@@ -180,7 +174,7 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
           options: map.options,
         });
         const byDate = aggregateByDate(rows, map, account);
-        result.upserts += await upsertDaily(sql, brand, channel, byDate, usdIls);
+        result.upserts += await upsertDaily(sb, brand, channel, byDate, usdIls);
       } catch (e) {
         result.ok = false;
         result.errors.push({

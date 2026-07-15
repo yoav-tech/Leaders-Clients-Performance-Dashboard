@@ -1,8 +1,9 @@
 {
+  "framework": "nextjs",
   "crons": [
     {
       "path": "/api/cron/ingest",
-      "schedule": "0 5,11,17 * * *"
+      "schedule": "0 5 * * *"
     }
   ]
 }

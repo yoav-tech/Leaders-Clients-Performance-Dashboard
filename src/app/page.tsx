@@ -41,8 +41,8 @@ export default async function Home({
 
       {!hasDb() && (
         <div className="mt-4 rounded-lg border border-[var(--warn)]/40 bg-[var(--warn)]/10 px-4 py-3 text-sm text-[var(--warn)]">
-          Database not configured yet. Set <code>POSTGRES_URL</code> and run{" "}
-          <code>npm run db:setup</code> + the ingestion job to see live numbers.
+          Database not configured yet. Set <code>SUPABASE_URL</code> +{" "}
+          <code>SUPABASE_SERVICE_ROLE_KEY</code> and run the ingestion job to see live numbers.
         </div>
       )}
 
