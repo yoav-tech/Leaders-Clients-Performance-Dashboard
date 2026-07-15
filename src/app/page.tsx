@@ -6,6 +6,7 @@ import type { Period } from "@/lib/types";
 import AgencyStrip from "@/components/AgencyStrip";
 import BrandCard from "@/components/BrandCard";
 import PeriodSelector from "@/components/PeriodSelector";
+import { MagicBentoGrid, ParticleCard } from "@/components/magicbento/MagicBento";
 
 export const dynamic = "force-dynamic";
 
@@ -55,19 +56,16 @@ export default async function Home({
         <AgencyStrip metrics={metrics} />
       </section>
 
-      <section className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <MagicBentoGrid className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {metrics.map((m) => {
           const brand = getBrand(m.brandId) ?? BRANDS[0];
           return (
-            <BrandCard
-              key={m.brandId}
-              brand={brand}
-              metrics={m}
-              store={storeAnalytics[m.brandId] ?? null}
-            />
+            <ParticleCard key={m.brandId}>
+              <BrandCard brand={brand} metrics={m} store={storeAnalytics[m.brandId] ?? null} />
+            </ParticleCard>
           );
         })}
-      </section>
+      </MagicBentoGrid>
     </main>
   );
 }
