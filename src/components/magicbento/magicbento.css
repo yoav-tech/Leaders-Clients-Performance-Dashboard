@@ -1,0 +1,59 @@
+/* MagicBento effects (adapted from React Bits) — effect-only, no demo layout.
+   Applied over the existing brand cards so the dashboard grid/layout is unchanged. */
+
+.mb-section {
+  position: relative;
+  user-select: none;
+}
+
+.mb-card {
+  position: relative;
+  border-radius: 0.75rem; /* matches rounded-xl on the card */
+  overflow: hidden;
+  transition: box-shadow 0.3s ease;
+  transform-style: preserve-3d;
+  --glow-x: 50%;
+  --glow-y: 50%;
+  --glow-intensity: 0;
+  --glow-radius: 200px;
+}
+
+.mb-card:hover {
+  box-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.35),
+    0 0 30px rgba(var(--glow-color), 0.12);
+}
+
+/* Cursor-following border glow (masked so only the border ring lights up) */
+.mb-card--glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 2px;
+  background: radial-gradient(
+    var(--glow-radius) circle at var(--glow-x) var(--glow-y),
+    rgba(var(--glow-color), calc(var(--glow-intensity) * 0.85)) 0%,
+    rgba(var(--glow-color), calc(var(--glow-intensity) * 0.4)) 30%,
+    transparent 60%
+  );
+  border-radius: inherit;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 3;
+  transition: opacity 0.3s ease;
+}
+
+/* Global cursor spotlight */
+.global-spotlight {
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
+  z-index: 40 !important;
+  pointer-events: none;
+}
