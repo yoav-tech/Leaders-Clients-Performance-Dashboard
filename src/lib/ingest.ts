@@ -40,9 +40,16 @@ function aggregateByDate(
     const date = String(r.date ?? "").slice(0, 10);
     if (!date) continue;
     const cur = byDate.get(date) ?? { spend: 0, purchases: 0, revenue: 0 };
-    cur.spend += map.spendField ? num(r[map.spendField]) : 0;
+    const spend = map.spendField ? num(r[map.spendField]) : 0;
+    // Revenue is either a direct field or derived from a ROAS field (revenue = roas * spend).
+    const revenue = map.revenueField
+      ? num(r[map.revenueField])
+      : map.revenueRoasField
+        ? num(r[map.revenueRoasField]) * spend
+        : 0;
+    cur.spend += spend;
     cur.purchases += num(r[map.purchasesField]);
-    cur.revenue += num(r[map.revenueField]);
+    cur.revenue += revenue;
     byDate.set(date, cur);
   }
   return byDate;
@@ -84,8 +91,12 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
         continue;
       }
       const map = CHANNEL_FIELDS[channel];
-      const fields = ["date", "account_id", map.purchasesField, map.revenueField];
+      // Only request fields we use. Account is filtered via the `accounts` param, so we
+      // don't add a connector-specific id field (e.g. TikTok uses advertiser_id, not account_id).
+      const fields = ["date", map.purchasesField];
       if (map.spendField) fields.push(map.spendField);
+      if (map.revenueField) fields.push(map.revenueField);
+      if (map.revenueRoasField) fields.push(map.revenueRoasField);
 
       try {
         const rows = await fetchWindsor({
@@ -94,6 +105,7 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
           dateFrom: from,
           dateTo: to,
           accounts: [account],
+          options: map.options,
         });
         const byDate = aggregateByDate(rows, map);
 

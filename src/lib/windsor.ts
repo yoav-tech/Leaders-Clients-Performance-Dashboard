@@ -10,6 +10,7 @@ export interface WindsorQuery {
   dateFrom: string; // YYYY-MM-DD
   dateTo: string; // YYYY-MM-DD
   accounts?: string[]; // optional account-id filter
+  options?: Record<string, string>; // connector options, e.g. { attribution_window: "7d_click,1d_view" }
 }
 
 export type WindsorRow = Record<string, string | number | null>;
@@ -26,6 +27,8 @@ export async function fetchWindsor(q: WindsorQuery): Promise<WindsorRow[]> {
     _renderer: "json",
   });
   if (q.accounts?.length) params.set("accounts", q.accounts.join(","));
+  // Connector options (e.g. attribution_window) are passed as plain query params.
+  for (const [k, v] of Object.entries(q.options ?? {})) params.set(k, v);
 
   const url = `${BASE}/${q.connector}?${params.toString()}`;
   const res = await fetch(url, { headers: { Accept: "application/json" } });
