@@ -1,10 +1,21 @@
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE, sessionToken } from "@/lib/auth";
+import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const password = process.env.DASHBOARD_PASSWORD;
+
+  // Throttle brute-force attempts per IP.
+  const limited = rateLimit(`login:${clientIp(request)}`);
+  if (!limited.ok) {
+    return NextResponse.json(
+      { ok: false, error: "Too many attempts. Try again later." },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } },
+    );
+  }
+
   const body = (await request.json().catch(() => ({}))) as { password?: string };
 
   if (!password || body.password !== password) {

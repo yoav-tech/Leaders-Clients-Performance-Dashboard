@@ -11,7 +11,8 @@
       "Bash(vercel deploy *)",
       "Bash(node -e 'const fs=require\\(\"fs\"\\);const t=fs.readFileSync\\(\".env.local\",\"utf8\"\\);const m=t.match\\(/^DASHBOARD_PASSWORD=\"?\\([^\"\\\\n]*\\)/m\\);console.log\\(\"DASHBOARD_PASSWORD local:\", m&&m[1]?\"SET\":\"empty/unset\"\\)')",
       "Bash(vercel env *)",
-      "Bash(curl -s -o /dev/null -w \"no-creds HTTP %{http_code}\\\\n\" \"https://leaders-clients-performance-dashboa.vercel.app/\")"
+      "Bash(curl -s -o /dev/null -w \"no-creds HTTP %{http_code}\\\\n\" \"https://leaders-clients-performance-dashboa.vercel.app/\")",
+      "Bash(npm audit *)"
     ]
   }
 }
