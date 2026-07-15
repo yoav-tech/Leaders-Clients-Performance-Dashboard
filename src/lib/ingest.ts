@@ -1,0 +1,196 @@
+import { getSql, hasDb } from "./db";
+import { BRANDS, type BrandConfig } from "./brands";
+import { CHANNEL_FIELDS } from "./channelFields";
+import { fetchUsdIlsRate, toIls } from "./fx";
+import { fetchWindsor, num } from "./windsor";
+import { fetchQuickShopDaily, quickshopKeyFor } from "./quickshop";
+import { today } from "./dates";
+import type { Channel } from "./types";
+
+type DailyAgg = { spend: number; purchases: number; revenue: number };
+type Sql = ReturnType<typeof getSql>;
+
+export interface IngestResult {
+  ok: boolean;
+  from: string;
+  to: string;
+  usdIls: number;
+  upserts: number;
+  skipped: { brand: string; channel: Channel; reason: string }[];
+  errors: { brand: string; channel: Channel; error: string }[];
+}
+
+function accountForChannel(brand: BrandConfig, channel: Channel): string | null {
+  switch (channel) {
+    case "google":
+      return brand.googleAccountId;
+    case "meta":
+      return brand.metaAccountId;
+    case "tiktok":
+      return brand.tiktokAccountId;
+    case "site":
+      // Only Shopify stores flow through Windsor. QuickShop is ingested separately.
+      return brand.storePlatform === "shopify" ? brand.storeId : null;
+  }
+}
+
+// Windsor REST ignores account-filter params and returns ALL connected accounts for
+// a connector, so we filter client-side by account_id. Normalise for comparison
+// (Meta may prefix with "act_"; ignore case/whitespace).
+function normId(v: unknown): string {
+  return String(v ?? "").replace(/^act_/i, "").trim();
+}
+
+// Aggregate Windsor rows by date into { spend, purchases, revenue }, keeping only the
+// target account's rows.
+function aggregateByDate(
+  rows: Awaited<ReturnType<typeof fetchWindsor>>,
+  map: (typeof CHANNEL_FIELDS)[keyof typeof CHANNEL_FIELDS],
+  account: string,
+): Map<string, { spend: number; purchases: number; revenue: number }> {
+  const target = normId(account);
+  const byDate = new Map<string, { spend: number; purchases: number; revenue: number }>();
+  for (const r of rows) {
+    if (normId(r.account_id) !== target) continue;
+    const date = String(r.date ?? "").slice(0, 10);
+    if (!date) continue;
+    const cur = byDate.get(date) ?? { spend: 0, purchases: 0, revenue: 0 };
+    const spend = map.spendField ? num(r[map.spendField]) : 0;
+    // Revenue is either a direct field or derived from a ROAS field (revenue = roas * spend).
+    const revenue = map.revenueField
+      ? num(r[map.revenueField])
+      : map.revenueRoasField
+        ? num(r[map.revenueRoasField]) * spend
+        : 0;
+    cur.spend += spend;
+    cur.purchases += num(r[map.purchasesField]);
+    cur.revenue += revenue;
+    byDate.set(date, cur);
+  }
+  return byDate;
+}
+
+// Upsert a brand/channel's daily aggregates (converting native currency to ILS).
+async function upsertDaily(
+  sql: Sql,
+  brand: BrandConfig,
+  channel: Channel,
+  byDate: Map<string, DailyAgg>,
+  usdIls: number,
+): Promise<number> {
+  let n = 0;
+  const currency = brand.nativeCurrency;
+  for (const [date, agg] of byDate) {
+    const spendIls = toIls(agg.spend, currency, usdIls);
+    const revenueIls = toIls(agg.revenue, currency, usdIls);
+    await sql`
+      INSERT INTO daily_metrics
+        (date, brand_id, channel, spend, purchases, revenue,
+         native_currency, spend_ils, revenue_ils, fetched_at)
+      VALUES
+        (${date}, ${brand.id}, ${channel}, ${agg.spend}, ${agg.purchases}, ${agg.revenue},
+         ${currency}, ${spendIls}, ${revenueIls}, now())
+      ON CONFLICT (date, brand_id, channel) DO UPDATE SET
+        spend = EXCLUDED.spend,
+        purchases = EXCLUDED.purchases,
+        revenue = EXCLUDED.revenue,
+        native_currency = EXCLUDED.native_currency,
+        spend_ils = EXCLUDED.spend_ils,
+        revenue_ils = EXCLUDED.revenue_ils,
+        fetched_at = now()
+    `;
+    n += 1;
+  }
+  return n;
+}
+
+export async function runIngest(opts?: { from?: string; to?: string }): Promise<IngestResult> {
+  const to = opts?.to ?? today();
+  const from = opts?.from ?? to; // default: today only; pass a range to backfill
+  const result: IngestResult = {
+    ok: true,
+    from,
+    to,
+    usdIls: 0,
+    upserts: 0,
+    skipped: [],
+    errors: [],
+  };
+
+  if (!hasDb()) {
+    result.ok = false;
+    result.errors.push({ brand: "-", channel: "google", error: "No DATABASE_URL configured" });
+    return result;
+  }
+
+  const sql = getSql();
+  const usdIls = await fetchUsdIlsRate();
+  result.usdIls = usdIls;
+  await sql`
+    INSERT INTO fx_rates (date, base, quote, rate)
+    VALUES (${to}, 'USD', 'ILS', ${usdIls})
+    ON CONFLICT (date, base, quote) DO UPDATE SET rate = EXCLUDED.rate
+  `;
+
+  for (const brand of BRANDS) {
+    for (const channel of ["google", "meta", "tiktok", "site"] as Channel[]) {
+      // Store channel for QuickShop brands comes from the QuickShop API, not Windsor.
+      if (channel === "site" && brand.storePlatform === "quickshop") {
+        if (!quickshopKeyFor(brand)) {
+          result.skipped.push({ brand: brand.id, channel, reason: "no QuickShop API key" });
+          continue;
+        }
+        try {
+          const orders = await fetchQuickShopDaily(brand, from, to);
+          const byDate = new Map<string, DailyAgg>();
+          for (const [date, agg] of orders) {
+            byDate.set(date, { spend: 0, purchases: agg.orders, revenue: agg.revenue });
+          }
+          result.upserts += await upsertDaily(sql, brand, channel, byDate, usdIls);
+        } catch (e) {
+          result.ok = false;
+          result.errors.push({
+            brand: brand.id,
+            channel,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+        continue;
+      }
+
+      const account = accountForChannel(brand, channel);
+      if (!account) {
+        result.skipped.push({ brand: brand.id, channel, reason: "no account id configured" });
+        continue;
+      }
+      const map = CHANNEL_FIELDS[channel];
+      // Request account_id so we can filter client-side (Windsor REST returns all accounts).
+      const fields = ["date", "account_id", map.purchasesField];
+      if (map.spendField) fields.push(map.spendField);
+      if (map.revenueField) fields.push(map.revenueField);
+      if (map.revenueRoasField) fields.push(map.revenueRoasField);
+
+      try {
+        const rows = await fetchWindsor({
+          connector: map.connector,
+          fields,
+          dateFrom: from,
+          dateTo: to,
+          accounts: [account],
+          options: map.options,
+        });
+        const byDate = aggregateByDate(rows, map, account);
+        result.upserts += await upsertDaily(sql, brand, channel, byDate, usdIls);
+      } catch (e) {
+        result.ok = false;
+        result.errors.push({
+          brand: brand.id,
+          channel,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+  }
+
+  return result;
+}
