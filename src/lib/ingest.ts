@@ -91,7 +91,9 @@ async function replaceDaily(
     .lte("date", to);
   if (del.error) throw new Error(del.error.message);
 
-  const currency = brand.nativeCurrency;
+  // Per-channel currency (e.g. Seacret TikTok bills in ILS while Meta/Google are USD).
+  const currency =
+    channel !== "site" ? (brand.channelCurrency?.[channel] ?? brand.nativeCurrency) : brand.nativeCurrency;
   const now = new Date().toISOString();
   const rows = Array.from(byDate, ([date, agg]) => ({
     date,

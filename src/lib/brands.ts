@@ -7,6 +7,7 @@
 
 export type StorePlatform = "shopify" | "quickshop";
 export type Currency = "ILS" | "USD";
+export type ChannelKey = "google" | "meta" | "tiktok" | "site";
 
 export interface BrandConfig {
   id: string; // stable slug used as a key everywhere
@@ -17,7 +18,10 @@ export interface BrandConfig {
   tiktokAccountId: string | null;
   storePlatform: StorePlatform;
   storeId: string | null; // Shopify shop domain or QuickShop store id
-  nativeCurrency: Currency;
+  nativeCurrency: Currency; // default currency for the brand's accounts
+  // Per-channel currency override, for when one platform's account bills in a
+  // different currency than the rest (e.g. Seacret: Meta/Google USD, TikTok ILS).
+  channelCurrency?: Partial<Record<ChannelKey, Currency>>;
   targetRoas: number; // for green/red coloring
 }
 
@@ -67,7 +71,9 @@ export const BRANDS: BrandConfig[] = [
     tiktokAccountId: "7350287669353578498",
     storePlatform: "shopify",
     storeId: null,
-    nativeCurrency: "USD",
+    nativeCurrency: "USD", // Meta & Google bill in USD
+    channelCurrency: { tiktok: "ILS" }, // TikTok account bills in ILS
+
     targetRoas: 3,
   },
 ];
