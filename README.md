@@ -7,7 +7,7 @@ blended ROAS. All money is normalised to **ILS**.
 ## How it works
 
 ```
-Vercel Cron ──► /api/cron/ingest ──► Windsor.ai REST API ──► Neon Postgres (daily_metrics)
+Vercel Cron ──► /api/cron/ingest ──► Windsor.ai REST API ──► Supabase Postgres (daily_metrics)
                                                                     │
 Dashboard (Next.js App Router) ◄────────── reads the cache ◄────────┘
 ```
@@ -22,7 +22,7 @@ Dashboard (Next.js App Router) ◄────────── reads the cache
 ## Setup
 
 1. **Install:** `npm install`
-2. **Provision DB:** add Vercel's Neon/Postgres integration to the project (sets `DATABASE_URL`).
+2. **Provision DB:** create a Supabase project; use its *Transaction pooler* connection string (port 6543) as `DATABASE_URL`.
 3. **Env:** copy `.env.example` → `.env.local`, fill `DATABASE_URL`, `WINDSOR_API_KEY`, `CRON_SECRET`.
 4. **Create tables:** `npm run db:setup`
 5. **Connect Windsor connectors:** add **Meta (`facebook`)**, **TikTok (`tiktok`)**, and
