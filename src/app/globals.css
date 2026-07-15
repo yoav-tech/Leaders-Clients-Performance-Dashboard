@@ -27,3 +27,99 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* ---- Login page (premium violet-glow, matches the card aesthetic) ---- */
+.login-bg {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background:
+    radial-gradient(60rem 40rem at 50% -10%, rgba(139, 92, 246, 0.18), transparent 60%),
+    radial-gradient(40rem 30rem at 80% 110%, rgba(59, 130, 246, 0.12), transparent 60%),
+    var(--background);
+  overflow: hidden;
+}
+
+.login-glow {
+  position: relative;
+  border-radius: 22px;
+  padding: 1.5px; /* thickness of the glowing ring */
+  width: 100%;
+  max-width: 380px;
+  background: conic-gradient(
+    from var(--angle, 0deg),
+    rgba(139, 92, 246, 0),
+    rgba(139, 92, 246, 0.9) 20%,
+    rgba(59, 130, 246, 0.6) 35%,
+    rgba(139, 92, 246, 0) 55%
+  );
+  animation: login-spin 6s linear infinite;
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.55),
+    0 0 60px rgba(139, 92, 246, 0.18);
+}
+
+/* Animate the conic angle (falls back to a static ring where @property is unsupported). */
+@property --angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes login-spin {
+  to {
+    --angle: 360deg;
+  }
+}
+
+.login-inner {
+  position: relative;
+  border-radius: 20.5px;
+  background: linear-gradient(160deg, #16121f, #0e0b15);
+  padding: 2rem 1.75rem;
+}
+
+.login-title {
+  background: linear-gradient(90deg, #c4b5fd, #ffffff 55%, #93c5fd);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.login-input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--card-border);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.7rem 0.9rem;
+  color: var(--foreground);
+  outline: none;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.login-input:focus {
+  border-color: rgba(139, 92, 246, 0.7);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+}
+
+.login-btn {
+  width: 100%;
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(90deg, #7c3aed, #6366f1);
+  transition:
+    filter 0.2s ease,
+    transform 0.05s ease;
+}
+.login-btn:hover {
+  filter: brightness(1.1);
+}
+.login-btn:active {
+  transform: translateY(1px);
+}
+.login-btn:disabled {
+  opacity: 0.5;
+}

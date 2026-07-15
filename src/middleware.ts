@@ -1,30 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SESSION_COOKIE, sessionToken } from "@/lib/auth";
 
-// Shared-password gate for the dashboard (it shows client revenue).
+// Cookie-based gate for the dashboard (it shows client revenue).
 // - Enforced only when DASHBOARD_PASSWORD is set (so local dev / pre-config deploys aren't locked out).
-// - Uses HTTP Basic Auth (native browser prompt); DASHBOARD_USER is optional.
-// - The cron ingestion route is excluded here — it has its own CRON_SECRET.
-export function middleware(req: NextRequest) {
-  const pass = process.env.DASHBOARD_PASSWORD;
-  if (!pass) return NextResponse.next();
+// - Unauthenticated requests are redirected to the custom /login page.
+// - The cron ingestion route is excluded via the matcher (it has its own CRON_SECRET).
+export async function middleware(req: NextRequest) {
+  const password = process.env.DASHBOARD_PASSWORD;
+  if (!password) return NextResponse.next();
 
-  const user = process.env.DASHBOARD_USER; // optional
-  const auth = req.headers.get("authorization");
-
-  if (auth?.startsWith("Basic ")) {
-    const decoded = atob(auth.slice(6));
-    const sep = decoded.indexOf(":");
-    const u = decoded.slice(0, sep);
-    const p = decoded.slice(sep + 1);
-    if ((!user || u === user) && p === pass) {
-      return NextResponse.next();
-    }
+  const { pathname } = req.nextUrl;
+  if (pathname === "/login" || pathname.startsWith("/api/login")) {
+    return NextResponse.next();
   }
 
-  return new NextResponse("Authentication required", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Leaders Dashboard", charset="UTF-8"' },
-  });
+  const cookie = req.cookies.get(SESSION_COOKIE)?.value;
+  const expected = await sessionToken(password);
+  if (cookie && cookie === expected) {
+    return NextResponse.next();
+  }
+
+  const url = req.nextUrl.clone();
+  url.pathname = "/login";
+  url.search = "";
+  if (pathname !== "/") url.searchParams.set("next", pathname);
+  return NextResponse.redirect(url);
 }
 
 export const config = {
