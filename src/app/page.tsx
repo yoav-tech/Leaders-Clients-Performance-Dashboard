@@ -6,6 +6,7 @@ import { hasDb } from "@/lib/db";
 import AgencyStrip from "@/components/AgencyStrip";
 import BrandCard from "@/components/BrandCard";
 import DateRangePicker from "@/components/DateRangePicker";
+import LogoutButton from "@/components/LogoutButton";
 import { MagicBentoGrid, ParticleCard } from "@/components/magicbento/MagicBento";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,10 @@ export default async function Home({
               : "No data yet — run the ingestion job to populate."}
           </p>
         </div>
-        <DateRangePicker activeKey={range.key} from={range.from} to={range.to} />
+        <div className="flex items-center gap-3">
+          <DateRangePicker activeKey={range.key} from={range.from} to={range.to} />
+          <LogoutButton />
+        </div>
       </header>
 
       {!hasDb() && (
