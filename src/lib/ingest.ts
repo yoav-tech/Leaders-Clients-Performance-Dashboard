@@ -3,8 +3,12 @@ import { BRANDS, type BrandConfig } from "./brands";
 import { CHANNEL_FIELDS } from "./channelFields";
 import { fetchUsdIlsRate, toIls } from "./fx";
 import { fetchWindsor, num } from "./windsor";
+import { fetchQuickShopDaily, quickshopKeyFor } from "./quickshop";
 import { today } from "./dates";
 import type { Channel } from "./types";
+
+type DailyAgg = { spend: number; purchases: number; revenue: number };
+type Sql = ReturnType<typeof getSql>;
 
 export interface IngestResult {
   ok: boolean;
@@ -66,6 +70,40 @@ function aggregateByDate(
   return byDate;
 }
 
+// Upsert a brand/channel's daily aggregates (converting native currency to ILS).
+async function upsertDaily(
+  sql: Sql,
+  brand: BrandConfig,
+  channel: Channel,
+  byDate: Map<string, DailyAgg>,
+  usdIls: number,
+): Promise<number> {
+  let n = 0;
+  const currency = brand.nativeCurrency;
+  for (const [date, agg] of byDate) {
+    const spendIls = toIls(agg.spend, currency, usdIls);
+    const revenueIls = toIls(agg.revenue, currency, usdIls);
+    await sql`
+      INSERT INTO daily_metrics
+        (date, brand_id, channel, spend, purchases, revenue,
+         native_currency, spend_ils, revenue_ils, fetched_at)
+      VALUES
+        (${date}, ${brand.id}, ${channel}, ${agg.spend}, ${agg.purchases}, ${agg.revenue},
+         ${currency}, ${spendIls}, ${revenueIls}, now())
+      ON CONFLICT (date, brand_id, channel) DO UPDATE SET
+        spend = EXCLUDED.spend,
+        purchases = EXCLUDED.purchases,
+        revenue = EXCLUDED.revenue,
+        native_currency = EXCLUDED.native_currency,
+        spend_ils = EXCLUDED.spend_ils,
+        revenue_ils = EXCLUDED.revenue_ils,
+        fetched_at = now()
+    `;
+    n += 1;
+  }
+  return n;
+}
+
 export async function runIngest(opts?: { from?: string; to?: string }): Promise<IngestResult> {
   const to = opts?.to ?? today();
   const from = opts?.from ?? to; // default: today only; pass a range to backfill
@@ -96,6 +134,30 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
 
   for (const brand of BRANDS) {
     for (const channel of ["google", "meta", "tiktok", "site"] as Channel[]) {
+      // Store channel for QuickShop brands comes from the QuickShop API, not Windsor.
+      if (channel === "site" && brand.storePlatform === "quickshop") {
+        if (!quickshopKeyFor(brand)) {
+          result.skipped.push({ brand: brand.id, channel, reason: "no QuickShop API key" });
+          continue;
+        }
+        try {
+          const orders = await fetchQuickShopDaily(brand, from, to);
+          const byDate = new Map<string, DailyAgg>();
+          for (const [date, agg] of orders) {
+            byDate.set(date, { spend: 0, purchases: agg.orders, revenue: agg.revenue });
+          }
+          result.upserts += await upsertDaily(sql, brand, channel, byDate, usdIls);
+        } catch (e) {
+          result.ok = false;
+          result.errors.push({
+            brand: brand.id,
+            channel,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+        continue;
+      }
+
       const account = accountForChannel(brand, channel);
       if (!account) {
         result.skipped.push({ brand: brand.id, channel, reason: "no account id configured" });
@@ -118,29 +180,7 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
           options: map.options,
         });
         const byDate = aggregateByDate(rows, map, account);
-
-        for (const [date, agg] of byDate) {
-          const currency = brand.nativeCurrency;
-          const spendIls = toIls(agg.spend, currency, usdIls);
-          const revenueIls = toIls(agg.revenue, currency, usdIls);
-          await sql`
-            INSERT INTO daily_metrics
-              (date, brand_id, channel, spend, purchases, revenue,
-               native_currency, spend_ils, revenue_ils, fetched_at)
-            VALUES
-              (${date}, ${brand.id}, ${channel}, ${agg.spend}, ${agg.purchases}, ${agg.revenue},
-               ${currency}, ${spendIls}, ${revenueIls}, now())
-            ON CONFLICT (date, brand_id, channel) DO UPDATE SET
-              spend = EXCLUDED.spend,
-              purchases = EXCLUDED.purchases,
-              revenue = EXCLUDED.revenue,
-              native_currency = EXCLUDED.native_currency,
-              spend_ils = EXCLUDED.spend_ils,
-              revenue_ils = EXCLUDED.revenue_ils,
-              fetched_at = now()
-          `;
-          result.upserts += 1;
-        }
+        result.upserts += await upsertDaily(sql, brand, channel, byDate, usdIls);
       } catch (e) {
         result.ok = false;
         result.errors.push({

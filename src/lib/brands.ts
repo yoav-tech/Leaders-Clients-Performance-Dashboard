@@ -30,7 +30,7 @@ export const BRANDS: BrandConfig[] = [
     googleAccountId: "609-375-7944",
     tiktokAccountId: "7113477751625105409",
     storePlatform: "quickshop",
-    storeId: null,
+    storeId: "argania", // QuickShop store slug (my-quickshop.com/shops/argania)
     nativeCurrency: "ILS",
     targetRoas: 3,
   },
