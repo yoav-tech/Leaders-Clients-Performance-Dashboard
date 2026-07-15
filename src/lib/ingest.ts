@@ -30,13 +30,24 @@ function accountForChannel(brand: BrandConfig, channel: Channel): string | null 
   }
 }
 
-// Aggregate Windsor rows by date into { spend, purchases, revenue }.
+// Windsor REST ignores account-filter params and returns ALL connected accounts for
+// a connector, so we filter client-side by account_id. Normalise for comparison
+// (Meta may prefix with "act_"; ignore case/whitespace).
+function normId(v: unknown): string {
+  return String(v ?? "").replace(/^act_/i, "").trim();
+}
+
+// Aggregate Windsor rows by date into { spend, purchases, revenue }, keeping only the
+// target account's rows.
 function aggregateByDate(
   rows: Awaited<ReturnType<typeof fetchWindsor>>,
   map: (typeof CHANNEL_FIELDS)[keyof typeof CHANNEL_FIELDS],
+  account: string,
 ): Map<string, { spend: number; purchases: number; revenue: number }> {
+  const target = normId(account);
   const byDate = new Map<string, { spend: number; purchases: number; revenue: number }>();
   for (const r of rows) {
+    if (normId(r.account_id) !== target) continue;
     const date = String(r.date ?? "").slice(0, 10);
     if (!date) continue;
     const cur = byDate.get(date) ?? { spend: 0, purchases: 0, revenue: 0 };
@@ -91,9 +102,8 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
         continue;
       }
       const map = CHANNEL_FIELDS[channel];
-      // Only request fields we use. Account is filtered via the `accounts` param, so we
-      // don't add a connector-specific id field (e.g. TikTok uses advertiser_id, not account_id).
-      const fields = ["date", map.purchasesField];
+      // Request account_id so we can filter client-side (Windsor REST returns all accounts).
+      const fields = ["date", "account_id", map.purchasesField];
       if (map.spendField) fields.push(map.spendField);
       if (map.revenueField) fields.push(map.revenueField);
       if (map.revenueRoasField) fields.push(map.revenueRoasField);
@@ -107,7 +117,7 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
           accounts: [account],
           options: map.options,
         });
-        const byDate = aggregateByDate(rows, map);
+        const byDate = aggregateByDate(rows, map, account);
 
         for (const [date, agg] of byDate) {
           const currency = brand.nativeCurrency;
