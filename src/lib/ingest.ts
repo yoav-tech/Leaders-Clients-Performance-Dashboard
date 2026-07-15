@@ -70,14 +70,27 @@ function aggregateByDate(
   return byDate;
 }
 
-// Upsert a brand/channel's daily aggregates (converting native currency to ILS).
-async function upsertDaily(
+// Replace a brand/channel's rows over [from, to] with the freshly fetched aggregates
+// (converting native currency to ILS). Delete-then-insert so a channel that now returns
+// no data (e.g. an account no longer connected) gets cleared instead of leaving stale rows.
+async function replaceDaily(
   sb: Sb,
   brand: BrandConfig,
   channel: Channel,
+  from: string,
+  to: string,
   byDate: Map<string, DailyAgg>,
   usdIls: number,
 ): Promise<number> {
+  const del = await sb
+    .from("daily_metrics")
+    .delete()
+    .eq("brand_id", brand.id)
+    .eq("channel", channel)
+    .gte("date", from)
+    .lte("date", to);
+  if (del.error) throw new Error(del.error.message);
+
   const currency = brand.nativeCurrency;
   const now = new Date().toISOString();
   const rows = Array.from(byDate, ([date, agg]) => ({
@@ -93,9 +106,7 @@ async function upsertDaily(
     fetched_at: now,
   }));
   if (rows.length === 0) return 0;
-  const { error } = await sb.from("daily_metrics").upsert(rows, {
-    onConflict: "date,brand_id,channel",
-  });
+  const { error } = await sb.from("daily_metrics").insert(rows);
   if (error) throw new Error(error.message);
   return rows.length;
 }
@@ -140,7 +151,7 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
           for (const [date, agg] of orders) {
             byDate.set(date, { spend: 0, purchases: agg.orders, revenue: agg.revenue });
           }
-          result.upserts += await upsertDaily(sb, brand, channel, byDate, usdIls);
+          result.upserts += await replaceDaily(sb, brand, channel, from, to, byDate, usdIls);
         } catch (e) {
           result.ok = false;
           result.errors.push({
@@ -174,7 +185,7 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
           options: map.options,
         });
         const byDate = aggregateByDate(rows, map, account);
-        result.upserts += await upsertDaily(sb, brand, channel, byDate, usdIls);
+        result.upserts += await replaceDaily(sb, brand, channel, from, to, byDate, usdIls);
       } catch (e) {
         result.ok = false;
         result.errors.push({

@@ -40,7 +40,7 @@ export const BRANDS: BrandConfig[] = [
     nameHe: "לה בוטה",
     metaAccountId: "1443549792685858",
     googleAccountId: null,
-    tiktokAccountId: null,
+    tiktokAccountId: "7374398535632125968",
     storePlatform: "shopify",
     storeId: null,
     nativeCurrency: "ILS",
