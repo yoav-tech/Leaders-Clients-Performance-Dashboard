@@ -48,4 +48,5 @@ Manual ingest against the deployment:
 - **QuickShop** site revenue (Argania, Studio Pasha) is not yet wired — pending API/export access.
 - Field IDs for `facebook`/`tiktok`/`shopify` in `channelFields.ts` are best-effort defaults to
   verify on connect.
-- No auth gate yet — add one before sharing (shows client revenue).
+- **Auth:** a shared-password gate (HTTP Basic Auth) protects the dashboard when
+  `DASHBOARD_PASSWORD` is set in the Vercel env (see `.env.example`). Set it before sharing.
