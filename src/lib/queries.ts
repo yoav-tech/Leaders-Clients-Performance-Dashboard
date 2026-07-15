@@ -1,4 +1,4 @@
-import { getSql, hasDb } from "./db";
+import { getSupabase, hasDb } from "./db";
 import { BRANDS } from "./brands";
 import { periodRange } from "./dates";
 import { emptyChannel, withRatios } from "./metrics";
@@ -13,22 +13,22 @@ import { AD_CHANNELS } from "./types";
 
 async function fetchRows(from: string, to: string): Promise<DailyMetricRow[]> {
   if (!hasDb()) return [];
-  const sql = getSql();
-  const rows = await sql`
-    SELECT date::text AS date, brand_id, channel,
-           spend, purchases, revenue, native_currency,
-           spend_ils, revenue_ils
-    FROM daily_metrics
-    WHERE date >= ${from} AND date <= ${to}
-  `;
-  return rows.map((r) => ({
-    date: r.date,
-    brandId: r.brand_id,
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from("daily_metrics")
+    .select("date,brand_id,channel,spend,purchases,revenue,native_currency,spend_ils,revenue_ils")
+    .gte("date", from)
+    .lte("date", to)
+    .limit(20000);
+  if (error) throw new Error(`daily_metrics query failed: ${error.message}`);
+  return (data ?? []).map((r) => ({
+    date: String(r.date).slice(0, 10),
+    brandId: r.brand_id as string,
     channel: r.channel as Channel,
     spend: Number(r.spend),
     purchases: Number(r.purchases),
     revenue: Number(r.revenue),
-    nativeCurrency: r.native_currency,
+    nativeCurrency: r.native_currency as string,
     spendIls: Number(r.spend_ils),
     revenueIls: Number(r.revenue_ils),
   }));
@@ -103,7 +103,11 @@ function sum<T>(items: T[], pick: (t: T) => number): number {
 // When the DB was last written (drives the "last updated" label). Null if no DB/data.
 export async function getLastUpdated(): Promise<string | null> {
   if (!hasDb()) return null;
-  const sql = getSql();
-  const rows = await sql`SELECT MAX(fetched_at)::text AS ts FROM daily_metrics`;
-  return rows[0]?.ts ?? null;
+  const sb = getSupabase();
+  const { data } = await sb
+    .from("daily_metrics")
+    .select("fetched_at")
+    .order("fetched_at", { ascending: false })
+    .limit(1);
+  return (data?.[0]?.fetched_at as string) ?? null;
 }

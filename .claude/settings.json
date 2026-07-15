@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npm run *)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(vercel link *)",
+      "mcp__claude_ai_Vercel__get_runtime_logs"
     ]
   }
 }
