@@ -1,29 +1,25 @@
 import { BRANDS, getBrand } from "@/lib/brands";
 import { getBrandMetrics, getLastUpdated } from "@/lib/queries";
 import { fetchQuickShopAnalytics, type StoreAnalytics } from "@/lib/storeAnalytics";
+import { resolveRange } from "@/lib/dates";
 import { hasDb } from "@/lib/db";
-import type { Period } from "@/lib/types";
 import AgencyStrip from "@/components/AgencyStrip";
 import BrandCard from "@/components/BrandCard";
-import PeriodSelector from "@/components/PeriodSelector";
+import DateRangePicker from "@/components/DateRangePicker";
 import { MagicBentoGrid, ParticleCard } from "@/components/magicbento/MagicBento";
 
 export const dynamic = "force-dynamic";
 
-const VALID: Period[] = ["today", "7d", "30d", "mtd"];
-
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
 }) {
   const sp = await searchParams;
-  const period: Period = VALID.includes(sp.period as Period)
-    ? (sp.period as Period)
-    : "30d";
+  const range = resolveRange(sp);
 
   const [metrics, lastUpdated, storeEntries] = await Promise.all([
-    getBrandMetrics(period),
+    getBrandMetrics(range.from, range.to),
     getLastUpdated(),
     Promise.all(
       BRANDS.map(async (b) => [b.id, await fetchQuickShopAnalytics(b)] as const),
@@ -42,7 +38,7 @@ export default async function Home({
               : "No data yet — run the ingestion job to populate."}
           </p>
         </div>
-        <PeriodSelector active={period} />
+        <DateRangePicker activeKey={range.key} from={range.from} to={range.to} />
       </header>
 
       {!hasDb() && (

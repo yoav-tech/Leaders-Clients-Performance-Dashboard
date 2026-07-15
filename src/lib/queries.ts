@@ -1,13 +1,11 @@
 import { getSupabase, hasDb } from "./db";
 import { BRANDS } from "./brands";
-import { periodRange } from "./dates";
 import { emptyChannel, withRatios } from "./metrics";
 import type {
   BrandMetrics,
   Channel,
   ChannelMetrics,
   DailyMetricRow,
-  Period,
 } from "./types";
 import { AD_CHANNELS } from "./types";
 
@@ -35,8 +33,7 @@ async function fetchRows(from: string, to: string): Promise<DailyMetricRow[]> {
 }
 
 // Build the per-brand aggregate the dashboard renders. All money is ILS.
-export async function getBrandMetrics(period: Period): Promise<BrandMetrics[]> {
-  const { from, to } = periodRange(period);
+export async function getBrandMetrics(from: string, to: string): Promise<BrandMetrics[]> {
   const rows = await fetchRows(from, to);
 
   return BRANDS.map((brand) => {
