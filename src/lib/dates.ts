@@ -44,7 +44,6 @@ export interface RangePreset {
 export const RANGE_PRESETS: RangePreset[] = [
   { key: "today", label: "Today" },
   { key: "7d", label: "Last 7 days" },
-  { key: "30d", label: "Last 30 days" },
   { key: "this_month", label: "This month" },
   { key: "last_month", label: "Last month" },
 ];
