@@ -8,6 +8,7 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), interest-cohort=()" },
   { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  { key: "X-Robots-Tag", value: "noindex, nofollow" }, // internal tool — keep out of search engines
 ];
 
 const nextConfig: NextConfig = {

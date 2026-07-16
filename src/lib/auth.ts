@@ -4,6 +4,21 @@
 
 export const SESSION_COOKIE = "dash_session";
 
+// Constant-time string comparison (compares fixed-length SHA-256 digests) to avoid
+// leaking the password via response-timing differences.
+export async function safeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [ha, hb] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(a)),
+    crypto.subtle.digest("SHA-256", enc.encode(b)),
+  ]);
+  const x = new Uint8Array(ha);
+  const y = new Uint8Array(hb);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
+
 export async function sessionToken(password: string): Promise<string> {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
