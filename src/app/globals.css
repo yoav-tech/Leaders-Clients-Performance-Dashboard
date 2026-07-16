@@ -79,6 +79,30 @@ body {
   padding: 2rem 1.75rem;
 }
 
+/* Same animated violet glow ring as the login card, for the drill-down modal. */
+.modal-glow {
+  position: relative;
+  border-radius: 18px;
+  padding: 1.5px; /* glowing ring thickness */
+  background: conic-gradient(
+    from var(--angle, 0deg),
+    rgba(139, 92, 246, 0),
+    rgba(139, 92, 246, 0.9) 20%,
+    rgba(59, 130, 246, 0.6) 35%,
+    rgba(139, 92, 246, 0) 55%
+  );
+  animation: login-spin 7s linear infinite;
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.6),
+    0 0 70px rgba(139, 92, 246, 0.22);
+}
+
+.modal-inner {
+  border-radius: 16.5px;
+  overflow: hidden;
+  background: linear-gradient(160deg, #16121f, #0f0c16);
+}
+
 .login-title {
   background: linear-gradient(90deg, #c4b5fd, #ffffff 55%, #93c5fd);
   -webkit-background-clip: text;
