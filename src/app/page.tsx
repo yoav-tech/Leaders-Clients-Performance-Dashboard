@@ -1,13 +1,14 @@
 import { BRANDS, getBrand } from "@/lib/brands";
-import { getBrandMetrics, getLastUpdated } from "@/lib/queries";
+import { getBrandMetrics, getDailyBreakdown, getLastUpdated } from "@/lib/queries";
 import { fetchQuickShopAnalytics, type StoreAnalytics } from "@/lib/storeAnalytics";
-import { resolveRange } from "@/lib/dates";
+import { resolveRange, shiftDate, today } from "@/lib/dates";
 import { hasDb } from "@/lib/db";
 import AgencyStrip from "@/components/AgencyStrip";
 import BrandCard from "@/components/BrandCard";
+import BrandCardInteractive from "@/components/BrandCardInteractive";
 import DateRangePicker from "@/components/DateRangePicker";
 import LogoutButton from "@/components/LogoutButton";
-import { MagicBentoGrid, ParticleCard } from "@/components/magicbento/MagicBento";
+import { MagicBentoGrid } from "@/components/magicbento/MagicBento";
 
 export const dynamic = "force-dynamic";
 
@@ -19,12 +20,15 @@ export default async function Home({
   const sp = await searchParams;
   const range = resolveRange(sp);
 
-  const [metrics, lastUpdated, storeEntries] = await Promise.all([
+  // The drill-down modal always shows the last 7 days, independent of the top selector.
+  const last7From = shiftDate(today(), -6);
+  const [metrics, lastUpdated, storeEntries, breakdown] = await Promise.all([
     getBrandMetrics(range.from, range.to),
     getLastUpdated(),
     Promise.all(
       BRANDS.map(async (b) => [b.id, await fetchQuickShopAnalytics(b)] as const),
     ),
+    getDailyBreakdown(last7From, today()),
   ]);
   const storeAnalytics: Record<string, StoreAnalytics | null> = Object.fromEntries(storeEntries);
 
@@ -60,9 +64,9 @@ export default async function Home({
         {metrics.map((m) => {
           const brand = getBrand(m.brandId) ?? BRANDS[0];
           return (
-            <ParticleCard key={m.brandId}>
+            <BrandCardInteractive key={m.brandId} brand={brand} days={breakdown[m.brandId] ?? []}>
               <BrandCard brand={brand} metrics={m} store={storeAnalytics[m.brandId] ?? null} />
-            </ParticleCard>
+            </BrandCardInteractive>
           );
         })}
       </MagicBentoGrid>

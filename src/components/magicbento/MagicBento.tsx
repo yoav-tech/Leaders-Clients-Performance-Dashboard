@@ -36,6 +36,7 @@ interface ParticleCardProps {
   enableTilt?: boolean;
   enableMagnetism?: boolean;
   clickEffect?: boolean;
+  onClick?: () => void;
 }
 
 export function ParticleCard({
@@ -47,6 +48,7 @@ export function ParticleCard({
   enableTilt = true,
   enableMagnetism = true,
   clickEffect = true,
+  onClick,
 }: ParticleCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const particlesRef = useRef<HTMLDivElement[]>([]);
@@ -165,7 +167,20 @@ export function ParticleCard({
     <div
       ref={cardRef}
       className={`mb-card mb-card--glow ${className}`}
-      style={{ ["--glow-color" as string]: glowColor }}
+      style={{ ["--glow-color" as string]: glowColor, cursor: onClick ? "pointer" : undefined }}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
     >
       {children}
     </div>
