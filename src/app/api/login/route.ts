@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { SESSION_COOKIE, sessionToken } from "@/lib/auth";
+import { SESSION_COOKIE, safeEqual, sessionToken } from "@/lib/auth";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => ({}))) as { password?: string };
 
-  if (!password || body.password !== password) {
+  if (!password || !(await safeEqual(String(body.password ?? ""), password))) {
     return NextResponse.json({ ok: false, error: "Incorrect password" }, { status: 401 });
   }
 
