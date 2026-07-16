@@ -1,11 +1,13 @@
 import { getSupabase, hasDb } from "./db";
 import { BRANDS } from "./brands";
+import { shiftDate } from "./dates";
 import { emptyChannel, withRatios } from "./metrics";
 import type {
   BrandMetrics,
   Channel,
   ChannelMetrics,
   DailyMetricRow,
+  DayBreakdown,
 } from "./types";
 import { AD_CHANNELS } from "./types";
 
@@ -95,6 +97,53 @@ function buildTrend(rows: DailyMetricRow[], from: string, to: string) {
 
 function sum<T>(items: T[], pick: (t: T) => number): number {
   return items.reduce((acc, it) => acc + (pick(it) || 0), 0);
+}
+
+// Per-brand day-by-day breakdown over [from, to] (newest day first). Used by the
+// brand drill-down modal. Includes days with no data (shown as zeros).
+export async function getDailyBreakdown(
+  from: string,
+  to: string,
+): Promise<Record<string, DayBreakdown[]>> {
+  const rows = await fetchRows(from, to);
+
+  // All dates in range, newest first.
+  const dates: string[] = [];
+  for (let d = to; d >= from; d = shiftDate(d, -1)) dates.push(d);
+
+  const out: Record<string, DayBreakdown[]> = {};
+  for (const brand of BRANDS) {
+    out[brand.id] = dates.map((date) => {
+      const dayRows = rows.filter((r) => r.brandId === brand.id && r.date === date);
+      const channels = {} as Record<Channel, ChannelMetrics>;
+      for (const ch of ["google", "meta", "tiktok", "site"] as Channel[]) {
+        const cr = dayRows.filter((r) => r.channel === ch);
+        channels[ch] = cr.length
+          ? withRatios(
+              ch,
+              sum(cr, (r) => r.spendIls),
+              sum(cr, (r) => r.purchases),
+              sum(cr, (r) => r.revenueIls),
+            )
+          : emptyChannel(ch);
+      }
+      const adRows = dayRows.filter((r) => AD_CHANNELS.includes(r.channel));
+      const totalSpend = sum(adRows, (r) => r.spendIls);
+      const total = withRatios(
+        "google",
+        totalSpend,
+        sum(adRows, (r) => r.purchases),
+        sum(adRows, (r) => r.revenueIls),
+      );
+      return {
+        date,
+        channels,
+        total: { ...total, channel: "total" as unknown as Channel },
+        blendedRoas: totalSpend ? channels.site.revenue / totalSpend : null,
+      };
+    });
+  }
+  return out;
 }
 
 // When the DB was last written (drives the "last updated" label). Null if no DB/data.

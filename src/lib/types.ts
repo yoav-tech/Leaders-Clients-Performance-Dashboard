@@ -37,3 +37,11 @@ export interface BrandMetrics {
   blendedRoas: number | null; // site revenue / total ad spend
   trend: { date: string; roas: number | null; revenue: number }[];
 }
+
+// One day's per-channel metrics for the brand drill-down modal.
+export interface DayBreakdown {
+  date: string;
+  channels: Record<Channel, ChannelMetrics>;
+  total: ChannelMetrics; // ad channels combined
+  blendedRoas: number | null; // site revenue / total ad spend
+}
