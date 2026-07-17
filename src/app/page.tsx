@@ -7,6 +7,7 @@ import AgencyStrip from "@/components/AgencyStrip";
 import BrandCard from "@/components/BrandCard";
 import BrandCardInteractive from "@/components/BrandCardInteractive";
 import DateRangePicker from "@/components/DateRangePicker";
+import LeadersLogo from "@/components/LeadersLogo";
 import LogoutButton from "@/components/LogoutButton";
 import { MagicBentoGrid } from "@/components/magicbento/MagicBento";
 
@@ -35,13 +36,16 @@ export default async function Home({
   return (
     <main className="mx-auto max-w-7xl px-4 py-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold">Leaders — Clients Performance</h1>
-          <p className="text-xs text-[var(--muted)]">
-            {lastUpdated
-              ? `Last updated ${new Date(lastUpdated).toLocaleString("he-IL")}`
-              : "No data yet — run the ingestion job to populate."}
-          </p>
+        <div className="flex items-center gap-3">
+          <LeadersLogo size={36} />
+          <div>
+            <h1 className="text-xl font-bold">Leaders — Clients Performance</h1>
+            <p className="text-xs text-[var(--muted)]">
+              {lastUpdated
+                ? `Last updated ${new Date(lastUpdated).toLocaleString("he-IL")}`
+                : "No data yet — run the ingestion job to populate."}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <DateRangePicker activeKey={range.key} from={range.from} to={range.to} />
