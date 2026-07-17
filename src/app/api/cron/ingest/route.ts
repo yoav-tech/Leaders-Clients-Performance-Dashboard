@@ -4,7 +4,7 @@ import { shiftDate, today } from "@/lib/dates";
 import { safeEqual } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300; // Pro plan — allow the full rolling ingest to finish
 
 // Re-ingest a trailing window each run so gaps self-heal: Windsor backfill lag,
 // Meta/TikTok attribution updates, and store order status changes (pending → paid).
