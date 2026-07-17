@@ -38,7 +38,7 @@ export const BRANDS: BrandConfig[] = [
     storeId: "argania", // QuickShop store slug (my-quickshop.com/shops/argania)
     nativeCurrency: "ILS",
     targetRoas: 3,
-    monthlyBudget: 0,
+    monthlyBudget: 100000,
   },
   {
     id: "la-beaute",
@@ -51,7 +51,7 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 3,
-    monthlyBudget: 0,
+    monthlyBudget: 100000,
   },
   {
     id: "studio-pasha",
@@ -64,7 +64,7 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 3,
-    monthlyBudget: 0,
+    monthlyBudget: 50000,
   },
   {
     id: "seacret",
@@ -79,7 +79,7 @@ export const BRANDS: BrandConfig[] = [
     channelCurrency: { tiktok: "ILS" }, // TikTok account bills in ILS
 
     targetRoas: 3,
-    monthlyBudget: 0,
+    monthlyBudget: 100000,
   },
 ];
 
