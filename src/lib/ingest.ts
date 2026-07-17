@@ -41,33 +41,50 @@ function normId(v: unknown): string {
   return String(v ?? "").replace(/^act_/i, "").trim();
 }
 
-// Aggregate Windsor rows by date into { spend, purchases, revenue }, keeping only the
-// target account's rows.
-function aggregateByDate(
-  rows: Awaited<ReturnType<typeof fetchWindsor>>,
-  map: (typeof CHANNEL_FIELDS)[keyof typeof CHANNEL_FIELDS],
+type WindsorRows = Awaited<ReturnType<typeof fetchWindsor>>;
+type ChannelMap = (typeof CHANNEL_FIELDS)[keyof typeof CHANNEL_FIELDS];
+
+// Merge Windsor cost rows (spend + purchases) and value rows (revenue) by date, keeping
+// only the target account. Cost and value are fetched separately because Windsor's
+// conversion-value pipeline lags its cost pipeline: requesting revenue alongside spend
+// drags spend to a stale snapshot. Fetching them apart keeps spend/purchases live.
+function buildByDate(
+  costRows: WindsorRows,
+  valueRows: WindsorRows,
+  map: ChannelMap,
   account: string,
-): Map<string, { spend: number; purchases: number; revenue: number }> {
+): { byDate: Map<string, DailyAgg>; currency: string | null } {
   const target = normId(account);
-  const byDate = new Map<string, { spend: number; purchases: number; revenue: number }>();
-  for (const r of rows) {
+  const byDate = new Map<string, DailyAgg>();
+  let currency: string | null = null;
+  const at = (date: string) => {
+    let c = byDate.get(date);
+    if (!c) {
+      c = { spend: 0, purchases: 0, revenue: 0 };
+      byDate.set(date, c);
+    }
+    return c;
+  };
+
+  for (const r of costRows) {
     if (normId(r.account_id) !== target) continue;
     const date = String(r.date ?? "").slice(0, 10);
     if (!date) continue;
-    const cur = byDate.get(date) ?? { spend: 0, purchases: 0, revenue: 0 };
-    const spend = map.spendField ? num(r[map.spendField]) : 0;
-    // Revenue is either a direct field or derived from a ROAS field (revenue = roas * spend).
-    const revenue = map.revenueField
-      ? num(r[map.revenueField])
-      : map.revenueRoasField
-        ? num(r[map.revenueRoasField]) * spend
-        : 0;
-    cur.spend += spend;
-    cur.purchases += num(r[map.purchasesField]);
-    cur.revenue += revenue;
-    byDate.set(date, cur);
+    if (!currency && r.currency) currency = String(r.currency).toUpperCase();
+    const c = at(date);
+    c.spend += map.spendField ? num(r[map.spendField]) : 0;
+    c.purchases += num(r[map.purchasesField]);
   }
-  return byDate;
+  for (const r of valueRows) {
+    if (normId(r.account_id) !== target) continue;
+    const date = String(r.date ?? "").slice(0, 10);
+    if (!date) continue;
+    const c = at(date);
+    // Direct revenue field, or derived from a ROAS field (revenue = roas * spend).
+    if (map.revenueField) c.revenue += num(r[map.revenueField]);
+    else if (map.revenueRoasField) c.revenue += num(r[map.revenueRoasField]) * c.spend;
+  }
+  return { byDate, currency };
 }
 
 // Replace a brand/channel's rows over [from, to] with the freshly fetched aggregates
@@ -81,6 +98,7 @@ async function replaceDaily(
   to: string,
   byDate: Map<string, DailyAgg>,
   usdIls: number,
+  currency: string,
 ): Promise<number> {
   const del = await sb
     .from("daily_metrics")
@@ -91,9 +109,6 @@ async function replaceDaily(
     .lte("date", to);
   if (del.error) throw new Error(del.error.message);
 
-  // Per-channel currency (e.g. Seacret TikTok bills in ILS while Meta/Google are USD).
-  const currency =
-    channel !== "site" ? (brand.channelCurrency?.[channel] ?? brand.nativeCurrency) : brand.nativeCurrency;
   const now = new Date().toISOString();
   const rows = Array.from(byDate, ([date, agg]) => ({
     date,
@@ -153,7 +168,16 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
           for (const [date, agg] of orders) {
             byDate.set(date, { spend: 0, purchases: agg.orders, revenue: agg.revenue });
           }
-          result.upserts += await replaceDaily(sb, brand, channel, from, to, byDate, usdIls);
+          result.upserts += await replaceDaily(
+            sb,
+            brand,
+            channel,
+            from,
+            to,
+            byDate,
+            usdIls,
+            brand.nativeCurrency, // QuickShop store currency
+          );
         } catch (e) {
           result.ok = false;
           result.errors.push({
@@ -171,23 +195,39 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
         continue;
       }
       const map = CHANNEL_FIELDS[channel];
-      // Request account_id so we can filter client-side (Windsor REST returns all accounts).
-      const fields = ["date", "account_id", map.purchasesField];
-      if (map.spendField) fields.push(map.spendField);
-      if (map.revenueField) fields.push(map.revenueField);
-      if (map.revenueRoasField) fields.push(map.revenueRoasField);
+      // Fetch cost (spend + purchases) and value (revenue) separately so spend stays
+      // live — Windsor's value pipeline lags its cost pipeline. Request account_id so we
+      // can filter client-side (Windsor REST returns all accounts).
+      const costFields = ["date", "account_id", "currency", map.purchasesField];
+      if (map.spendField) costFields.push(map.spendField);
+      const valueField = map.revenueField ?? map.revenueRoasField ?? null;
 
       try {
-        const rows = await fetchWindsor({
-          connector: map.connector,
-          fields,
-          dateFrom: from,
-          dateTo: to,
-          accounts: [account],
-          options: map.options,
-        });
-        const byDate = aggregateByDate(rows, map, account);
-        result.upserts += await replaceDaily(sb, brand, channel, from, to, byDate, usdIls);
+        const [costRows, valueRows] = await Promise.all([
+          fetchWindsor({
+            connector: map.connector,
+            fields: costFields,
+            dateFrom: from,
+            dateTo: to,
+            accounts: [account],
+            options: map.options,
+          }),
+          valueField
+            ? fetchWindsor({
+                connector: map.connector,
+                fields: ["date", "account_id", valueField],
+                dateFrom: from,
+                dateTo: to,
+                accounts: [account],
+                options: map.options,
+              })
+            : Promise.resolve([] as WindsorRows),
+        ]);
+        const { byDate, currency } = buildByDate(costRows, valueRows, map, account);
+        // Prefer Windsor's reported account currency; fall back to config.
+        const resolved =
+          currency ?? brand.channelCurrency?.[channel] ?? brand.nativeCurrency;
+        result.upserts += await replaceDaily(sb, brand, channel, from, to, byDate, usdIls, resolved);
       } catch (e) {
         result.ok = false;
         result.errors.push({
