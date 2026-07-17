@@ -202,6 +202,9 @@ export default function BrandView({
         <Sparkline data={breakdown.map((d) => ({ date: d.date, roas: d.blendedRoas, revenue: d.channels.site.revenue })).reverse()} />
       </Panel>
 
+      {/* Breakdown explorer (on-demand) */}
+      <BreakdownExplorer brandId={brand.id} from={from} to={to} storePlatform={brand.storePlatform} />
+
       {/* Daily breakdown */}
       <Panel title={`Daily · ${from} → ${to}`}>
         <div className="overflow-x-auto">
@@ -231,9 +234,6 @@ export default function BrandView({
           </table>
         </div>
       </Panel>
-
-      {/* Breakdown explorer (on-demand) */}
-      <BreakdownExplorer brandId={brand.id} from={from} to={to} storePlatform={brand.storePlatform} />
     </div>
   );
 }
