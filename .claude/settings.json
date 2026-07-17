@@ -12,7 +12,10 @@
       "Bash(node -e 'const fs=require\\(\"fs\"\\);const t=fs.readFileSync\\(\".env.local\",\"utf8\"\\);const m=t.match\\(/^DASHBOARD_PASSWORD=\"?\\([^\"\\\\n]*\\)/m\\);console.log\\(\"DASHBOARD_PASSWORD local:\", m&&m[1]?\"SET\":\"empty/unset\"\\)')",
       "Bash(vercel env *)",
       "Bash(curl -s -o /dev/null -w \"no-creds HTTP %{http_code}\\\\n\" \"https://leaders-clients-performance-dashboa.vercel.app/\")",
-      "Bash(npm audit *)"
+      "Bash(npm audit *)",
+      "mcp__claude_ai_Vercel__get_project",
+      "Bash(rm -f /tmp/spk)",
+      "Bash(node -e 'const fs=require\\(\"fs\"\\);const v=\\(fs.readFileSync\\(\".env.local\",\"utf8\"\\).match\\(/^QUICKSHOP_API_KEY_STUDIOPASHA=\"?\\([^\"\\\\n]*\\)/m\\)||[]\\)[1];fs.writeFileSync\\(\"/tmp/spk\",v\\)')"
     ]
   }
 }

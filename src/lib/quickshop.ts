@@ -16,10 +16,13 @@ export interface DailyAgg {
   revenue: number; // native store currency
 }
 
-// Per-brand API key, e.g. QUICKSHOP_API_KEY_ARGANIA / QUICKSHOP_API_KEY_STUDIO_PASHA.
+// Per-brand API key. Accepts both QUICKSHOP_API_KEY_STUDIO_PASHA and
+// QUICKSHOP_API_KEY_STUDIOPASHA (hyphen → underscore, or removed).
 export function quickshopKeyFor(brand: BrandConfig): string | null {
-  const name = `QUICKSHOP_API_KEY_${brand.id.toUpperCase().replace(/-/g, "_")}`;
-  return process.env[name] ?? null;
+  const upper = brand.id.toUpperCase();
+  const withUnderscore = `QUICKSHOP_API_KEY_${upper.replace(/-/g, "_")}`;
+  const noSeparator = `QUICKSHOP_API_KEY_${upper.replace(/-/g, "")}`;
+  return process.env[withUnderscore] ?? process.env[noSeparator] ?? null;
 }
 
 async function fetchPage(url: string, key: string): Promise<Response> {
