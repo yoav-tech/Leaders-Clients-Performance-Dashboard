@@ -32,13 +32,10 @@ export default function LoginForm() {
       <div className="login-glow">
         <div className="login-inner">
           <div className="mb-6 text-center">
-            <div className="mb-3 flex justify-center">
-              <LeadersLogo size={48} />
+            <div className="mb-4 flex justify-center">
+              <LeadersLogo height={44} />
             </div>
-            <div className="text-[11px] uppercase tracking-[0.25em] text-[var(--muted)]">
-              Leaders
-            </div>
-            <h1 className="login-title mt-1 text-2xl font-bold">Clients Performance</h1>
+            <h1 className="login-title text-2xl font-bold">Clients Performance</h1>
             <p className="mt-1 text-xs text-[var(--muted)]">Sign in to view the dashboard</p>
           </div>
 
