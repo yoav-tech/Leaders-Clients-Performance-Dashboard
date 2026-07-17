@@ -4,6 +4,7 @@ import { CHANNEL_FIELDS } from "@/lib/channelFields";
 import { DIMENSION_FIELDS, type Dimension } from "@/lib/breakdowns";
 import { fetchWindsor, num } from "@/lib/windsor";
 import { fetchQuickShopPaidOrders } from "@/lib/quickshop";
+import { fetchShopifyPaidOrders } from "@/lib/shopify";
 import type { Channel } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -37,14 +38,19 @@ export async function GET(request: Request) {
     // Store: discount-code breakdown from QuickShop.
     if (channel === "site" && dimension === "discount_code") {
       const byCode = new Map<string, { orders: number; revenue: number; discount: number }>();
-      await fetchQuickShopPaidOrders(brand, from, to, (o) => {
+      const onOrder = (o: { discountCode: string; total: number; discountAmount: number }) => {
         const code = o.discountCode || "(no code)";
         const c = byCode.get(code) ?? { orders: 0, revenue: 0, discount: 0 };
         c.orders += 1;
         c.revenue += o.total;
         c.discount += o.discountAmount;
         byCode.set(code, c);
-      });
+      };
+      if (brand.storePlatform === "shopify") {
+        await fetchShopifyPaidOrders(brand, from, to, (o) => onOrder(o));
+      } else {
+        await fetchQuickShopPaidOrders(brand, from, to, (o) => onOrder(o));
+      }
       const rows = [...byCode]
         .map(([key, v]) => ({
           key,
@@ -65,19 +71,41 @@ export async function GET(request: Request) {
     if (!map || !dimField) return NextResponse.json({ error: "unsupported", rows: [] });
     if (!account) return NextResponse.json({ error: "no account configured", rows: [] });
 
-    const fields = ["account_id", "currency", dimField, "spend", "impressions", "clicks", map.purchasesField];
-    const valueField = map.revenueField ?? map.revenueRoasField ?? null;
-    if (valueField) fields.push(valueField);
+    // Meta's "omni" purchase fields can't be segmented by age/gender/country/placement, so
+    // breakdown queries use the non-omni pixel fields (they reconcile 1:1 with omni).
+    const purchasesField = map.breakdownPurchasesField ?? map.purchasesField;
+    const revenueField = map.breakdownRevenueField ?? map.revenueField;
+    const valueField = revenueField ?? map.revenueRoasField ?? null;
+    const roasField = revenueField ? null : (map.revenueRoasField ?? null);
 
-    const raw = await fetchWindsor({
+    const baseFields = ["account_id", "currency", dimField, "spend", "impressions", "clicks"];
+    const fetchOpts = {
       connector: map.connector,
-      fields,
       dateFrom: from,
       dateTo: to,
       accounts: [account],
       options: map.options,
       cacheSeconds: 900, // cache breakdowns 15 min — repeat views are instant
-    });
+    };
+
+    // Try the full request; if Windsor rejects a value field as incompatible with this
+    // breakdown dimension (any channel), fall back to spend/impressions/clicks only.
+    let raw;
+    let metricsAvailable = true;
+    try {
+      raw = await fetchWindsor({
+        ...fetchOpts,
+        fields: [...baseFields, purchasesField, ...(valueField ? [valueField] : [])],
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/incompatible|\bomni\b|ranking/i.test(msg)) {
+        raw = await fetchWindsor({ ...fetchOpts, fields: baseFields });
+        metricsAvailable = false;
+      } else {
+        throw e;
+      }
+    }
 
     const target = normId(account);
     const agg = new Map<
@@ -93,11 +121,11 @@ export async function GET(request: Request) {
       a.spend += spend;
       a.impressions += num(r.impressions);
       a.clicks += num(r.clicks);
-      a.purchases += num(r[map.purchasesField]);
-      a.revenue += map.revenueField
-        ? num(r[map.revenueField])
-        : map.revenueRoasField
-          ? num(r[map.revenueRoasField]) * spend
+      a.purchases += num(r[purchasesField]);
+      a.revenue += revenueField
+        ? num(r[revenueField])
+        : roasField
+          ? num(r[roasField]) * spend
           : 0;
       a.cur = cur;
       agg.set(key, a);
@@ -112,18 +140,25 @@ export async function GET(request: Request) {
           spend: Math.round(spend),
           impressions: Math.round(a.impressions),
           clicks: Math.round(a.clicks),
-          purchases: Math.round(a.purchases * 10) / 10,
-          revenue: Math.round(revenue),
+          purchases: metricsAvailable ? Math.round(a.purchases * 10) / 10 : null,
+          revenue: metricsAvailable ? Math.round(revenue) : null,
           ctr: a.impressions ? a.clicks / a.impressions : null,
           cpc: a.clicks ? spend / a.clicks : null,
           cpm: a.impressions ? (spend / a.impressions) * 1000 : null,
-          roas: spend ? revenue / spend : null,
+          roas: metricsAvailable && spend ? revenue / spend : null,
         };
       })
       .sort((x, y) => y.spend - x.spend)
       .slice(0, 200);
 
-    return NextResponse.json({ kind: "ad", channel, dimension, rows });
+    return NextResponse.json({
+      kind: "ad",
+      channel,
+      dimension,
+      rows,
+      metricsAvailable,
+      ...(metricsAvailable ? {} : { note: "Conversions aren't available for this breakdown — showing spend & traffic only." }),
+    });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e), rows: [] }, { status: 500 });
   }

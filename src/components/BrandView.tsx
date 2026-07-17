@@ -203,7 +203,7 @@ export default function BrandView({
       </Panel>
 
       {/* Breakdown explorer (on-demand) */}
-      <BreakdownExplorer brandId={brand.id} from={from} to={to} storePlatform={brand.storePlatform} />
+      <BreakdownExplorer brandId={brand.id} from={from} to={to} />
 
       {/* Daily breakdown */}
       <Panel title={`Daily · ${from} → ${to}`}>
