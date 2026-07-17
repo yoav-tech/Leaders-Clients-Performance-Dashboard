@@ -15,7 +15,9 @@
       "Bash(npm audit *)",
       "mcp__claude_ai_Vercel__get_project",
       "Bash(rm -f /tmp/spk)",
-      "Bash(node -e 'const fs=require\\(\"fs\"\\);const v=\\(fs.readFileSync\\(\".env.local\",\"utf8\"\\).match\\(/^QUICKSHOP_API_KEY_STUDIOPASHA=\"?\\([^\"\\\\n]*\\)/m\\)||[]\\)[1];fs.writeFileSync\\(\"/tmp/spk\",v\\)')"
+      "Bash(node -e 'const fs=require\\(\"fs\"\\);const v=\\(fs.readFileSync\\(\".env.local\",\"utf8\"\\).match\\(/^QUICKSHOP_API_KEY_STUDIOPASHA=\"?\\([^\"\\\\n]*\\)/m\\)||[]\\)[1];fs.writeFileSync\\(\"/tmp/spk\",v\\)')",
+      "Bash(curl -s -o /dev/null -w \"  /leaders-logo-white.png HTTP %{http_code}\\\\n\" \"https://leaders-clients-performance-dashboa.vercel.app/leaders-logo-white.png\")",
+      "Bash(curl -s -o /dev/null -w \"  /icon.svg HTTP %{http_code}\\\\n\" \"https://leaders-clients-performance-dashboa.vercel.app/icon.svg\")"
     ]
   }
 }

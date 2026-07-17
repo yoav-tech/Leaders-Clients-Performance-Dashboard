@@ -37,9 +37,9 @@ export default async function Home({
     <main className="mx-auto max-w-7xl px-4 py-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <LeadersLogo size={36} />
-          <div>
-            <h1 className="text-xl font-bold">Leaders — Clients Performance</h1>
+          <LeadersLogo height={34} />
+          <div className="border-l border-[var(--card-border)] pl-3">
+            <h1 className="text-lg font-bold">Clients Performance</h1>
             <p className="text-xs text-[var(--muted)]">
               {lastUpdated
                 ? `Last updated ${new Date(lastUpdated).toLocaleString("he-IL")}`
