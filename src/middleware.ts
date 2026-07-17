@@ -28,6 +28,9 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Run on everything except the cron API and Next internals/static assets.
-  matcher: ["/((?!api/cron|_next/static|_next/image|favicon.ico).*)"],
+  // Run on everything except the cron API, Next internals, and public static assets
+  // (images/fonts) — so the logo and favicon aren't redirected to /login.
+  matcher: [
+    "/((?!api/cron|_next/static|_next/image|favicon.ico|.*\\.(?:png|svg|jpg|jpeg|webp|gif|ico|txt|woff2?)$).*)",
+  ],
 };
