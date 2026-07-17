@@ -76,6 +76,7 @@ export async function GET(request: Request) {
       dateTo: to,
       accounts: [account],
       options: map.options,
+      cacheSeconds: 900, // cache breakdowns 15 min — repeat views are instant
     });
 
     const target = normId(account);
