@@ -45,11 +45,12 @@ export interface KpiSnapshot {
   spend: number;
   revenue: number; // ad-attributed
   siteRevenue: number;
+  siteOrders: number;
   roas: number | null;
   blendedRoas: number | null;
   purchases: number;
   cpa: number | null;
-  aov: number | null;
+  aov: number | null; // ad AOV
   cac: number | null;
 }
 

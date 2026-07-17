@@ -11,6 +11,7 @@ export interface WindsorQuery {
   dateTo: string; // YYYY-MM-DD
   accounts?: string[]; // optional account-id filter
   options?: Record<string, string>; // connector options, e.g. { attribution_window: "7d_click,1d_view" }
+  cacheSeconds?: number; // Next Data Cache revalidate (breakdown reads); omit for live ingest
 }
 
 export type WindsorRow = Record<string, string | number | null>;
@@ -31,7 +32,10 @@ export async function fetchWindsor(q: WindsorQuery): Promise<WindsorRow[]> {
   for (const [k, v] of Object.entries(q.options ?? {})) params.set(k, v);
 
   const url = `${BASE}/${q.connector}?${params.toString()}`;
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  const res = await fetch(url, {
+    headers: { Accept: "application/json" },
+    ...(q.cacheSeconds ? { next: { revalidate: q.cacheSeconds } } : {}),
+  });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`Windsor ${q.connector} ${res.status}: ${body.slice(0, 300)}`);

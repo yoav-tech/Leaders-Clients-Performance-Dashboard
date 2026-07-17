@@ -93,30 +93,46 @@ export default function BrandView({
   const p = previous;
   const target = brand.targetRoas;
 
-  const kpis = [
+  const storeRev = channels.site.revenue;
+  const siteOrders = channels.site.purchases;
+  const storeAov = siteOrders ? storeRev / siteOrders : null;
+  const prevStoreAov = p && p.siteOrders ? p.siteRevenue / p.siteOrders : null;
+  const newPct = storeRev ? (newRevenue / storeRev) * 100 : 0;
+
+  // Store (the real business outcome) — shown first.
+  const storeKpis = [
+    { label: "Store Revenue", metric: "siteRevenue", value: formatIls(storeRev), cur: storeRev, prev: p?.siteRevenue ?? null },
+    { label: "Orders", metric: "storeOrders", value: formatNumber(siteOrders), cur: siteOrders, prev: p?.siteOrders ?? null },
+    { label: "Store AOV", metric: "aov", value: formatIls(storeAov), cur: storeAov, prev: prevStoreAov },
+    { label: "Blended ROAS", metric: "blendedRoas", value: formatRoas(blendedRoas), cur: blendedRoas, prev: p?.blendedRoas ?? null, tone: roasTone(blendedRoas, target) },
+    { label: "CAC", metric: "cac", value: formatIls(cac), cur: cac, prev: p?.cac ?? null },
+  ];
+  // Ads (platform-attributed).
+  const adKpis = [
     { label: "Spend", metric: "spend", value: formatIls(total.spend), cur: total.spend, prev: p?.spend ?? null },
     { label: "Ad Revenue", metric: "revenue", value: formatIls(total.revenue), cur: total.revenue, prev: p?.revenue ?? null },
-    { label: "Store Revenue", metric: "siteRevenue", value: formatIls(channels.site.revenue), cur: channels.site.revenue, prev: p?.siteRevenue ?? null },
     { label: "ROAS", metric: "roas", value: formatRoas(total.roas), cur: total.roas, prev: p?.roas ?? null, tone: roasTone(total.roas, target) },
-    { label: "Blended ROAS", metric: "blendedRoas", value: formatRoas(blendedRoas), cur: blendedRoas, prev: p?.blendedRoas ?? null, tone: roasTone(blendedRoas, target) },
     { label: "Purchases", metric: "purchases", value: formatNumber(total.purchases), cur: total.purchases, prev: p?.purchases ?? null },
     { label: "CPA", metric: "cpa", value: formatIls(total.cpa), cur: total.cpa, prev: p?.cpa ?? null },
-    { label: "AOV", metric: "aov", value: formatIls(total.aov), cur: total.aov, prev: p?.aov ?? null },
-    { label: "CAC", metric: "cac", value: formatIls(cac), cur: cac, prev: p?.cac ?? null },
   ];
 
   const { elapsed, daysInMonth } = monthProgress();
   const pacing = brand.monthlyBudget > 0 ? computePacing(brand.monthlyBudget, monthSpend, elapsed, daysInMonth) : null;
 
-  const storeRev = channels.site.revenue;
-  const newPct = storeRev ? (newRevenue / storeRev) * 100 : 0;
-
   return (
     <div className="space-y-4">
-      {/* KPI tiles with period-over-period deltas */}
-      <Panel title="Overview · vs previous period">
+      {/* Store results first (the real business), then ads performance. */}
+      <Panel title="Store · results · vs previous period">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          {kpis.map((k) => (
+          {storeKpis.map((k) => (
+            <Kpi key={k.label} {...k} />
+          ))}
+        </div>
+      </Panel>
+
+      <Panel title="Ads · performance · vs previous period">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {adKpis.map((k) => (
             <Kpi key={k.label} {...k} />
           ))}
         </div>
@@ -160,7 +176,6 @@ export default function BrandView({
               {(["google", "meta", "tiktok"] as Channel[]).map((ch) => (
                 <ChannelRow key={ch} c={channels[ch]} target={target} />
               ))}
-              <SiteRow c={channels.site} />
               <TotalRow c={total} target={target} blended={blendedRoas} />
             </tbody>
           </table>
