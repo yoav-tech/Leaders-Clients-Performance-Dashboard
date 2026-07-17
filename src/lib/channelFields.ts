@@ -14,6 +14,8 @@ export interface ChannelFieldMap {
   purchasesField: string;
   revenueField: string | null; // direct revenue field, or null when derived from ROAS
   revenueRoasField?: string; // if set (and revenueField null), revenue = row[roas] * spend
+  impressionsField?: string; // ad channels — funnel diagnostics
+  clicksField?: string; // ad channels — funnel diagnostics
   // Optional Windsor read options, e.g. Meta attribution window.
   options?: Record<string, string>;
 }
@@ -24,12 +26,16 @@ export const CHANNEL_FIELDS: Record<Exclude<Channel, "site"> | "site", ChannelFi
     spendField: "spend",
     purchasesField: "conversions",
     revenueField: "conversion_value",
+    impressionsField: "impressions",
+    clicksField: "clicks",
   },
   meta: {
     connector: "facebook",
     spendField: "spend",
     purchasesField: "actions_omni_purchase",
     revenueField: "action_values_omni_purchase",
+    impressionsField: "impressions",
+    clicksField: "clicks",
     // Meta Ads Manager standard. Change to "1d_click" for a more conservative view.
     options: { attribution_window: "7d_click,1d_view" },
   },
@@ -39,6 +45,8 @@ export const CHANNEL_FIELDS: Record<Exclude<Channel, "site"> | "site", ChannelFi
     purchasesField: "complete_payment", // website purchases
     revenueField: null,
     revenueRoasField: "complete_payment_roas", // revenue = roas * spend
+    impressionsField: "impressions",
+    clicksField: "clicks",
   },
   site: {
     connector: "shopify",

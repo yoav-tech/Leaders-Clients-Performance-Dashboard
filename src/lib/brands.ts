@@ -23,6 +23,7 @@ export interface BrandConfig {
   // different currency than the rest (e.g. Seacret: Meta/Google USD, TikTok ILS).
   channelCurrency?: Partial<Record<ChannelKey, Currency>>;
   targetRoas: number; // for green/red coloring
+  monthlyBudget: number; // total monthly ad budget (ILS) for pacing; 0 = pacing hidden
 }
 
 export const BRANDS: BrandConfig[] = [
@@ -37,6 +38,7 @@ export const BRANDS: BrandConfig[] = [
     storeId: "argania", // QuickShop store slug (my-quickshop.com/shops/argania)
     nativeCurrency: "ILS",
     targetRoas: 3,
+    monthlyBudget: 0,
   },
   {
     id: "la-beaute",
@@ -49,6 +51,7 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 3,
+    monthlyBudget: 0,
   },
   {
     id: "studio-pasha",
@@ -61,6 +64,7 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 3,
+    monthlyBudget: 0,
   },
   {
     id: "seacret",
@@ -75,6 +79,7 @@ export const BRANDS: BrandConfig[] = [
     channelCurrency: { tiktok: "ILS" }, // TikTok account bills in ILS
 
     targetRoas: 3,
+    monthlyBudget: 0,
   },
 ];
 

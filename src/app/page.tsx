@@ -1,37 +1,45 @@
 import { BRANDS, getBrand } from "@/lib/brands";
-import { getBrandMetrics, getDailyBreakdown, getLastUpdated } from "@/lib/queries";
-import { fetchQuickShopAnalytics, type StoreAnalytics } from "@/lib/storeAnalytics";
-import { resolveRange, shiftDate, today } from "@/lib/dates";
+import {
+  getBrandMetrics,
+  getBrandMonthSpend,
+  getDailyBreakdown,
+  getLastUpdated,
+} from "@/lib/queries";
+import { fetchQuickShopAnalytics } from "@/lib/storeAnalytics";
+import { resolveRange } from "@/lib/dates";
 import { hasDb } from "@/lib/db";
-import AgencyStrip from "@/components/AgencyStrip";
-import BrandCard from "@/components/BrandCard";
-import BrandCardInteractive from "@/components/BrandCardInteractive";
+import BrandView from "@/components/BrandView";
+import BrandTabs from "@/components/BrandTabs";
 import DateRangePicker from "@/components/DateRangePicker";
 import LeadersLogo from "@/components/LeadersLogo";
 import LogoutButton from "@/components/LogoutButton";
-import { MagicBentoGrid } from "@/components/magicbento/MagicBento";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ brand?: string; range?: string; from?: string; to?: string }>;
 }) {
   const sp = await searchParams;
   const range = resolveRange(sp);
+  const brandId = BRANDS.some((b) => b.id === sp.brand) ? sp.brand! : BRANDS[0].id;
+  const brand = getBrand(brandId)!;
 
-  // The drill-down modal always shows the last 7 days, independent of the top selector.
-  const last7From = shiftDate(today(), -6);
-  const [metrics, lastUpdated, storeEntries, breakdown] = await Promise.all([
+  const [allMetrics, monthSpend, breakdownMap, store, lastUpdated] = await Promise.all([
     getBrandMetrics(range.from, range.to),
+    getBrandMonthSpend(brandId),
+    getDailyBreakdown(range.from, range.to),
+    fetchQuickShopAnalytics(brand),
     getLastUpdated(),
-    Promise.all(
-      BRANDS.map(async (b) => [b.id, await fetchQuickShopAnalytics(b)] as const),
-    ),
-    getDailyBreakdown(last7From, today()),
   ]);
-  const storeAnalytics: Record<string, StoreAnalytics | null> = Object.fromEntries(storeEntries);
+  const metrics = allMetrics.find((m) => m.brandId === brandId)!;
+
+  // Preserve the current range across brand-tab navigation.
+  const rangeQuery =
+    range.key === "custom"
+      ? `&range=custom&from=${range.from}&to=${range.to}`
+      : `&range=${range.key}`;
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6">
@@ -48,32 +56,32 @@ export default async function Home({
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <DateRangePicker activeKey={range.key} from={range.from} to={range.to} />
+          <DateRangePicker activeKey={range.key} from={range.from} to={range.to} brand={brandId} />
           <LogoutButton />
         </div>
       </header>
 
+      <div className="mt-4">
+        <BrandTabs active={brandId} rangeQuery={rangeQuery} />
+      </div>
+
       {!hasDb() && (
         <div className="mt-4 rounded-lg border border-[var(--warn)]/40 bg-[var(--warn)]/10 px-4 py-3 text-sm text-[var(--warn)]">
-          Database not configured yet. Set <code>SUPABASE_URL</code> +{" "}
-          <code>SUPABASE_SERVICE_ROLE_KEY</code> and run the ingestion job to see live numbers.
+          Database not configured yet.
         </div>
       )}
 
-      <section className="mt-4">
-        <AgencyStrip metrics={metrics} />
-      </section>
-
-      <MagicBentoGrid className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {metrics.map((m) => {
-          const brand = getBrand(m.brandId) ?? BRANDS[0];
-          return (
-            <BrandCardInteractive key={m.brandId} brand={brand} days={breakdown[m.brandId] ?? []}>
-              <BrandCard brand={brand} metrics={m} store={storeAnalytics[m.brandId] ?? null} />
-            </BrandCardInteractive>
-          );
-        })}
-      </MagicBentoGrid>
+      <div className="mt-4">
+        <BrandView
+          brand={brand}
+          metrics={metrics}
+          breakdown={breakdownMap[brandId] ?? []}
+          store={store}
+          monthSpend={monthSpend}
+          from={range.from}
+          to={range.to}
+        />
+      </div>
     </main>
   );
 }

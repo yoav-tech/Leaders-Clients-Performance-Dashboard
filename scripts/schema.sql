@@ -12,12 +12,24 @@ CREATE TABLE IF NOT EXISTS daily_metrics (
   native_currency TEXT        NOT NULL DEFAULT 'ILS',
   spend_ils       NUMERIC     NOT NULL DEFAULT 0,
   revenue_ils     NUMERIC     NOT NULL DEFAULT 0,
+  impressions     NUMERIC     NOT NULL DEFAULT 0,   -- ad channels
+  clicks          NUMERIC     NOT NULL DEFAULT 0,   -- ad channels
+  new_purchases   NUMERIC     NOT NULL DEFAULT 0,   -- site channel: new-customer orders
+  new_revenue_ils NUMERIC     NOT NULL DEFAULT 0,   -- site channel: new-customer revenue
   fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (date, brand_id, channel)
 );
 
 CREATE INDEX IF NOT EXISTS idx_daily_metrics_date ON daily_metrics (date);
 CREATE INDEX IF NOT EXISTS idx_daily_metrics_brand ON daily_metrics (brand_id);
+
+-- Store customer first-seen dates, to classify orders as new vs returning.
+CREATE TABLE IF NOT EXISTS store_customers (
+  brand_id    TEXT NOT NULL,
+  customer_id TEXT NOT NULL,
+  first_seen  DATE NOT NULL,
+  PRIMARY KEY (brand_id, customer_id)
+);
 
 CREATE TABLE IF NOT EXISTS fx_rates (
   date  DATE    NOT NULL,
@@ -38,9 +50,11 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- Data API roles) are denied. The app uses the service_role key, which bypasses RLS,
 -- so server-side reads/writes keep working. This makes the tables non-readable through
 -- the public REST API even if the anon key leaks.
-ALTER TABLE daily_metrics ENABLE ROW LEVEL SECURITY;
-ALTER TABLE fx_rates      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_metrics   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fx_rates        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE store_customers ENABLE ROW LEVEL SECURITY;
 
 -- Defense in depth: strip table privileges from the public API roles entirely.
-REVOKE ALL ON daily_metrics FROM anon, authenticated;
-REVOKE ALL ON fx_rates      FROM anon, authenticated;
+REVOKE ALL ON daily_metrics   FROM anon, authenticated;
+REVOKE ALL ON fx_rates        FROM anon, authenticated;
+REVOKE ALL ON store_customers FROM anon, authenticated;
