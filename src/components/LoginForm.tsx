@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import LeadersLogo from "./LeadersLogo";
 
 export default function LoginForm() {
   const [password, setPassword] = useState("");
@@ -31,6 +32,9 @@ export default function LoginForm() {
       <div className="login-glow">
         <div className="login-inner">
           <div className="mb-6 text-center">
+            <div className="mb-3 flex justify-center">
+              <LeadersLogo size={48} />
+            </div>
             <div className="text-[11px] uppercase tracking-[0.25em] text-[var(--muted)]">
               Leaders
             </div>
