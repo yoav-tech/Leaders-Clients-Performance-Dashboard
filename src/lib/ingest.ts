@@ -3,12 +3,24 @@ import { BRANDS, type BrandConfig } from "./brands";
 import { CHANNEL_FIELDS } from "./channelFields";
 import { fetchUsdIlsRate, toIls } from "./fx";
 import { fetchWindsor, num } from "./windsor";
-import { fetchQuickShopDaily, quickshopKeyFor } from "./quickshop";
+import { fetchQuickShopPaidOrders, quickshopKeyFor, type PaidOrder } from "./quickshop";
 import { today } from "./dates";
 import type { Channel } from "./types";
 
-type DailyAgg = { spend: number; purchases: number; revenue: number };
+type DailyAgg = {
+  spend: number;
+  purchases: number;
+  revenue: number;
+  impressions: number;
+  clicks: number;
+  newPurchases: number; // site channel: new-customer orders
+  newRevenue: number; // site channel: new-customer revenue (native currency)
+};
 type Sb = ReturnType<typeof getSupabase>;
+
+function emptyAgg(): DailyAgg {
+  return { spend: 0, purchases: 0, revenue: 0, impressions: 0, clicks: 0, newPurchases: 0, newRevenue: 0 };
+}
 
 export interface IngestResult {
   ok: boolean;
@@ -60,7 +72,7 @@ function buildByDate(
   const at = (date: string) => {
     let c = byDate.get(date);
     if (!c) {
-      c = { spend: 0, purchases: 0, revenue: 0 };
+      c = emptyAgg();
       byDate.set(date, c);
     }
     return c;
@@ -74,6 +86,8 @@ function buildByDate(
     const c = at(date);
     c.spend += map.spendField ? num(r[map.spendField]) : 0;
     c.purchases += num(r[map.purchasesField]);
+    c.impressions += map.impressionsField ? num(r[map.impressionsField]) : 0;
+    c.clicks += map.clicksField ? num(r[map.clicksField]) : 0;
   }
   for (const r of valueRows) {
     if (normId(r.account_id) !== target) continue;
@@ -85,6 +99,74 @@ function buildByDate(
     else if (map.revenueRoasField) c.revenue += num(r[map.revenueRoasField]) * c.spend;
   }
   return { byDate, currency };
+}
+
+// Aggregate QuickShop paid orders by day and classify new vs returning using the
+// persistent store_customers first-seen table (a customer is "new" on their first-ever
+// order date). Newly-seen customers are recorded so future runs classify correctly.
+async function buildQuickShopByDate(sb: Sb, brand: BrandConfig, orders: PaidOrder[]): Promise<Map<string, DailyAgg>> {
+  const ids = [...new Set(orders.map((o) => o.customerId).filter(Boolean))];
+
+  // Existing first-seen for these customers (small chunks — long IN() lists blow the GET URL).
+  const stored = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += 60) {
+    const chunk = ids.slice(i, i + 60);
+    const { data, error } = await sb
+      .from("store_customers")
+      .select("customer_id,first_seen")
+      .eq("brand_id", brand.id)
+      .in("customer_id", chunk);
+    if (error) throw new Error(error.message);
+    for (const r of data ?? []) stored.set(r.customer_id as string, String(r.first_seen).slice(0, 10));
+  }
+
+  // Earliest order date per customer within this window.
+  const windowFirst = new Map<string, string>();
+  for (const o of orders) {
+    if (!o.customerId) continue;
+    const prev = windowFirst.get(o.customerId);
+    if (!prev || o.date < prev) windowFirst.set(o.customerId, o.date);
+  }
+
+  // First-ever date = min(stored, window-earliest).
+  const firstEver = new Map<string, string>();
+  for (const id of ids) {
+    const s = stored.get(id);
+    const w = windowFirst.get(id)!;
+    firstEver.set(id, s ? (s < w ? s : w) : w);
+  }
+
+  const byDate = new Map<string, DailyAgg>();
+  const at = (d: string) => {
+    let c = byDate.get(d);
+    if (!c) {
+      c = emptyAgg();
+      byDate.set(d, c);
+    }
+    return c;
+  };
+  for (const o of orders) {
+    const c = at(o.date);
+    c.purchases += 1;
+    c.revenue += o.total;
+    if (o.customerId && firstEver.get(o.customerId) === o.date) {
+      c.newPurchases += 1;
+      c.newRevenue += o.total;
+    }
+  }
+
+  // Record newly-seen customers (keep existing first_seen for known ones).
+  const toInsert = ids
+    .filter((id) => !stored.has(id))
+    .map((id) => ({ brand_id: brand.id, customer_id: id, first_seen: windowFirst.get(id)! }));
+  for (let i = 0; i < toInsert.length; i += 400) {
+    const chunk = toInsert.slice(i, i + 400);
+    if (chunk.length) {
+      await sb.from("store_customers").upsert(chunk, { onConflict: "brand_id,customer_id", ignoreDuplicates: true });
+    }
+  }
+
+  return byDate;
 }
 
 // Replace a brand/channel's rows over [from, to] with the freshly fetched aggregates
@@ -120,6 +202,10 @@ async function replaceDaily(
     native_currency: currency,
     spend_ils: toIls(agg.spend, currency, usdIls),
     revenue_ils: toIls(agg.revenue, currency, usdIls),
+    impressions: agg.impressions,
+    clicks: agg.clicks,
+    new_purchases: agg.newPurchases,
+    new_revenue_ils: toIls(agg.newRevenue, currency, usdIls),
     fetched_at: now,
   }));
   if (rows.length === 0) return 0;
@@ -163,11 +249,8 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
           continue;
         }
         try {
-          const orders = await fetchQuickShopDaily(brand, from, to);
-          const byDate = new Map<string, DailyAgg>();
-          for (const [date, agg] of orders) {
-            byDate.set(date, { spend: 0, purchases: agg.orders, revenue: agg.revenue });
-          }
+          const orders = await fetchQuickShopPaidOrders(brand, from, to);
+          const byDate = await buildQuickShopByDate(sb, brand, orders);
           result.upserts += await replaceDaily(
             sb,
             brand,
@@ -200,6 +283,8 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
       // can filter client-side (Windsor REST returns all accounts).
       const costFields = ["date", "account_id", "currency", map.purchasesField];
       if (map.spendField) costFields.push(map.spendField);
+      if (map.impressionsField) costFields.push(map.impressionsField);
+      if (map.clicksField) costFields.push(map.clicksField);
       const valueField = map.revenueField ?? map.revenueRoasField ?? null;
 
       try {

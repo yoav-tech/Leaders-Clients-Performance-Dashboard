@@ -22,6 +22,18 @@ export function shiftDate(isoDate: string, days: number): string {
   return addDays(isoDate, days);
 }
 
+// Current-month progress (agency timezone), for budget pacing.
+export function monthProgress(): { monthStart: string; elapsed: number; daysInMonth: number } {
+  const t = today();
+  const y = Number(t.slice(0, 4));
+  const m = Number(t.slice(5, 7));
+  return {
+    monthStart: t.slice(0, 8) + "01",
+    elapsed: Number(t.slice(8, 10)),
+    daysInMonth: new Date(Date.UTC(y, m, 0)).getUTCDate(), // day 0 of next month
+  };
+}
+
 // The agency-timezone (Asia/Jerusalem) calendar date for any timestamp. Used to bucket
 // store orders (stored in UTC) onto the same days the ad platforms report in.
 export function localDate(ts: string | Date): string {

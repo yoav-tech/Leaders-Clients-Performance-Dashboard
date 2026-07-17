@@ -8,12 +8,15 @@ export default function DateRangePicker({
   activeKey,
   from,
   to,
+  brand,
 }: {
   activeKey: RangeKey;
   from: string;
   to: string;
+  brand?: string;
 }) {
   const router = useRouter();
+  const brandQ = brand ? `&brand=${brand}` : "";
   const [open, setOpen] = useState(false);
   const [cFrom, setCFrom] = useState(from);
   const [cTo, setCTo] = useState(to);
@@ -37,13 +40,13 @@ export default function DateRangePicker({
 
   const goPreset = (key: RangeKey) => {
     setOpen(false);
-    router.push(`/?range=${key}`);
+    router.push(`/?range=${key}${brandQ}`);
   };
 
   const applyCustom = () => {
     if (!cFrom || !cTo) return;
     setOpen(false);
-    router.push(`/?range=custom&from=${cFrom}&to=${cTo}`);
+    router.push(`/?range=custom&from=${cFrom}&to=${cTo}${brandQ}`);
   };
 
   const btn = (isActive: boolean) =>

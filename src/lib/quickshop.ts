@@ -11,9 +11,10 @@ import { localDate, shiftDate } from "./dates";
 const BASE = "https://my-quickshop.com/api/v1";
 const PAGE_LIMIT = 100; // API caps page size at 100
 
-export interface DailyAgg {
-  orders: number;
-  revenue: number; // native store currency
+export interface PaidOrder {
+  date: string; // Israel-local YYYY-MM-DD
+  total: number; // native store currency
+  customerId: string; // opaque store id (not PII) — for new-vs-returning classification
 }
 
 // Per-brand API key. Accepts both QUICKSHOP_API_KEY_STUDIO_PASHA and
@@ -26,32 +27,41 @@ export function quickshopKeyFor(brand: BrandConfig): string | null {
 }
 
 async function fetchPage(url: string, key: string): Promise<Response> {
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const res = await fetch(url, { headers: { "X-API-Key": key, Accept: "application/json" } });
-    if (res.status === 429) {
-      // Rate limited (100 req/min) — back off and retry.
-      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
-      continue;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { "X-API-Key": key, Accept: "application/json" } });
+      if (res.status === 429) {
+        // Rate limited (100 req/min) — back off and retry.
+        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      // Transient network error ("fetch failed") — back off and retry.
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
     }
-    return res;
   }
-  throw new Error("QuickShop rate limit: retries exhausted");
+  throw new Error(`QuickShop request failed after retries: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`);
 }
 
-// Returns Map<localDate(YYYY-MM-DD) → {orders, revenue}> of PAID orders in [from, to].
-// created_at_max is exclusive at midnight; timestamps are UTC, so we widen the fetch
-// window by a day on each side and bucket by Israel-local date.
-export async function fetchQuickShopDaily(
+// Returns PAID orders in [from, to] (Israel-local dated). created_at_max is exclusive at
+// midnight; timestamps are UTC, so we widen the fetch window by a day on each side and
+// bucket by Israel-local date. PII-safe: reads only created_at, total, financial_status,
+// customer_id (opaque). Optionally include discount fields for the breakdown explorer.
+export async function fetchQuickShopPaidOrders(
   brand: BrandConfig,
   from: string,
   to: string,
-): Promise<Map<string, DailyAgg>> {
+  onOrder?: (o: { date: string; total: number; discountCode: string; discountAmount: number }) => void,
+): Promise<PaidOrder[]> {
   const key = quickshopKeyFor(brand);
   if (!key) throw new Error(`No QuickShop API key configured for ${brand.id}`);
 
   const min = shiftDate(from, -1);
   const max = shiftDate(to, 1); // exclusive upper bound
-  const byDate = new Map<string, DailyAgg>();
+  const out: PaidOrder[] = [];
 
   let page = 1;
   for (;;) {
@@ -62,7 +72,14 @@ export async function fetchQuickShopDaily(
       throw new Error(`QuickShop orders ${res.status}: ${body.slice(0, 200)}`);
     }
     const json = (await res.json()) as {
-      data?: Array<{ created_at?: string; total?: number | string; financial_status?: string }>;
+      data?: Array<{
+        created_at?: string;
+        total?: number | string;
+        financial_status?: string;
+        customer_id?: string;
+        discount_code?: string | null;
+        discount_amount?: number | string | null;
+      }>;
       meta?: { pagination?: { has_next?: boolean } };
     };
     for (const o of json.data ?? []) {
@@ -70,14 +87,18 @@ export async function fetchQuickShopDaily(
       if (!o.created_at) continue;
       const d = localDate(o.created_at);
       if (d < from || d > to) continue; // keep only the requested local-date window
-      const cur = byDate.get(d) ?? { orders: 0, revenue: 0 };
-      cur.orders += 1;
-      cur.revenue += Number(o.total ?? 0);
-      byDate.set(d, cur);
+      const total = Number(o.total ?? 0);
+      out.push({ date: d, total, customerId: String(o.customer_id ?? "") });
+      onOrder?.({
+        date: d,
+        total,
+        discountCode: (o.discount_code ?? "").trim(),
+        discountAmount: Number(o.discount_amount ?? 0),
+      });
     }
     if (!json.meta?.pagination?.has_next) break;
     page += 1;
-    if (page > 2000) break; // safety backstop
+    if (page > 5000) break; // safety backstop
   }
-  return byDate;
+  return out;
 }

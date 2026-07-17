@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "ingest": "tsx --env-file-if-exists=.env.local scripts/run-ingest.ts",
+    "seed:customers": "tsx --env-file-if-exists=.env.local scripts/seed-customers.ts",
     "db:setup": "tsx --env-file-if-exists=.env.local scripts/db-setup.ts"
   },
   "dependencies": {
