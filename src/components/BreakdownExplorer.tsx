@@ -17,8 +17,8 @@ interface AdRow {
   spend: number;
   impressions: number;
   clicks: number;
-  purchases: number;
-  revenue: number;
+  purchases: number | null;
+  revenue: number | null;
   ctr: number | null;
   cpc: number | null;
   cpm: number | null;
@@ -36,18 +36,16 @@ export default function BreakdownExplorer({
   brandId,
   from,
   to,
-  storePlatform,
 }: {
   brandId: string;
   from: string;
   to: string;
-  storePlatform: "shopify" | "quickshop";
 }) {
   const channels: { id: Channel; label: string }[] = [
     { id: "meta", label: "Meta" },
     { id: "google", label: "Google" },
     { id: "tiktok", label: "TikTok" },
-    ...(storePlatform === "quickshop" ? [{ id: "site" as Channel, label: "Store" }] : []),
+    { id: "site", label: "Store" },
   ];
 
   const [channel, setChannel] = useState<Channel>("meta");
@@ -56,6 +54,7 @@ export default function BreakdownExplorer({
   const [kind, setKind] = useState<"ad" | "store">("ad");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [note, setNote] = useState("");
 
   const dims = dimensionsFor(channel);
 
@@ -68,12 +67,14 @@ export default function BreakdownExplorer({
     let cancelled = false;
     setLoading(true);
     setErr("");
+    setNote("");
     fetch(`/api/breakdown?brand=${brandId}&channel=${channel}&dimension=${d}&from=${from}&to=${to}`)
       .then((r) => r.json())
       .then((j) => {
         if (cancelled) return;
         setRows(j.rows ?? []);
         setKind(j.kind ?? "ad");
+        setNote(j.note ?? "");
         if (j.error && (!j.rows || !j.rows.length)) setErr(j.error);
       })
       .catch((e) => !cancelled && setErr(String(e)))
@@ -141,6 +142,10 @@ export default function BreakdownExplorer({
             </tbody>
           </table>
         ) : (
+          <>
+          {note ? (
+            <div className="mb-2 text-xs text-[var(--warn)]">{note}</div>
+          ) : null}
           <table className="w-full min-w-[760px] border-collapse text-sm">
             <thead>
               <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
@@ -171,6 +176,7 @@ export default function BreakdownExplorer({
               ))}
             </tbody>
           </table>
+          </>
         )}
       </div>
     </div>

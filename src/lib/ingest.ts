@@ -4,6 +4,7 @@ import { CHANNEL_FIELDS } from "./channelFields";
 import { fetchUsdIlsRate, toIls } from "./fx";
 import { fetchWindsor, num } from "./windsor";
 import { fetchQuickShopPaidOrders, quickshopKeyFor, type PaidOrder } from "./quickshop";
+import { fetchShopifyPaidOrders, shopifyConfigured } from "./shopify";
 import { today } from "./dates";
 import type { Channel } from "./types";
 
@@ -101,10 +102,12 @@ function buildByDate(
   return { byDate, currency };
 }
 
-// Aggregate QuickShop paid orders by day and classify new vs returning using the
-// persistent store_customers first-seen table (a customer is "new" on their first-ever
-// order date). Newly-seen customers are recorded so future runs classify correctly.
-async function buildQuickShopByDate(sb: Sb, brand: BrandConfig, orders: PaidOrder[]): Promise<Map<string, DailyAgg>> {
+// Aggregate store paid orders (QuickShop or Shopify) by day and classify new vs returning
+// using the persistent store_customers first-seen table (a customer is "new" on their
+// first-ever order date). Newly-seen customers are recorded so future runs classify
+// correctly. Orders with no customer id (e.g. Shopify without read_customers) count toward
+// revenue but never as "new".
+async function buildStoreOrdersByDate(sb: Sb, brand: BrandConfig, orders: PaidOrder[]): Promise<Map<string, DailyAgg>> {
   const ids = [...new Set(orders.map((o) => o.customerId).filter(Boolean))];
 
   // Existing first-seen for these customers (small chunks — long IN() lists blow the GET URL).
@@ -250,7 +253,7 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
         }
         try {
           const orders = await fetchQuickShopPaidOrders(brand, from, to);
-          const byDate = await buildQuickShopByDate(sb, brand, orders);
+          const byDate = await buildStoreOrdersByDate(sb, brand, orders);
           result.upserts += await replaceDaily(
             sb,
             brand,
@@ -260,6 +263,33 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
             byDate,
             usdIls,
             brand.nativeCurrency, // QuickShop store currency
+          );
+        } catch (e) {
+          result.ok = false;
+          result.errors.push({
+            brand: brand.id,
+            channel,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+        continue;
+      }
+
+      // Shopify stores: read directly via the Admin API when a Dev-Dashboard client (or
+      // legacy token) is configured; otherwise fall through to the Windsor connector below.
+      if (channel === "site" && brand.storePlatform === "shopify" && shopifyConfigured(brand)) {
+        try {
+          const { orders, currency } = await fetchShopifyPaidOrders(brand, from, to);
+          const byDate = await buildStoreOrdersByDate(sb, brand, orders);
+          result.upserts += await replaceDaily(
+            sb,
+            brand,
+            channel,
+            from,
+            to,
+            byDate,
+            usdIls,
+            currency ?? brand.channelCurrency?.site ?? brand.nativeCurrency,
           );
         } catch (e) {
           result.ok = false;

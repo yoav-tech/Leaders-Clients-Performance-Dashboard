@@ -14,6 +14,12 @@ export interface ChannelFieldMap {
   purchasesField: string;
   revenueField: string | null; // direct revenue field, or null when derived from ROAS
   revenueRoasField?: string; // if set (and revenueField null), revenue = row[roas] * spend
+  // Breakdown-only purchase/value overrides. Meta's "omni" purchase fields (used everywhere
+  // else, to match Ads Manager) are rejected by Windsor when segmenting by age / gender /
+  // country / placement ("incompatible with 'omni' and 'ranking' fields"). The non-omni pixel
+  // purchase fields ARE breakdown-compatible and reconcile 1:1 with omni at the account level.
+  breakdownPurchasesField?: string;
+  breakdownRevenueField?: string;
   impressionsField?: string; // ad channels — funnel diagnostics
   clicksField?: string; // ad channels — funnel diagnostics
   // Optional Windsor read options, e.g. Meta attribution window.
@@ -34,6 +40,8 @@ export const CHANNEL_FIELDS: Record<Exclude<Channel, "site"> | "site", ChannelFi
     spendField: "spend",
     purchasesField: "actions_omni_purchase",
     revenueField: "action_values_omni_purchase",
+    breakdownPurchasesField: "actions_purchase",
+    breakdownRevenueField: "action_values_purchase",
     impressionsField: "impressions",
     clicksField: "clicks",
     // Meta Ads Manager standard. Change to "1d_click" for a more conservative view.
