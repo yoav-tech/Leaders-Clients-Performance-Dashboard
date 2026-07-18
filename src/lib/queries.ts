@@ -199,11 +199,13 @@ export async function getDailyBreakdown(
         sum(adRows, (r) => r.impressions),
         sum(adRows, (r) => r.clicks),
       );
+      const siteRows = dayRows.filter((r) => r.channel === "site");
       return {
         date,
         channels,
         total: { ...total, channel: "total" as unknown as Channel },
         blendedRoas: totalSpend ? channels.site.revenue / totalSpend : null,
+        newCustomers: sum(siteRows, (r) => r.newPurchases),
       };
     });
   }

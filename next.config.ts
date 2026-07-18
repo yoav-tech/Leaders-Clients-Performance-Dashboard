@@ -7,7 +7,25 @@ const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), interest-cohort=()" },
-  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  {
+    // Lock the dashboard to first-party resources only — no outsourced/external scripts,
+    // styles, images, fonts, or network calls can load or run. 'unsafe-inline' on script is
+    // required by Next.js's inline runtime + the no-flash theme script (external script
+    // origins are still fully blocked, which is what stops third-party/scraper scripts).
+    key: "Content-Security-Policy",
+    value: [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "form-action 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data:",
+      "font-src 'self'",
+      "connect-src 'self'",
+    ].join("; "),
+  },
   { key: "X-Robots-Tag", value: "noindex, nofollow" }, // internal tool — keep out of search engines
 ];
 

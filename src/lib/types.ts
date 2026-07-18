@@ -73,4 +73,5 @@ export interface DayBreakdown {
   channels: Record<Channel, ChannelMetrics>;
   total: ChannelMetrics; // ad channels combined
   blendedRoas: number | null; // site revenue / total ad spend
+  newCustomers: number; // store new-customer orders that day (for CAC)
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, sessionToken } from "@/lib/auth";
+import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 
 // Cookie-based gate for the dashboard (it shows client revenue).
 // - Enforced only when DASHBOARD_PASSWORD is set (so local dev / pre-config deploys aren't locked out).
@@ -15,8 +15,8 @@ export async function middleware(req: NextRequest) {
   }
 
   const cookie = req.cookies.get(SESSION_COOKIE)?.value;
-  const expected = await sessionToken(password);
-  if (cookie && cookie === expected) {
+  const now = Math.floor(Date.now() / 1000);
+  if (await verifySession(cookie, password, now)) {
     return NextResponse.next();
   }
 
