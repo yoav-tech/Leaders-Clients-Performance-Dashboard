@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { runIngest } from "@/lib/ingest";
 import { shiftDate, today } from "@/lib/dates";
 import { safeEqual } from "@/lib/auth";
+import { clientIp } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Pro plan — allow the full rolling ingest to finish
@@ -24,6 +25,8 @@ export async function GET(request: Request) {
   const auth = request.headers.get("authorization");
   const provided = auth?.replace(/^Bearer\s+/i, "") ?? url.searchParams.get("secret") ?? "";
   if (!(await safeEqual(provided, secret))) {
+    // Surface probing of this privileged write endpoint (it triggers service-role writes).
+    console.warn(`[cron] unauthorized ingest attempt from ${clientIp(request)}`);
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -35,8 +38,10 @@ export async function GET(request: Request) {
 
   try {
     const result = await runIngest({ from, to });
+    if (!result.ok) console.error(`[cron] ingest completed with errors:`, JSON.stringify(result.errors));
     return NextResponse.json(result, { status: result.ok ? 200 : 207 });
   } catch (e) {
+    console.error(`[cron] ingest failed:`, e instanceof Error ? e.message : String(e));
     return NextResponse.json(
       { error: e instanceof Error ? e.message : String(e) },
       { status: 500 },

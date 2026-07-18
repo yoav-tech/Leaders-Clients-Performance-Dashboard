@@ -71,6 +71,11 @@ body {
     radial-gradient(46rem 38rem at 6% 108%, var(--aura-1), transparent 60%);
 }
 
+/* White wordmark → invert to dark so it stays legible on the light theme. */
+:root[data-theme="light"] .logo-img {
+  filter: invert(1) brightness(0.35);
+}
+
 /* ---- Premium panel: violet-tinted border + soft glow ---- */
 .panel {
   border-radius: 0.75rem;

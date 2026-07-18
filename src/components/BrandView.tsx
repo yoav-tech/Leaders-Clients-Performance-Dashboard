@@ -214,28 +214,44 @@ export default function BrandView({
       {/* Daily breakdown */}
       <Panel title={`Daily · ${from} → ${to}`}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] border-collapse text-sm">
+          <table className="w-full min-w-[1080px] border-collapse text-sm">
             <thead>
               <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
                 <th className="px-2 py-1.5 text-left">Day</th>
                 <th className="px-2 py-1.5 text-right">Spend</th>
                 <th className="px-2 py-1.5 text-right">Ad Rev</th>
                 <th className="px-2 py-1.5 text-right">ROAS</th>
+                <th className="px-2 py-1.5 text-right">Purch</th>
+                <th className="px-2 py-1.5 text-right">CPA</th>
                 <th className={`px-2 py-1.5 text-right ${DIV}`}>Site Rev</th>
+                <th className="px-2 py-1.5 text-right">AOV</th>
+                <th className="px-2 py-1.5 text-right">CVR</th>
+                <th className="px-2 py-1.5 text-right">CAC</th>
                 <th className="px-2 py-1.5 text-right">Blended</th>
               </tr>
             </thead>
             <tbody className="tabular-nums">
-              {breakdown.map((d) => (
-                <tr key={d.date} className="border-t border-[var(--card-border)]">
-                  <td className="px-2 py-1.5 text-left font-medium">{d.date.slice(5)}</td>
-                  <td className="px-2 py-1.5 text-right">{formatIls(d.total.spend)}</td>
-                  <td className="px-2 py-1.5 text-right">{formatIls(d.total.revenue)}</td>
-                  <td className={`px-2 py-1.5 text-right ${TONE[roasTone(d.total.roas, target)]}`}>{formatRoas(d.total.roas)}</td>
-                  <td className={`px-2 py-1.5 text-right ${DIV}`}>{formatIls(d.channels.site.revenue)}</td>
-                  <td className={`px-2 py-1.5 text-right font-semibold ${TONE[roasTone(d.blendedRoas, target)]}`}>{formatRoas(d.blendedRoas)}</td>
-                </tr>
-              ))}
+              {breakdown.map((d) => {
+                const site = d.channels.site;
+                const aov = site.purchases ? site.revenue / site.purchases : null;
+                const cvr = d.total.clicks ? site.purchases / d.total.clicks : null;
+                const cac = d.newCustomers ? d.total.spend / d.newCustomers : null;
+                return (
+                  <tr key={d.date} className="border-t border-[var(--card-border)]">
+                    <td className="px-2 py-1.5 text-left font-medium">{d.date.slice(5)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatIls(d.total.spend)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatIls(d.total.revenue)}</td>
+                    <td className={`px-2 py-1.5 text-right ${TONE[roasTone(d.total.roas, target)]}`}>{formatRoas(d.total.roas)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatNumber(d.total.purchases)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatIls(d.total.cpa)}</td>
+                    <td className={`px-2 py-1.5 text-right ${DIV}`}>{formatIls(site.revenue)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatIls(aov)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatPct(cvr)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatIls(cac)}</td>
+                    <td className={`px-2 py-1.5 text-right font-semibold ${TONE[roasTone(d.blendedRoas, target)]}`}>{formatRoas(d.blendedRoas)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

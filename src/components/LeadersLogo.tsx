@@ -3,6 +3,7 @@ export default function LeadersLogo({ height = 30 }: { height?: number }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
+      className="logo-img"
       src="/leaders-logo-white.png"
       alt="Leaders — Powered by People"
       style={{ height, width: "auto" }}
