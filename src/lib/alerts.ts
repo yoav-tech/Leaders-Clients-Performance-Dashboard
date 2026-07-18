@@ -67,14 +67,14 @@ export async function performanceAlerts(days = 7): Promise<Alert[]> {
     if (spendDelta !== null && Math.abs(spendDelta) >= SPEND_JUMP_PCT && (p?.spend ?? 0) > 0) {
       const dir = spendDelta > 0 ? "up" : "down";
       out.push(mk(brand, "total", "spend_jump", "info",
-        `Spend ${dir} ${Math.abs(Math.round(spendDelta))}% (₪${Math.round(m.total.spend)}) vs prior ${days}d`, tag));
+        `Spend ${dir} ${Math.abs(Math.round(spendDelta))}% (${ilsN(m.total.spend)}) vs prior ${days}d`, tag));
     }
     // Zero conversions with meaningful spend (per ad channel)
     for (const ch of ["google", "meta", "tiktok"] as const) {
       const c = m.channels[ch];
       if (c.spend >= ZERO_CONV_MIN_SPEND && c.purchases === 0) {
         out.push(mk(brand, ch, "zero_conversions", "critical",
-          `${label(ch)}: ₪${Math.round(c.spend)} spent, 0 conversions (last ${days}d)`, tag));
+          `${label(ch)}: ${ilsN(c.spend)} spent, 0 conversions (last ${days}d)`, tag));
       }
     }
 
@@ -84,10 +84,10 @@ export async function performanceAlerts(days = 7): Promise<Alert[]> {
       const pace = computePacing(brand.monthlyBudget, monthSpend, elapsed, daysInMonth);
       if (pace.pacePct !== null && pace.pacePct >= PACE_OVER) {
         out.push(mk(brand, "total", "pace_over", "warning",
-          `Pacing ${Math.round(pace.pacePct)}% of plan — projected ₪${Math.round(pace.projected)} vs ₪${brand.monthlyBudget} budget`, `${monthTag()}:${m.brandId}`));
+          `Pacing ${Math.round(pace.pacePct)}% of plan — projected ${ilsN(pace.projected)} vs ${ilsN(brand.monthlyBudget)} budget`, `${monthTag()}:${m.brandId}`));
       } else if (pace.pacePct !== null && pace.pacePct <= PACE_UNDER) {
         out.push(mk(brand, "total", "pace_under", "info",
-          `Pacing ${Math.round(pace.pacePct)}% of plan — underspending vs ₪${brand.monthlyBudget} budget`, `${monthTag()}:${m.brandId}`));
+          `Pacing ${Math.round(pace.pacePct)}% of plan — underspending vs ${ilsN(brand.monthlyBudget)} budget`, `${monthTag()}:${m.brandId}`));
       }
     }
   }
@@ -175,7 +175,7 @@ export async function adHealthAlerts(): Promise<Alert[]> {
       const tag = `${day}:${brand.id}:${ch}`;
       for (const [name, e] of byName) {
         if (cfg.disapproved.includes(e.status)) {
-          out.push(mk(brand, ch, "policy", "critical", `${label(ch)}: "${name}" — ${e.status.replace(/_/g, " ").toLowerCase()}`, `${tag}:policy:${name}`));
+          out.push(mk(brand, ch, "policy", "critical", `${label(ch)}: "${name}" — ${statusText(e.status)}`, `${tag}:policy:${name}`));
         } else if (cfg.billing.includes(e.status)) {
           out.push(mk(brand, ch, "billing", "critical", `${label(ch)}: "${name}" — billing/payment issue (${e.status})`, `${tag}:billing:${name}`));
         } else if (cfg.active.includes(e.status) && e.spend === 0) {
@@ -241,6 +241,20 @@ function label(ch: string): string {
 }
 function fmt(v: number | null): string {
   return v === null ? "—" : v.toFixed(1);
+}
+function ilsN(v: number): string {
+  return `₪${Math.round(v).toLocaleString("en-US")}`;
+}
+function statusText(status: string): string {
+  const map: Record<string, string> = {
+    DISAPPROVED: "disapproved (policy)",
+    WITH_ISSUES: "has delivery issues",
+    AD_PAUSED_WITH_ISSUES: "paused with issues",
+    AD_STATUS_DISABLE: "disabled",
+    AD_STATUS_REJECT: "rejected",
+    AD_STATUS_AUDIT_DENY: "rejected in review",
+  };
+  return map[status] ?? status.replace(/^AD_STATUS_/, "").replace(/_/g, " ").toLowerCase();
 }
 function pct(v: number | null): string {
   return v === null ? "—" : `${(v * 100).toFixed(1)}%`;
