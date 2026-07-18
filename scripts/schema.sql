@@ -58,3 +58,22 @@ ALTER TABLE store_customers ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON daily_metrics   FROM anon, authenticated;
 REVOKE ALL ON fx_rates        FROM anon, authenticated;
 REVOKE ALL ON store_customers FROM anon, authenticated;
+
+-- ---- Comms panel (ClickUp digest + alerts + Q&A) ----
+CREATE TABLE IF NOT EXISTS alerts_sent (
+  brand_id  text NOT NULL,
+  alert_key text NOT NULL,
+  sent_at   timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (brand_id, alert_key)
+);
+CREATE TABLE IF NOT EXISTS clickup_state (
+  key        text PRIMARY KEY,
+  value      text,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE alerts_sent   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE alerts_sent   FORCE  ROW LEVEL SECURITY;
+ALTER TABLE clickup_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clickup_state FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON alerts_sent   FROM anon, authenticated;
+REVOKE ALL ON clickup_state FROM anon, authenticated;
