@@ -103,6 +103,7 @@ function snapshot(b: Omit<BrandMetrics, "previous">): KpiSnapshot {
   return {
     spend: b.total.spend,
     revenue: b.total.revenue,
+    clicks: b.total.clicks,
     siteRevenue: b.channels.site.revenue,
     siteOrders: b.channels.site.purchases,
     roas: b.total.roas,

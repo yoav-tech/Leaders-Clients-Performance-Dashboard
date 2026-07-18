@@ -44,6 +44,7 @@ export interface ChannelMetrics {
 export interface KpiSnapshot {
   spend: number;
   revenue: number; // ad-attributed
+  clicks: number; // total ad clicks — denominator for store CVR
   siteRevenue: number;
   siteOrders: number;
   roas: number | null;

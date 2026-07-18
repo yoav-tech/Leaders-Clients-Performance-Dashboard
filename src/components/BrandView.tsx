@@ -98,12 +98,17 @@ export default function BrandView({
   const storeAov = siteOrders ? storeRev / siteOrders : null;
   const prevStoreAov = p && p.siteOrders ? p.siteRevenue / p.siteOrders : null;
   const newPct = storeRev ? (newRevenue / storeRev) * 100 : 0;
+  // Store CVR = orders ÷ ad clicks (paid visitors). No total-site-visitors feed, so the
+  // denominator is paid traffic; excludes organic/direct.
+  const storeCvr = total.clicks ? siteOrders / total.clicks : null;
+  const prevStoreCvr = p && p.clicks ? p.siteOrders / p.clicks : null;
 
   // Store (the real business outcome) — shown first.
   const storeKpis = [
     { label: "Store Revenue", metric: "siteRevenue", value: formatIls(storeRev), cur: storeRev, prev: p?.siteRevenue ?? null },
     { label: "Orders", metric: "storeOrders", value: formatNumber(siteOrders), cur: siteOrders, prev: p?.siteOrders ?? null },
     { label: "Store AOV", metric: "aov", value: formatIls(storeAov), cur: storeAov, prev: prevStoreAov },
+    { label: "Store CVR", metric: "storeCvr", value: formatPct(storeCvr), cur: storeCvr, prev: prevStoreCvr },
     { label: "Blended ROAS", metric: "blendedRoas", value: formatRoas(blendedRoas), cur: blendedRoas, prev: p?.blendedRoas ?? null, tone: roasTone(blendedRoas, target) },
     { label: "CAC", metric: "cac", value: formatIls(cac), cur: cac, prev: p?.cac ?? null },
   ];
@@ -123,11 +128,12 @@ export default function BrandView({
     <div className="space-y-4">
       {/* Store results first (the real business), then ads performance. */}
       <Panel title="Store · results · vs previous period">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           {storeKpis.map((k) => (
             <Kpi key={k.label} {...k} />
           ))}
         </div>
+        <div className="mt-2 text-[11px] text-[var(--muted)]">Store CVR = orders ÷ ad clicks (paid visitors; excludes organic/direct)</div>
       </Panel>
 
       <Panel title="Ads · performance · vs previous period">
