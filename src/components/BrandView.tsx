@@ -26,7 +26,7 @@ const DIV = "border-l border-[var(--card-border)]";
 
 function Panel({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4">
+    <div className="panel p-4">
       {title && (
         <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">{title}</div>
       )}

@@ -13,6 +13,7 @@ import BrandTabs from "@/components/BrandTabs";
 import DateRangePicker from "@/components/DateRangePicker";
 import LeadersLogo from "@/components/LeadersLogo";
 import LogoutButton from "@/components/LogoutButton";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export default async function Home({
       : `&range=${range.key}`;
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-6">
+    <main className="dash-aura mx-auto max-w-7xl px-4 py-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <LeadersLogo height={34} />
@@ -57,6 +58,7 @@ export default async function Home({
         </div>
         <div className="flex items-center gap-3">
           <DateRangePicker activeKey={range.key} from={range.from} to={range.to} brand={brandId} />
+          <ThemeToggle />
           <LogoutButton />
         </div>
       </header>

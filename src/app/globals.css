@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-:root {
+:root,
+:root[data-theme="dark"] {
   --background: #0b0e14;
   --foreground: #e6e9ef;
   --card: #131722;
@@ -9,6 +10,28 @@
   --good: #16a34a;
   --bad: #dc2626;
   --warn: #d97706;
+  /* Premium violet aura + panel treatment */
+  --aura-1: rgba(139, 92, 246, 0.16);
+  --aura-2: rgba(59, 130, 246, 0.11);
+  --panel-bg: linear-gradient(160deg, #15121f 0%, #0f131d 100%);
+  --panel-border: rgba(139, 92, 246, 0.18);
+  --panel-glow: 0 0 0 1px rgba(139, 92, 246, 0.08), 0 14px 44px rgba(139, 92, 246, 0.08);
+}
+
+:root[data-theme="light"] {
+  --background: #f4f5f9;
+  --foreground: #1a1d26;
+  --card: #ffffff;
+  --card-border: #e4e6ee;
+  --muted: #6b7280;
+  --good: #15803d;
+  --bad: #dc2626;
+  --warn: #b45309;
+  --aura-1: rgba(139, 92, 246, 0.12);
+  --aura-2: rgba(59, 130, 246, 0.09);
+  --panel-bg: linear-gradient(160deg, #ffffff 0%, #faf9ff 100%);
+  --panel-border: rgba(139, 92, 246, 0.22);
+  --panel-glow: 0 1px 2px rgba(16, 18, 26, 0.05), 0 14px 40px rgba(139, 92, 246, 0.10);
 }
 
 @theme inline {
@@ -26,6 +49,34 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+html,
+body {
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+/* ---- Dashboard violet aura (behind all content, both themes) ---- */
+.dash-aura::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(55rem 38rem at 50% -12%, var(--aura-1), transparent 60%),
+    radial-gradient(38rem 30rem at 88% 8%, var(--aura-2), transparent 60%),
+    radial-gradient(46rem 38rem at 6% 108%, var(--aura-1), transparent 60%);
+}
+
+/* ---- Premium panel: violet-tinted border + soft glow ---- */
+.panel {
+  border-radius: 0.75rem;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  box-shadow: var(--panel-glow);
 }
 
 /* ---- Login page (premium violet-glow, matches the card aesthetic) ---- */
