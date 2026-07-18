@@ -89,7 +89,7 @@ export default function BreakdownExplorer({
     `rounded-md px-3 py-1 text-sm transition-colors ${active ? "bg-blue-600 text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`;
 
   return (
-    <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4">
+    <div className="panel p-4">
       <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">Breakdown explorer</div>
 
       <div className="flex flex-wrap gap-3">
