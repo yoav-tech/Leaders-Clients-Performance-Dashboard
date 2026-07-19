@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireCron } from "@/lib/cronAuth";
-import { listMessages, replyToMessage, botUserId, clickupConfigured } from "@/lib/clickup";
+import { listMessages, postMessage, botUserId, clickupConfigured } from "@/lib/clickup";
 import { answerQuestion, anthropicConfigured } from "@/lib/qa";
 import { getSupabase, hasDb } from "@/lib/db";
 
@@ -44,7 +44,8 @@ export async function GET(request: Request) {
       if (!q) continue;
       try {
         const ans = await answerQuestion(q);
-        await replyToMessage(m.id, ans);
+        // Post to the channel (visible) rather than a hidden thread reply.
+        await postMessage(`💬 **Re:** _${q}_\n\n${ans}`);
         answered++;
       } catch (e) {
         console.error("[cron/clickup-poll] answer failed:", e instanceof Error ? e.message : String(e));
