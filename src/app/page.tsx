@@ -3,7 +3,9 @@ import {
   getBrandMetrics,
   getBrandMonthSpend,
   getDailyBreakdown,
+  getDailySourceBreakdown,
   getLastUpdated,
+  type SourceDaily,
 } from "@/lib/queries";
 import { fetchQuickShopAnalytics } from "@/lib/storeAnalytics";
 import { resolveRange } from "@/lib/dates";
@@ -27,14 +29,16 @@ export default async function Home({
   const brandId = BRANDS.some((b) => b.id === sp.brand) ? sp.brand! : BRANDS[0].id;
   const brand = getBrand(brandId)!;
 
-  const [allMetrics, monthSpend, breakdownMap, store, lastUpdated] = await Promise.all([
+  const [allMetrics, monthSpend, breakdownMap, sourceMap, store, lastUpdated] = await Promise.all([
     getBrandMetrics(range.from, range.to),
     getBrandMonthSpend(brandId),
     getDailyBreakdown(range.from, range.to),
+    getDailySourceBreakdown(range.from, range.to),
     fetchQuickShopAnalytics(brand),
     getLastUpdated(),
   ]);
   const metrics = allMetrics.find((m) => m.brandId === brandId)!;
+  const emptySource: SourceDaily = { sources: [], rows: {} };
 
   // Preserve the current range across brand-tab navigation.
   const rangeQuery =
@@ -78,6 +82,7 @@ export default async function Home({
           brand={brand}
           metrics={metrics}
           breakdown={breakdownMap[brandId] ?? []}
+          sourceDaily={sourceMap[brandId] ?? emptySource}
           store={store}
           monthSpend={monthSpend}
           from={range.from}

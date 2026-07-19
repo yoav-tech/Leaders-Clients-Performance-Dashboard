@@ -254,6 +254,44 @@ async function writeUtmAttribution(
   }
 }
 
+// Aggregate paid store orders by RAW utm_source per day → daily_source. Powers the daily
+// table's "by source" filter (finer than channel: catches influencers, SMS, organic, etc).
+async function writeSourceAttribution(
+  sb: Sb,
+  brand: BrandConfig,
+  orders: PaidOrder[],
+  from: string,
+  to: string,
+  usdIls: number,
+  currency: string,
+): Promise<void> {
+  const agg = new Map<string, { orders: number; revenue: number }>(); // key: `${date}|${source}`
+  for (const o of orders) {
+    const source = (o.utmSource ?? "").trim().toLowerCase() || "(none)";
+    const key = `${o.date}|${source}`;
+    const a = agg.get(key) ?? { orders: 0, revenue: 0 };
+    a.orders += 1;
+    a.revenue += o.total;
+    agg.set(key, a);
+  }
+
+  const del = await sb.from("daily_source").delete().eq("brand_id", brand.id).gte("date", from).lte("date", to);
+  if (del.error) throw new Error(del.error.message);
+
+  const now = new Date().toISOString();
+  const rows = Array.from(agg, ([key, a]) => {
+    const i = key.indexOf("|");
+    return { date: key.slice(0, i), brand_id: brand.id, source: key.slice(i + 1), orders: a.orders, revenue_ils: toIls(a.revenue, currency, usdIls), fetched_at: now };
+  });
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500);
+    if (chunk.length) {
+      const { error } = await sb.from("daily_source").insert(chunk);
+      if (error) throw new Error(error.message);
+    }
+  }
+}
+
 export async function runIngest(opts?: { from?: string; to?: string }): Promise<IngestResult> {
   const to = opts?.to ?? today();
   const from = opts?.from ?? to; // default: today only; pass a range to backfill
@@ -302,6 +340,7 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
             brand.nativeCurrency, // QuickShop store currency
           );
           await writeUtmAttribution(sb, brand, orders, from, to, usdIls, brand.nativeCurrency);
+          await writeSourceAttribution(sb, brand, orders, from, to, usdIls, brand.nativeCurrency);
         } catch (e) {
           result.ok = false;
           result.errors.push({
@@ -322,6 +361,7 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
           const storeCurrency = currency ?? brand.channelCurrency?.site ?? brand.nativeCurrency;
           result.upserts += await replaceDaily(sb, brand, channel, from, to, byDate, usdIls, storeCurrency);
           await writeUtmAttribution(sb, brand, orders, from, to, usdIls, storeCurrency);
+          await writeSourceAttribution(sb, brand, orders, from, to, usdIls, storeCurrency);
         } catch (e) {
           result.ok = false;
           result.errors.push({
