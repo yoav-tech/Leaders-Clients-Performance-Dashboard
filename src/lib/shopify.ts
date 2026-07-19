@@ -13,7 +13,17 @@ import type { PaidOrder } from "./quickshop";
 
 const API_VERSION = "2026-07";
 const PAGE_LIMIT = 250; // Admin REST caps page size at 250
-const FIELDS = "created_at,total_price,currency,financial_status,customer,discount_codes";
+const FIELDS =
+  "created_at,total_price,currency,financial_status,customer,discount_codes,landing_site,referring_site";
+
+// Pull utm_source/utm_medium from a Shopify landing_site (a path+query like "/?utm_source=ig&…").
+function parseUtm(landingSite: string | undefined): { source?: string; medium?: string } {
+  if (!landingSite) return {};
+  const qi = landingSite.indexOf("?");
+  if (qi < 0) return {};
+  const q = new URLSearchParams(landingSite.slice(qi + 1));
+  return { source: q.get("utm_source") ?? undefined, medium: q.get("utm_medium") ?? undefined };
+}
 
 // Read a per-brand env var, tolerating hyphen→underscore or removed (LA_BEAUTE / LABEAUTE).
 function brandEnv(brand: BrandConfig, prefix: string): string | null {
@@ -170,6 +180,8 @@ export async function fetchShopifyPaidOrders(
         financial_status?: string;
         customer?: { id?: number | string } | null;
         discount_codes?: Array<{ code?: string; amount?: number | string }> | null;
+        landing_site?: string | null;
+        referring_site?: string | null;
       }>;
     };
     for (const o of json.orders ?? []) {
@@ -179,7 +191,15 @@ export async function fetchShopifyPaidOrders(
       if (d < from || d > to) continue; // keep only the requested local-date window
       const total = Number(o.total_price ?? 0);
       if (!currency && o.currency) currency = String(o.currency).toUpperCase();
-      orders.push({ date: d, total, customerId: String(o.customer?.id ?? "") });
+      const utm = parseUtm(o.landing_site ?? undefined);
+      orders.push({
+        date: d,
+        total,
+        customerId: String(o.customer?.id ?? ""),
+        utmSource: utm.source,
+        utmMedium: utm.medium,
+        referrer: o.referring_site ?? undefined,
+      });
       if (onOrder) {
         const codes = o.discount_codes ?? [];
         const discountAmount = codes.reduce((s, c) => s + Number(c.amount ?? 0), 0);

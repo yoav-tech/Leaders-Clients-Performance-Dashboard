@@ -41,6 +41,34 @@ async function fetchRows(from: string, to: string): Promise<DailyMetricRow[]> {
   }));
 }
 
+// Store-attributed conversions/revenue per channel/day (first-party UTM). Ad channels only.
+interface UtmRow {
+  date: string;
+  brandId: string;
+  channel: Channel;
+  purchases: number;
+  revenueIls: number;
+}
+
+async function fetchUtmRows(from: string, to: string): Promise<UtmRow[]> {
+  if (!hasDb()) return [];
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from("daily_utm")
+    .select("date,brand_id,channel,purchases,revenue_ils")
+    .gte("date", from)
+    .lte("date", to)
+    .limit(20000);
+  if (error) throw new Error(`daily_utm query failed: ${error.message}`);
+  return (data ?? []).map((r) => ({
+    date: String(r.date).slice(0, 10),
+    brandId: r.brand_id as string,
+    channel: r.channel as Channel,
+    purchases: Number(r.purchases),
+    revenueIls: Number(r.revenue_ils),
+  }));
+}
+
 function daysInclusive(from: string, to: string): number {
   const a = new Date(from + "T00:00:00Z").getTime();
   const b = new Date(to + "T00:00:00Z").getTime();
@@ -50,25 +78,29 @@ function daysInclusive(from: string, to: string): number {
 // Aggregate one brand's rows into per-channel + total metrics, CAC, and new/returning.
 function computeBrand(
   rows: DailyMetricRow[],
+  utmRows: UtmRow[],
   brandId: string,
   from: string,
   to: string,
 ): Omit<BrandMetrics, "previous"> {
   const brandRows = rows.filter((r) => r.brandId === brandId);
+  const brandUtm = utmRows.filter((u) => u.brandId === brandId);
 
+  // Ad channels: spend/impressions/clicks stay platform-reported, but purchases + revenue are
+  // store-attributed (first-party UTM). The site channel stays as the real total store outcome.
   const channels = {} as Record<Channel, ChannelMetrics>;
   for (const ch of ["google", "meta", "tiktok", "site"] as Channel[]) {
     const cr = brandRows.filter((r) => r.channel === ch);
-    channels[ch] = cr.length
-      ? withRatios(
-          ch,
-          sum(cr, (r) => r.spendIls),
-          sum(cr, (r) => r.purchases),
-          sum(cr, (r) => r.revenueIls),
-          sum(cr, (r) => r.impressions),
-          sum(cr, (r) => r.clicks),
-        )
-      : emptyChannel(ch);
+    if (ch === "site") {
+      channels[ch] = cr.length
+        ? withRatios(ch, sum(cr, (r) => r.spendIls), sum(cr, (r) => r.purchases), sum(cr, (r) => r.revenueIls), sum(cr, (r) => r.impressions), sum(cr, (r) => r.clicks))
+        : emptyChannel(ch);
+    } else {
+      const cu = brandUtm.filter((u) => u.channel === ch);
+      channels[ch] = cr.length || cu.length
+        ? withRatios(ch, sum(cr, (r) => r.spendIls), sum(cu, (u) => u.purchases), sum(cu, (u) => u.revenueIls), sum(cr, (r) => r.impressions), sum(cr, (r) => r.clicks))
+        : emptyChannel(ch);
+    }
   }
 
   const adRows = brandRows.filter((r) => AD_CHANNELS.includes(r.channel));
@@ -76,8 +108,8 @@ function computeBrand(
   const total = withRatios(
     "google",
     totalSpend,
-    sum(adRows, (r) => r.purchases),
-    sum(adRows, (r) => r.revenueIls),
+    sum(brandUtm, (u) => u.purchases),
+    sum(brandUtm, (u) => u.revenueIls),
     sum(adRows, (r) => r.impressions),
     sum(adRows, (r) => r.clicks),
   );
@@ -95,7 +127,7 @@ function computeBrand(
     cac: newCustomers ? totalSpend / newCustomers : null,
     newRevenue,
     returningRevenue: Math.max(0, siteRevenue - newRevenue),
-    trend: buildTrend(brandRows, from, to),
+    trend: buildTrend(brandRows, brandUtm, from, to),
   };
 }
 
@@ -121,23 +153,33 @@ export async function getBrandMetrics(from: string, to: string): Promise<BrandMe
   const prevTo = shiftDate(from, -1);
   const prevFrom = shiftDate(prevTo, -(len - 1));
 
-  const [rows, prevRows] = await Promise.all([fetchRows(from, to), fetchRows(prevFrom, prevTo)]);
+  const [rows, prevRows, utmRows, prevUtmRows] = await Promise.all([
+    fetchRows(from, to),
+    fetchRows(prevFrom, prevTo),
+    fetchUtmRows(from, to),
+    fetchUtmRows(prevFrom, prevTo),
+  ]);
 
   return BRANDS.map((brand) => {
-    const cur = computeBrand(rows, brand.id, from, to);
-    const prev = computeBrand(prevRows, brand.id, prevFrom, prevTo);
+    const cur = computeBrand(rows, utmRows, brand.id, from, to);
+    const prev = computeBrand(prevRows, prevUtmRows, brand.id, prevFrom, prevTo);
     return { ...cur, previous: snapshot(prev) };
   });
 }
 
-function buildTrend(rows: DailyMetricRow[], from: string, to: string) {
+// Trend: spend from platform, revenue from store-attributed UTM (matches the funnel).
+function buildTrend(rows: DailyMetricRow[], utmRows: UtmRow[], from: string, to: string) {
   const byDate = new Map<string, { spend: number; revenue: number }>();
   for (const r of rows) {
     if (!AD_CHANNELS.includes(r.channel)) continue;
     const cur = byDate.get(r.date) ?? { spend: 0, revenue: 0 };
     cur.spend += r.spendIls;
-    cur.revenue += r.revenueIls;
     byDate.set(r.date, cur);
+  }
+  for (const u of utmRows) {
+    const cur = byDate.get(u.date) ?? { spend: 0, revenue: 0 };
+    cur.revenue += u.revenueIls;
+    byDate.set(u.date, cur);
   }
   const out: { date: string; roas: number | null; revenue: number }[] = [];
   const d = new Date(from + "T00:00:00Z");
@@ -165,7 +207,7 @@ export async function getDailyBreakdown(
   from: string,
   to: string,
 ): Promise<Record<string, DayBreakdown[]>> {
-  const rows = await fetchRows(from, to);
+  const [rows, utmRows] = await Promise.all([fetchRows(from, to), fetchUtmRows(from, to)]);
 
   // All dates in range, newest first.
   const dates: string[] = [];
@@ -175,27 +217,28 @@ export async function getDailyBreakdown(
   for (const brand of BRANDS) {
     out[brand.id] = dates.map((date) => {
       const dayRows = rows.filter((r) => r.brandId === brand.id && r.date === date);
+      const dayUtm = utmRows.filter((u) => u.brandId === brand.id && u.date === date);
       const channels = {} as Record<Channel, ChannelMetrics>;
       for (const ch of ["google", "meta", "tiktok", "site"] as Channel[]) {
         const cr = dayRows.filter((r) => r.channel === ch);
-        channels[ch] = cr.length
-          ? withRatios(
-              ch,
-              sum(cr, (r) => r.spendIls),
-              sum(cr, (r) => r.purchases),
-              sum(cr, (r) => r.revenueIls),
-              sum(cr, (r) => r.impressions),
-              sum(cr, (r) => r.clicks),
-            )
-          : emptyChannel(ch);
+        if (ch === "site") {
+          channels[ch] = cr.length
+            ? withRatios(ch, sum(cr, (r) => r.spendIls), sum(cr, (r) => r.purchases), sum(cr, (r) => r.revenueIls), sum(cr, (r) => r.impressions), sum(cr, (r) => r.clicks))
+            : emptyChannel(ch);
+        } else {
+          const cu = dayUtm.filter((u) => u.channel === ch);
+          channels[ch] = cr.length || cu.length
+            ? withRatios(ch, sum(cr, (r) => r.spendIls), sum(cu, (u) => u.purchases), sum(cu, (u) => u.revenueIls), sum(cr, (r) => r.impressions), sum(cr, (r) => r.clicks))
+            : emptyChannel(ch);
+        }
       }
       const adRows = dayRows.filter((r) => AD_CHANNELS.includes(r.channel));
       const totalSpend = sum(adRows, (r) => r.spendIls);
       const total = withRatios(
         "google",
         totalSpend,
-        sum(adRows, (r) => r.purchases),
-        sum(adRows, (r) => r.revenueIls),
+        sum(dayUtm, (u) => u.purchases),
+        sum(dayUtm, (u) => u.revenueIls),
         sum(adRows, (r) => r.impressions),
         sum(adRows, (r) => r.clicks),
       );
