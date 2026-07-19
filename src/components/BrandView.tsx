@@ -186,6 +186,9 @@ export default function BrandView({
             </tbody>
           </table>
         </div>
+        <div className="mt-2 text-[11px] text-[var(--muted)]">
+          Purch · CVR · Revenue · ROAS are <span className="text-[var(--foreground)]">store-attributed</span> (first-party UTM from real orders); Spend · Impr · Clicks are platform-reported. Organic/direct/SMS traffic isn&apos;t credited to a channel (it shows in Blended).
+        </div>
       </Panel>
 
       {/* Unit economics + store insights */}

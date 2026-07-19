@@ -5,6 +5,7 @@ import { fetchUsdIlsRate, toIls } from "./fx";
 import { fetchWindsor, num } from "./windsor";
 import { fetchQuickShopPaidOrders, quickshopKeyFor, type PaidOrder } from "./quickshop";
 import { fetchShopifyPaidOrders, shopifyConfigured } from "./shopify";
+import { utmToChannel } from "./utmChannel";
 import { today } from "./dates";
 import type { Channel } from "./types";
 
@@ -217,6 +218,42 @@ async function replaceDaily(
   return rows.length;
 }
 
+// Map paid store orders to ad channels via first-party UTM/referrer and store the per-channel,
+// per-day attributed purchases + revenue (ILS) in daily_utm. Powers the store-attributed funnel.
+async function writeUtmAttribution(
+  sb: Sb,
+  brand: BrandConfig,
+  orders: PaidOrder[],
+  from: string,
+  to: string,
+  usdIls: number,
+  currency: string,
+): Promise<void> {
+  const agg = new Map<string, { purchases: number; revenue: number }>(); // key: `${date}|${channel}`
+  for (const o of orders) {
+    const ch = utmToChannel(o.utmSource, o.utmMedium, o.referrer);
+    if (!ch) continue; // organic/direct/other — not a paid channel
+    const key = `${o.date}|${ch}`;
+    const a = agg.get(key) ?? { purchases: 0, revenue: 0 };
+    a.purchases += 1;
+    a.revenue += o.total;
+    agg.set(key, a);
+  }
+
+  const del = await sb.from("daily_utm").delete().eq("brand_id", brand.id).gte("date", from).lte("date", to);
+  if (del.error) throw new Error(del.error.message);
+
+  const now = new Date().toISOString();
+  const rows = Array.from(agg, ([key, a]) => {
+    const [date, channel] = key.split("|");
+    return { date, brand_id: brand.id, channel, purchases: a.purchases, revenue_ils: toIls(a.revenue, currency, usdIls), fetched_at: now };
+  });
+  if (rows.length) {
+    const { error } = await sb.from("daily_utm").insert(rows);
+    if (error) throw new Error(error.message);
+  }
+}
+
 export async function runIngest(opts?: { from?: string; to?: string }): Promise<IngestResult> {
   const to = opts?.to ?? today();
   const from = opts?.from ?? to; // default: today only; pass a range to backfill
@@ -264,6 +301,7 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
             usdIls,
             brand.nativeCurrency, // QuickShop store currency
           );
+          await writeUtmAttribution(sb, brand, orders, from, to, usdIls, brand.nativeCurrency);
         } catch (e) {
           result.ok = false;
           result.errors.push({
@@ -281,16 +319,9 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
         try {
           const { orders, currency } = await fetchShopifyPaidOrders(brand, from, to);
           const byDate = await buildStoreOrdersByDate(sb, brand, orders);
-          result.upserts += await replaceDaily(
-            sb,
-            brand,
-            channel,
-            from,
-            to,
-            byDate,
-            usdIls,
-            currency ?? brand.channelCurrency?.site ?? brand.nativeCurrency,
-          );
+          const storeCurrency = currency ?? brand.channelCurrency?.site ?? brand.nativeCurrency;
+          result.upserts += await replaceDaily(sb, brand, channel, from, to, byDate, usdIls, storeCurrency);
+          await writeUtmAttribution(sb, brand, orders, from, to, usdIls, storeCurrency);
         } catch (e) {
           result.ok = false;
           result.errors.push({

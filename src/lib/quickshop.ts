@@ -15,6 +15,9 @@ export interface PaidOrder {
   date: string; // Israel-local YYYY-MM-DD
   total: number; // native store currency
   customerId: string; // opaque store id (not PII) — for new-vs-returning classification
+  utmSource?: string; // first-party attribution — for store-attributed channel funnels
+  utmMedium?: string;
+  referrer?: string; // Shopify referring_site host (fallback attribution)
 }
 
 // Per-brand API key. Accepts both QUICKSHOP_API_KEY_STUDIO_PASHA and
@@ -79,6 +82,8 @@ export async function fetchQuickShopPaidOrders(
         customer_id?: string;
         discount_code?: string | null;
         discount_amount?: number | string | null;
+        utm_source?: string | null;
+        utm_medium?: string | null;
       }>;
       meta?: { pagination?: { has_next?: boolean } };
     };
@@ -88,7 +93,13 @@ export async function fetchQuickShopPaidOrders(
       const d = localDate(o.created_at);
       if (d < from || d > to) continue; // keep only the requested local-date window
       const total = Number(o.total ?? 0);
-      out.push({ date: d, total, customerId: String(o.customer_id ?? "") });
+      out.push({
+        date: d,
+        total,
+        customerId: String(o.customer_id ?? ""),
+        utmSource: o.utm_source ?? undefined,
+        utmMedium: o.utm_medium ?? undefined,
+      });
       onOrder?.({
         date: d,
         total,
