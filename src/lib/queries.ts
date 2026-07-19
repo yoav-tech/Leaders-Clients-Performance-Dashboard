@@ -255,6 +255,48 @@ export async function getDailyBreakdown(
   return out;
 }
 
+// Per-brand raw utm_source daily breakdown (store orders + revenue) — for the daily table's
+// "by source" filter. Sources are ranked by total revenue over the range.
+export interface SourceDaily {
+  sources: { source: string; revenue: number; orders: number }[];
+  rows: Record<string, Record<string, { orders: number; revenue: number }>>; // source -> date -> vals
+}
+
+export async function getDailySourceBreakdown(from: string, to: string): Promise<Record<string, SourceDaily>> {
+  if (!hasDb()) return {};
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from("daily_source")
+    .select("date,brand_id,source,orders,revenue_ils")
+    .gte("date", from)
+    .lte("date", to)
+    .limit(50000);
+  if (error) throw new Error(`daily_source query failed: ${error.message}`);
+
+  const out: Record<string, SourceDaily> = {};
+  const totals: Record<string, Map<string, { orders: number; revenue: number }>> = {};
+  for (const r of data ?? []) {
+    const brand = r.brand_id as string;
+    const source = r.source as string;
+    const date = String(r.date).slice(0, 10);
+    const orders = Number(r.orders);
+    const revenue = Number(r.revenue_ils);
+    (out[brand] ??= { sources: [], rows: {} }).rows[source] ??= {};
+    out[brand].rows[source][date] = { orders, revenue };
+    (totals[brand] ??= new Map());
+    const t = totals[brand].get(source) ?? { orders: 0, revenue: 0 };
+    t.orders += orders;
+    t.revenue += revenue;
+    totals[brand].set(source, t);
+  }
+  for (const brand of Object.keys(out)) {
+    out[brand].sources = [...totals[brand]]
+      .map(([source, t]) => ({ source, orders: t.orders, revenue: t.revenue }))
+      .sort((a, b) => b.revenue - a.revenue);
+  }
+  return out;
+}
+
 // Month-to-date ad spend (ILS) for a brand — for budget pacing (independent of the
 // selected date range).
 export async function getBrandMonthSpend(brandId: string): Promise<number> {

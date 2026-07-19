@@ -49,6 +49,22 @@ export default function DateRangePicker({
     router.push(`/?range=custom&from=${cFrom}&to=${cTo}${brandQ}`);
   };
 
+  // Shift the current window by ±N days (keeps the window length). Doesn't step past today.
+  const shift = (iso: string, days: number) => {
+    const d = new Date(iso + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const step = (delta: number) => {
+    const nextTo = shift(to, delta);
+    if (delta > 0 && nextTo > todayStr) return; // don't go into the future
+    setOpen(false);
+    router.push(`/?range=custom&from=${shift(from, delta)}&to=${nextTo}${brandQ}`);
+  };
+  const arrowBtn =
+    "inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--card-border)] bg-[var(--card)] text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:opacity-30";
+
   const btn = (isActive: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
       isActive ? "bg-blue-600 text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"
@@ -56,6 +72,12 @@ export default function DateRangePicker({
 
   return (
     <div className="relative flex flex-wrap items-center gap-2" ref={ref}>
+      <button onClick={() => step(-1)} className={arrowBtn} aria-label="Previous day" title="Shift back one day">
+        ◀
+      </button>
+      <button onClick={() => step(1)} disabled={to >= todayStr} className={arrowBtn} aria-label="Next day" title="Shift forward one day">
+        ▶
+      </button>
       <div className="inline-flex flex-wrap rounded-lg border border-[var(--card-border)] bg-[var(--card)] p-1">
         {RANGE_PRESETS.map((p) => (
           <button key={p.key} onClick={() => goPreset(p.key)} className={btn(activeKey === p.key)}>

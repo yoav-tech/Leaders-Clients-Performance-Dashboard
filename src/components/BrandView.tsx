@@ -13,8 +13,10 @@ import {
   formatRoas,
   roasTone,
 } from "@/lib/metrics";
+import type { SourceDaily } from "@/lib/queries";
 import Sparkline from "./Sparkline";
 import BreakdownExplorer from "./BreakdownExplorer";
+import DailyTable from "./DailyTable";
 
 const TONE: Record<string, string> = {
   good: "text-[var(--good)]",
@@ -76,6 +78,7 @@ export default function BrandView({
   brand,
   metrics,
   breakdown,
+  sourceDaily,
   store,
   monthSpend,
   from,
@@ -84,6 +87,7 @@ export default function BrandView({
   brand: BrandConfig;
   metrics: BrandMetrics;
   breakdown: DayBreakdown[];
+  sourceDaily: SourceDaily;
   store: StoreAnalytics | null;
   monthSpend: number;
   from: string;
@@ -145,19 +149,41 @@ export default function BrandView({
       </Panel>
 
       {/* Pacing */}
-      {pacing && (
-        <Panel title="Budget pacing · this month">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Monthly budget" value={formatIls(pacing.budget)} />
-            <Stat label="Spent (MTD)" value={formatIls(pacing.spend)} />
-            <Stat label="Projected EOM" value={formatIls(pacing.projected)} tone={pacing.projected > pacing.budget ? "bad" : "good"} />
-            <Stat label="Pace" value={pacing.pacePct === null ? "—" : `${Math.round(pacing.pacePct)}%`} tone={pacing.pacePct && pacing.pacePct > 110 ? "warn" : "none"} />
-          </div>
-          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[var(--background)]">
-            <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, (pacing.spend / (pacing.budget || 1)) * 100)}%` }} />
-          </div>
-        </Panel>
-      )}
+      {pacing && (() => {
+        const remaining = Math.max(0, pacing.budget - pacing.spend);
+        // Ratio of efficiency (ROAS vs target) to pace — flags scale-up vs pull-back.
+        const efficient = blendedRoas !== null && blendedRoas >= target;
+        const behind = pacing.pacePct !== null && pacing.pacePct < 100;
+        const signal =
+          blendedRoas === null || pacing.pacePct === null
+            ? { emoji: "⚪", label: "—", tone: "none", hint: "" }
+            : efficient && behind
+              ? { emoji: "🟢", label: "Room to scale", tone: "good", hint: "ROAS beats target and you're under pace — push budget." }
+              : !efficient && !behind
+                ? { emoji: "🔴", label: "Pull back", tone: "bad", hint: "ROAS below target and ahead of pace — ease spend." }
+                : { emoji: "🟡", label: "On track", tone: "warn", hint: "" };
+        return (
+          <Panel title="Budget pacing · this month">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              <Stat label="Monthly budget" value={formatIls(pacing.budget)} />
+              <Stat label="Spent (MTD)" value={formatIls(pacing.spend)} />
+              <Stat label="Remaining" value={formatIls(remaining)} />
+              <Stat label="Projected EOM" value={formatIls(pacing.projected)} tone={pacing.projected > pacing.budget ? "bad" : "good"} />
+              <Stat label="Pace" value={pacing.pacePct === null ? "—" : `${Math.round(pacing.pacePct)}%`} tone={pacing.pacePct && pacing.pacePct > 110 ? "warn" : "none"} />
+            </div>
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[var(--background)]">
+              <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, (pacing.spend / (pacing.budget || 1)) * 100)}%` }} />
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+              <span className={`font-semibold ${TONE[signal.tone]}`}>{signal.emoji} {signal.label}</span>
+              <span className="text-[var(--muted)]">
+                · Blended ROAS {formatRoas(blendedRoas)} vs target {target.toFixed(1)} · pace {pacing.pacePct === null ? "—" : Math.round(pacing.pacePct) + "%"}
+                {signal.hint ? ` — ${signal.hint}` : ""}
+              </span>
+            </div>
+          </Panel>
+        );
+      })()}
 
       {/* Per-channel funnel table */}
       <Panel title="Channels · funnel">
@@ -214,51 +240,8 @@ export default function BrandView({
       {/* Breakdown explorer (on-demand) */}
       <BreakdownExplorer brandId={brand.id} from={from} to={to} />
 
-      {/* Daily breakdown */}
-      <Panel title={`Daily · ${from} → ${to}`}>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] border-collapse text-sm">
-            <thead>
-              <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
-                <th className="px-2 py-1.5 text-left">Day</th>
-                <th className="px-2 py-1.5 text-right">Spend</th>
-                <th className="px-2 py-1.5 text-right">Ad Rev</th>
-                <th className="px-2 py-1.5 text-right">ROAS</th>
-                <th className="px-2 py-1.5 text-right">Purch</th>
-                <th className="px-2 py-1.5 text-right">CPA</th>
-                <th className={`px-2 py-1.5 text-right ${DIV}`}>Site Rev</th>
-                <th className="px-2 py-1.5 text-right">AOV</th>
-                <th className="px-2 py-1.5 text-right">CVR</th>
-                <th className="px-2 py-1.5 text-right">CAC</th>
-                <th className="px-2 py-1.5 text-right">Blended</th>
-              </tr>
-            </thead>
-            <tbody className="tabular-nums">
-              {breakdown.map((d) => {
-                const site = d.channels.site;
-                const aov = site.purchases ? site.revenue / site.purchases : null;
-                const cvr = d.total.clicks ? site.purchases / d.total.clicks : null;
-                const cac = d.newCustomers ? d.total.spend / d.newCustomers : null;
-                return (
-                  <tr key={d.date} className="border-t border-[var(--card-border)]">
-                    <td className="px-2 py-1.5 text-left font-medium">{d.date.slice(5)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatIls(d.total.spend)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatIls(d.total.revenue)}</td>
-                    <td className={`px-2 py-1.5 text-right ${TONE[roasTone(d.total.roas, target)]}`}>{formatRoas(d.total.roas)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatNumber(d.total.purchases)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatIls(d.total.cpa)}</td>
-                    <td className={`px-2 py-1.5 text-right ${DIV}`}>{formatIls(site.revenue)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatIls(aov)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatPct(cvr)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatIls(cac)}</td>
-                    <td className={`px-2 py-1.5 text-right font-semibold ${TONE[roasTone(d.blendedRoas, target)]}`}>{formatRoas(d.blendedRoas)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
+      {/* Daily breakdown (with by-source filter) */}
+      <DailyTable breakdown={breakdown} source={sourceDaily} target={target} from={from} to={to} />
     </div>
   );
 }

@@ -71,6 +71,30 @@ CREATE TABLE IF NOT EXISTS clickup_state (
   value      text,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- Store-attributed channel funnel (first-party UTM) + raw-source daily breakdown.
+CREATE TABLE IF NOT EXISTS daily_utm (
+  date date NOT NULL,
+  brand_id text NOT NULL,
+  channel text NOT NULL,        -- meta | google | tiktok
+  purchases numeric NOT NULL DEFAULT 0,
+  revenue_ils numeric NOT NULL DEFAULT 0,
+  fetched_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (date, brand_id, channel)
+);
+CREATE TABLE IF NOT EXISTS daily_source (
+  date date NOT NULL,
+  brand_id text NOT NULL,
+  source text NOT NULL,         -- raw utm_source
+  orders numeric NOT NULL DEFAULT 0,
+  revenue_ils numeric NOT NULL DEFAULT 0,
+  fetched_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (date, brand_id, source)
+);
+ALTER TABLE daily_utm    ENABLE ROW LEVEL SECURITY; ALTER TABLE daily_utm    FORCE ROW LEVEL SECURITY;
+ALTER TABLE daily_source ENABLE ROW LEVEL SECURITY; ALTER TABLE daily_source FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON daily_utm    FROM anon, authenticated;
+REVOKE ALL ON daily_source FROM anon, authenticated;
+
 ALTER TABLE alerts_sent   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alerts_sent   FORCE  ROW LEVEL SECURITY;
 ALTER TABLE clickup_state ENABLE ROW LEVEL SECURITY;
