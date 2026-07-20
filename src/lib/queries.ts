@@ -273,14 +273,22 @@ export async function getDailySourceBreakdown(from: string, to: string): Promise
     .limit(50000);
   if (error) throw new Error(`daily_source query failed: ${error.message}`);
 
+  const raw = (data ?? []).map((r) => ({
+    brand: r.brand_id as string,
+    source: r.source as string,
+    date: String(r.date).slice(0, 10),
+    orders: Number(r.orders),
+    revenue: Number(r.revenue_ils),
+  }));
+
   const out: Record<string, SourceDaily> = {};
   const totals: Record<string, Map<string, { orders: number; revenue: number }>> = {};
-  for (const r of data ?? []) {
-    const brand = r.brand_id as string;
-    const source = r.source as string;
-    const date = String(r.date).slice(0, 10);
-    const orders = Number(r.orders);
-    const revenue = Number(r.revenue_ils);
+  for (const r of raw) {
+    const brand = r.brand;
+    const source = r.source;
+    const date = r.date;
+    const orders = r.orders;
+    const revenue = r.revenue;
     (out[brand] ??= { sources: [], rows: {} }).rows[source] ??= {};
     out[brand].rows[source][date] = { orders, revenue };
     (totals[brand] ??= new Map());
