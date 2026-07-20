@@ -4,6 +4,7 @@ import {
   getBrandMonthSpend,
   getDailyBreakdown,
   getDailySourceBreakdown,
+  getMonthForecast,
   getLastUpdated,
   type SourceDaily,
 } from "@/lib/queries";
@@ -30,11 +31,12 @@ export default async function Home({
   const brandId = BRANDS.some((b) => b.id === sp.brand) ? sp.brand! : BRANDS[0].id;
   const brand = getBrand(brandId)!;
 
-  const [allMetrics, monthSpend, breakdownMap, sourceMap, store, lastUpdated] = await Promise.all([
+  const [allMetrics, monthSpend, breakdownMap, sourceMap, forecast, store, lastUpdated] = await Promise.all([
     getBrandMetrics(range.from, range.to),
     getBrandMonthSpend(brandId),
     getDailyBreakdown(range.from, range.to),
     getDailySourceBreakdown(range.from, range.to),
+    getMonthForecast(brandId),
     fetchQuickShopAnalytics(brand),
     getLastUpdated(),
   ]);
@@ -85,6 +87,7 @@ export default async function Home({
           metrics={metrics}
           breakdown={breakdownMap[brandId] ?? []}
           sourceDaily={sourceMap[brandId] ?? emptySource}
+          forecast={forecast}
           store={store}
           monthSpend={monthSpend}
           from={range.from}
