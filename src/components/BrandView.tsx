@@ -13,7 +13,7 @@ import {
   formatRoas,
   roasTone,
 } from "@/lib/metrics";
-import type { SourceDaily } from "@/lib/queries";
+import type { SourceDaily, MonthForecast } from "@/lib/queries";
 import Sparkline from "./Sparkline";
 import BreakdownExplorer from "./BreakdownExplorer";
 import DailyTable from "./DailyTable";
@@ -79,6 +79,7 @@ export default function BrandView({
   metrics,
   breakdown,
   sourceDaily,
+  forecast,
   store,
   monthSpend,
   from,
@@ -88,6 +89,7 @@ export default function BrandView({
   metrics: BrandMetrics;
   breakdown: DayBreakdown[];
   sourceDaily: SourceDaily;
+  forecast: MonthForecast;
   store: StoreAnalytics | null;
   monthSpend: number;
   from: string;
@@ -185,6 +187,31 @@ export default function BrandView({
         );
       })()}
 
+      {/* Month-end forecast */}
+      <Panel title={`Month-end forecast · ${forecast.month} · projected from ${forecast.elapsedComplete}/${forecast.daysInMonth} days · run-rate = last 7d`}>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div>
+            <div className="mb-2 text-[11px] uppercase tracking-wide text-[var(--muted)]">Store · projected EOM</div>
+            <div className="space-y-1.5">
+              <Fc label="Store revenue" mtd={formatIls(forecast.mtd.storeRevenue)} eom={formatIls(forecast.eom.storeRevenue)} />
+              <Fc label="Orders" mtd={formatNumber(forecast.mtd.orders)} eom={formatNumber(Math.round(forecast.eom.orders))} />
+              <Fc label="Blended ROAS" mtd="" eom={formatRoas(forecast.eom.blendedRoas)} tone={roasTone(forecast.eom.blendedRoas, target)} />
+              <Fc label="Store AOV" mtd="" eom={formatIls(forecast.eom.aov)} />
+            </div>
+          </div>
+          <div>
+            <div className="mb-2 text-[11px] uppercase tracking-wide text-[var(--muted)]">Ads · projected EOM</div>
+            <div className="space-y-1.5">
+              <Fc label={`Spend${forecast.budget ? ` (of ${formatIls(forecast.budget)})` : ""}`} mtd={formatIls(forecast.mtd.spend)} eom={formatIls(forecast.eom.spend)} tone={forecast.budget && forecast.eom.spend > forecast.budget ? "bad" : "none"} />
+              <Fc label="Ad revenue" mtd={formatIls(forecast.mtd.adRevenue)} eom={formatIls(forecast.eom.adRevenue)} />
+              <Fc label="ROAS" mtd="" eom={formatRoas(forecast.eom.roas)} tone={roasTone(forecast.eom.roas, target)} />
+              <Fc label="Purchases" mtd={formatNumber(forecast.mtd.purchases)} eom={formatNumber(Math.round(forecast.eom.purchases))} />
+              <Fc label="CPA" mtd="" eom={formatIls(forecast.eom.cpa)} />
+            </div>
+          </div>
+        </div>
+      </Panel>
+
       {/* Per-channel funnel table */}
       <Panel title="Channels · funnel">
         <div className="overflow-x-auto">
@@ -242,6 +269,19 @@ export default function BrandView({
 
       {/* Daily breakdown (with by-source filter) */}
       <DailyTable breakdown={breakdown} source={sourceDaily} target={target} from={from} to={to} />
+    </div>
+  );
+}
+
+// Forecast row: "label   MTD → EOM" (EOM emphasised).
+function Fc({ label, mtd, eom, tone }: { label: string; mtd: string; eom: string; tone?: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2 border-b border-[var(--card-border)]/50 pb-1 text-sm">
+      <span className="text-[var(--muted)]">{label}</span>
+      <span className="flex items-baseline gap-1.5 tabular-nums">
+        {mtd ? <span className="text-xs text-[var(--muted)]">{mtd} →</span> : null}
+        <span className={`font-semibold ${tone && tone !== "none" ? TONE[tone] : ""}`}>{eom}</span>
+      </span>
     </div>
   );
 }

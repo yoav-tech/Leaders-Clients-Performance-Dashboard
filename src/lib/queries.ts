@@ -316,6 +316,68 @@ export async function getBrandMonthSpend(brandId: string): Promise<number> {
   );
 }
 
+// Month-end forecast: month-to-date actuals + a projection of the remaining days using the
+// recent 7-day daily run-rate (captures current pace and weekly seasonality). Covers ads + store.
+export interface MonthForecast {
+  month: string; // YYYY-MM
+  elapsedComplete: number; // full days done this month (excludes today's partial)
+  daysInMonth: number;
+  daysRemaining: number; // today + the rest
+  budget: number;
+  mtd: { spend: number; adRevenue: number; purchases: number; storeRevenue: number; orders: number };
+  eom: {
+    spend: number; adRevenue: number; purchases: number; storeRevenue: number; orders: number;
+    roas: number | null; blendedRoas: number | null; aov: number | null; cpa: number | null;
+  };
+}
+
+export async function getMonthForecast(brandId: string): Promise<MonthForecast> {
+  const brand = BRANDS.find((b) => b.id === brandId);
+  const { monthStart, elapsed, daysInMonth } = monthProgress();
+  const lastComplete = shiftDate(today(), -1);
+  const elapsedComplete = Math.max(0, elapsed - 1);
+  const daysRemaining = Math.max(0, daysInMonth - elapsedComplete);
+
+  const r7from = shiftDate(lastComplete, -6);
+  const [mtdAll, r7All] = await Promise.all([
+    elapsedComplete >= 1 ? getBrandMetrics(monthStart, lastComplete) : Promise.resolve([]),
+    getBrandMetrics(r7from, lastComplete),
+  ]);
+  const b = mtdAll.find((x) => x.brandId === brandId);
+  const r7 = r7All.find((x) => x.brandId === brandId);
+
+  const mtd = {
+    spend: b?.total.spend ?? 0,
+    adRevenue: b?.total.revenue ?? 0,
+    purchases: b?.total.purchases ?? 0,
+    storeRevenue: b?.channels.site.revenue ?? 0,
+    orders: b?.channels.site.purchases ?? 0,
+  };
+  const proj = (mtdVal: number, r7Val: number | undefined) => mtdVal + ((r7Val ?? 0) / 7) * daysRemaining;
+
+  const spend = proj(mtd.spend, r7?.total.spend);
+  const adRevenue = proj(mtd.adRevenue, r7?.total.revenue);
+  const purchases = proj(mtd.purchases, r7?.total.purchases);
+  const storeRevenue = proj(mtd.storeRevenue, r7?.channels.site.revenue);
+  const orders = proj(mtd.orders, r7?.channels.site.purchases);
+
+  return {
+    month: monthStart.slice(0, 7),
+    elapsedComplete,
+    daysInMonth,
+    daysRemaining,
+    budget: brand?.monthlyBudget ?? 0,
+    mtd,
+    eom: {
+      spend, adRevenue, purchases, storeRevenue, orders,
+      roas: spend ? adRevenue / spend : null,
+      blendedRoas: spend ? storeRevenue / spend : null,
+      aov: orders ? storeRevenue / orders : null,
+      cpa: purchases ? spend / purchases : null,
+    },
+  };
+}
+
 // When the DB was last written (drives the "last updated" label). Null if no DB/data.
 export async function getLastUpdated(): Promise<string | null> {
   if (!hasDb()) return null;
