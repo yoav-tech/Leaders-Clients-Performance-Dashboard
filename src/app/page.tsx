@@ -8,7 +8,7 @@ import {
   type SourceDaily,
 } from "@/lib/queries";
 import { fetchQuickShopAnalytics } from "@/lib/storeAnalytics";
-import { resolveRange } from "@/lib/dates";
+import { resolveRange, today } from "@/lib/dates";
 import { hasDb } from "@/lib/db";
 import BrandView from "@/components/BrandView";
 import BrandTabs from "@/components/BrandTabs";
@@ -16,6 +16,7 @@ import DateRangePicker from "@/components/DateRangePicker";
 import LeadersLogo from "@/components/LeadersLogo";
 import LogoutButton from "@/components/LogoutButton";
 import ThemeToggle from "@/components/ThemeToggle";
+import LiveRefresher from "@/components/LiveRefresher";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,7 @@ export default async function Home({
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <LiveRefresher brand={brandId} includesToday={range.to >= today()} />
           <DateRangePicker activeKey={range.key} from={range.from} to={range.to} brand={brandId} />
           <ThemeToggle />
           <LogoutButton />

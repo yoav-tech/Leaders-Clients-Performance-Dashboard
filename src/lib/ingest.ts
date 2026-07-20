@@ -292,9 +292,10 @@ async function writeSourceAttribution(
   }
 }
 
-export async function runIngest(opts?: { from?: string; to?: string }): Promise<IngestResult> {
+export async function runIngest(opts?: { from?: string; to?: string; brandId?: string }): Promise<IngestResult> {
   const to = opts?.to ?? today();
   const from = opts?.from ?? to; // default: today only; pass a range to backfill
+  const brandFilter = opts?.brandId; // optional: ingest a single brand (on-demand live refresh)
   const result: IngestResult = {
     ok: true,
     from,
@@ -319,6 +320,7 @@ export async function runIngest(opts?: { from?: string; to?: string }): Promise<
     .upsert({ date: to, base: "USD", quote: "ILS", rate: usdIls }, { onConflict: "date,base,quote" });
 
   for (const brand of BRANDS) {
+    if (brandFilter && brand.id !== brandFilter) continue;
     for (const channel of ["google", "meta", "tiktok", "site"] as Channel[]) {
       // Store channel for QuickShop brands comes from the QuickShop API, not Windsor.
       if (channel === "site" && brand.storePlatform === "quickshop") {
