@@ -29,20 +29,24 @@ export interface BrandConfig {
   mediaPlan?: MediaPlan;
 }
 
-// A planned media buy (video/awareness), per platform, over a flight window.
+// A planned media buy line (video/awareness), per platform + campaign type, over a flight.
+export type CampaignType = "influencers" | "ugc" | "reach";
 export interface MediaPlanLine {
+  platform: "meta" | "tiktok";
+  type: CampaignType;
   budget: number; // ILS
   views: number;
   thruplay: number;
   impressions?: number;
   reach?: number;
   cpm?: number;
+  flightStart: string; // YYYY-MM-DD (this line's start)
+  flightEnd: string;
 }
 export interface MediaPlan {
-  flightStart: string; // YYYY-MM-DD
+  flightStart: string; // overall flight window
   flightEnd: string;
-  meta: MediaPlanLine;
-  tiktok: MediaPlanLine;
+  lines: MediaPlanLine[];
 }
 
 export const BRANDS: BrandConfig[] = [
@@ -112,12 +116,17 @@ export const BRANDS: BrandConfig[] = [
     nativeCurrency: "ILS",
     targetRoas: 0,
     monthlyBudget: 0,
-    // Awareness media plan (video). Platform totals from the media-plan breakdown.
+    // Awareness media plan (video), split by platform + campaign type (from the breakdown).
     mediaPlan: {
       flightStart: "2026-07-09",
       flightEnd: "2026-07-31",
-      meta: { budget: 6000, views: 275391, thruplay: 88125, impressions: 258750, reach: 129375, cpm: 4 },
-      tiktok: { budget: 6000, views: 374387, thruplay: 119804 },
+      lines: [
+        { platform: "meta", type: "influencers", budget: 3475, views: 217188, thruplay: 69500, flightStart: "2026-07-12", flightEnd: "2026-07-31" },
+        { platform: "meta", type: "ugc", budget: 1490, views: 58203, thruplay: 18625, flightStart: "2026-07-09", flightEnd: "2026-07-31" },
+        { platform: "meta", type: "reach", budget: 1035, views: 0, thruplay: 0, impressions: 258750, reach: 129375, cpm: 4, flightStart: "2026-07-09", flightEnd: "2026-07-31" },
+        { platform: "tiktok", type: "influencers", budget: 4200, views: 291667, thruplay: 93333, flightStart: "2026-07-12", flightEnd: "2026-07-31" },
+        { platform: "tiktok", type: "ugc", budget: 1800, views: 82721, thruplay: 26471, flightStart: "2026-07-09", flightEnd: "2026-07-31" },
+      ],
     },
   },
 ];
