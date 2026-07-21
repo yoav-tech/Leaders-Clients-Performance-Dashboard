@@ -4,6 +4,7 @@
 
 import { getBrandMetrics } from "./queries";
 import { collectAlerts } from "./alerts";
+import { getBrand } from "./brands";
 import { shiftDate, today } from "./dates";
 
 const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
@@ -19,7 +20,9 @@ async function snapshot(): Promise<string> {
     getBrandMetrics(from, to),
     collectAlerts().catch(() => []),
   ]);
-  const brands = metrics.map((m) => ({
+  const brands = metrics
+    .filter((m) => !getBrand(m.brandId)?.mediaPlan)
+    .map((m) => ({
     brand: m.brandId,
     spend: Math.round(m.total.spend),
     adRoas: m.total.roas,

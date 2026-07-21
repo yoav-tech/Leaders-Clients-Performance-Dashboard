@@ -24,6 +24,25 @@ export interface BrandConfig {
   channelCurrency?: Partial<Record<ChannelKey, Currency>>;
   targetRoas: number; // for green/red coloring
   monthlyBudget: number; // total monthly ad budget (ILS) for pacing; 0 = pacing hidden
+  // Awareness/media-plan brands (no store, no ROAS) — get the plan-vs-execution view instead
+  // of the conversion dashboard, and are excluded from digest/alerts.
+  mediaPlan?: MediaPlan;
+}
+
+// A planned media buy (video/awareness), per platform, over a flight window.
+export interface MediaPlanLine {
+  budget: number; // ILS
+  views: number;
+  thruplay: number;
+  impressions?: number;
+  reach?: number;
+  cpm?: number;
+}
+export interface MediaPlan {
+  flightStart: string; // YYYY-MM-DD
+  flightEnd: string;
+  meta: MediaPlanLine;
+  tiktok: MediaPlanLine;
 }
 
 export const BRANDS: BrandConfig[] = [
@@ -80,6 +99,26 @@ export const BRANDS: BrandConfig[] = [
 
     targetRoas: 3,
     monthlyBudget: 100000,
+  },
+  {
+    id: "style",
+    name: "Style",
+    nameHe: "סטייל",
+    metaAccountId: "1347113570125922", // Meta: סטייל
+    googleAccountId: null,
+    tiktokAccountId: "7660542426796277777", // TikTok: Style Hair Care
+    storePlatform: "quickshop", // no store — awareness only (storeId null ⇒ skipped)
+    storeId: null,
+    nativeCurrency: "ILS",
+    targetRoas: 0,
+    monthlyBudget: 0,
+    // Awareness media plan (video). Platform totals from the media-plan breakdown.
+    mediaPlan: {
+      flightStart: "2026-07-09",
+      flightEnd: "2026-07-31",
+      meta: { budget: 6000, views: 275391, thruplay: 88125, impressions: 258750, reach: 129375, cpm: 4 },
+      tiktok: { budget: 6000, views: 374387, thruplay: 119804 },
+    },
   },
 ];
 

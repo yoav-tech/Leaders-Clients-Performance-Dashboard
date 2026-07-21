@@ -44,7 +44,7 @@ export async function performanceAlerts(days = 7): Promise<Alert[]> {
   const out: Alert[] = [];
   for (const m of metrics) {
     const brand = BRANDS.find((b) => b.id === m.brandId);
-    if (!brand) continue;
+    if (!brand || brand.mediaPlan) continue; // skip awareness (media-plan) brands
     const tag = `${to}:${m.brandId}`;
     const p = m.previous;
 
@@ -143,6 +143,7 @@ export async function adHealthAlerts(): Promise<Alert[]> {
   const day = shiftDate(today(), -1);
   const out: Alert[] = [];
   for (const brand of BRANDS) {
+    if (brand.mediaPlan) continue; // awareness brands: no conversion alerts
     for (const ch of ["meta", "google", "tiktok"] as const) {
       const account = accountFor(brand, ch);
       if (!account) continue;

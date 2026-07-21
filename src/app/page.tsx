@@ -18,6 +18,8 @@ import LeadersLogo from "@/components/LeadersLogo";
 import LogoutButton from "@/components/LogoutButton";
 import ThemeToggle from "@/components/ThemeToggle";
 import LiveRefresher from "@/components/LiveRefresher";
+import MediaPlanView from "@/components/MediaPlanView";
+import { getMediaPlanExecution } from "@/lib/mediaPlan";
 
 export const dynamic = "force-dynamic";
 
@@ -31,16 +33,22 @@ export default async function Home({
   const brandId = BRANDS.some((b) => b.id === sp.brand) ? sp.brand! : BRANDS[0].id;
   const brand = getBrand(brandId)!;
 
-  const [allMetrics, monthSpend, breakdownMap, sourceMap, forecast, store, lastUpdated] = await Promise.all([
-    getBrandMetrics(range.from, range.to),
-    getBrandMonthSpend(brandId),
-    getDailyBreakdown(range.from, range.to),
-    getDailySourceBreakdown(range.from, range.to),
-    getMonthForecast(brandId),
-    fetchQuickShopAnalytics(brand),
-    getLastUpdated(),
-  ]);
-  const metrics = allMetrics.find((m) => m.brandId === brandId)!;
+  const isMediaPlan = !!brand.mediaPlan;
+  const exec = isMediaPlan ? await getMediaPlanExecution(brand) : null;
+  const conv = isMediaPlan
+    ? null
+    : await (async () => {
+        const [allMetrics, monthSpend, breakdownMap, sourceMap, forecast, store] = await Promise.all([
+          getBrandMetrics(range.from, range.to),
+          getBrandMonthSpend(brandId),
+          getDailyBreakdown(range.from, range.to),
+          getDailySourceBreakdown(range.from, range.to),
+          getMonthForecast(brandId),
+          fetchQuickShopAnalytics(brand),
+        ]);
+        return { metrics: allMetrics.find((m) => m.brandId === brandId)!, monthSpend, breakdownMap, sourceMap, forecast, store };
+      })();
+  const lastUpdated = await getLastUpdated();
   const emptySource: SourceDaily = { sources: [], rows: {} };
 
   // Preserve the current range across brand-tab navigation.
@@ -64,8 +72,10 @@ export default async function Home({
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <LiveRefresher brand={brandId} includesToday={range.to >= today()} />
-          <DateRangePicker activeKey={range.key} from={range.from} to={range.to} brand={brandId} />
+          {!isMediaPlan && <LiveRefresher brand={brandId} includesToday={range.to >= today()} />}
+          {!isMediaPlan && (
+            <DateRangePicker activeKey={range.key} from={range.from} to={range.to} brand={brandId} />
+          )}
           <ThemeToggle />
           <LogoutButton />
         </div>
@@ -82,17 +92,21 @@ export default async function Home({
       )}
 
       <div className="mt-4">
-        <BrandView
-          brand={brand}
-          metrics={metrics}
-          breakdown={breakdownMap[brandId] ?? []}
-          sourceDaily={sourceMap[brandId] ?? emptySource}
-          forecast={forecast}
-          store={store}
-          monthSpend={monthSpend}
-          from={range.from}
-          to={range.to}
-        />
+        {isMediaPlan && exec ? (
+          <MediaPlanView brand={brand} exec={exec} />
+        ) : conv ? (
+          <BrandView
+            brand={brand}
+            metrics={conv.metrics}
+            breakdown={conv.breakdownMap[brandId] ?? []}
+            sourceDaily={conv.sourceMap[brandId] ?? emptySource}
+            forecast={conv.forecast}
+            store={conv.store}
+            monthSpend={conv.monthSpend}
+            from={range.from}
+            to={range.to}
+          />
+        ) : null}
       </div>
     </main>
   );
