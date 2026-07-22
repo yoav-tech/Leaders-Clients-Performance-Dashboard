@@ -75,7 +75,7 @@ export async function getMediaPlanExecution(brand: BrandConfig): Promise<MediaPl
         dateFrom: mp.flightStart,
         dateTo: asOf,
         accounts: [brand.metaAccountId],
-        cacheSeconds: 120,
+        cacheSeconds: 60,
       });
       for (const r of rows) {
         if (normId(r.account_id) !== acc) continue;
@@ -98,7 +98,7 @@ export async function getMediaPlanExecution(brand: BrandConfig): Promise<MediaPl
         dateFrom: mp.flightStart,
         dateTo: asOf,
         accounts: [brand.tiktokAccountId],
-        cacheSeconds: 120,
+        cacheSeconds: 60,
       });
       for (const r of rows) {
         if (normId(r.account_id) !== acc) continue;

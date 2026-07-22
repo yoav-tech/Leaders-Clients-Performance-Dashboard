@@ -72,7 +72,11 @@ export default async function Home({
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {!isMediaPlan && <LiveRefresher brand={brandId} includesToday={range.to >= today()} />}
+          {isMediaPlan ? (
+            <LiveRefresher brand={brandId} active />
+          ) : (
+            <LiveRefresher brand={brandId} active={range.to >= today()} warmPath="/api/live-warm" />
+          )}
           {!isMediaPlan && (
             <DateRangePicker activeKey={range.key} from={range.from} to={range.to} brand={brandId} />
           )}
