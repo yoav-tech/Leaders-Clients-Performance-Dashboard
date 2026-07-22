@@ -125,6 +125,7 @@ export default function BrandView({
     { label: "ROAS", metric: "roas", value: formatRoas(total.roas), cur: total.roas, prev: p?.roas ?? null, tone: roasTone(total.roas, target) },
     { label: "Purchases", metric: "purchases", value: formatNumber(total.purchases), cur: total.purchases, prev: p?.purchases ?? null },
     { label: "CPA", metric: "cpa", value: formatIls(total.cpa), cur: total.cpa, prev: p?.cpa ?? null },
+    { label: "Ad AOV", metric: "aov", value: formatIls(total.aov), cur: total.aov, prev: p?.aov ?? null },
   ];
 
   const { elapsed, daysInMonth } = monthProgress();
@@ -143,7 +144,7 @@ export default function BrandView({
       </Panel>
 
       <Panel title="Ads · performance · vs previous period">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           {adKpis.map((k) => (
             <Kpi key={k.label} {...k} />
           ))}
@@ -215,7 +216,7 @@ export default function BrandView({
       {/* Per-channel funnel table */}
       <Panel title="Channels · funnel">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] border-collapse text-sm">
+          <table className="w-full min-w-[900px] border-collapse text-sm">
             <thead>
               <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
                 <th className="px-2 py-1.5 text-left">Channel</th>
@@ -228,6 +229,7 @@ export default function BrandView({
                 <th className={`px-2 py-1.5 text-right ${DIV}`}>Purch</th>
                 <th className="px-2 py-1.5 text-right">CVR</th>
                 <th className="px-2 py-1.5 text-right">Revenue</th>
+                <th className="px-2 py-1.5 text-right">AOV</th>
                 <th className="px-2 py-1.5 text-right">ROAS</th>
               </tr>
             </thead>
@@ -308,6 +310,7 @@ function ChannelRow({ c, target }: { c: ChannelMetrics; target: number }) {
       <td className={`px-2 py-1.5 text-right ${DIV}`}>{formatNumber(c.purchases)}</td>
       <td className="px-2 py-1.5 text-right">{formatPct(c.cvr)}</td>
       <td className="px-2 py-1.5 text-right">{formatIls(c.revenue)}</td>
+      <td className="px-2 py-1.5 text-right">{formatIls(c.aov)}</td>
       <td className={`px-2 py-1.5 text-right ${TONE[roasTone(c.roas, target)]}`}>{formatRoas(c.roas)}</td>
     </tr>
   );
@@ -326,6 +329,7 @@ function SiteRow({ c }: { c: ChannelMetrics }) {
       <td className={`px-2 py-1.5 text-right ${DIV}`}>{formatNumber(c.purchases)}</td>
       <td className="px-2 py-1.5 text-right">—</td>
       <td className="px-2 py-1.5 text-right">{formatIls(c.revenue)}</td>
+      <td className="px-2 py-1.5 text-right">{formatIls(c.aov)}</td>
       <td className="px-2 py-1.5 text-right">—</td>
     </tr>
   );
@@ -344,6 +348,7 @@ function TotalRow({ c, target, blended }: { c: ChannelMetrics; target: number; b
       <td className={`px-2 py-1.5 text-right ${DIV}`}>{formatNumber(c.purchases)}</td>
       <td className="px-2 py-1.5 text-right">{formatPct(c.cvr)}</td>
       <td className="px-2 py-1.5 text-right">{formatIls(c.revenue)}</td>
+      <td className="px-2 py-1.5 text-right">{formatIls(c.aov)}</td>
       <td className={`px-2 py-1.5 text-right ${TONE[roasTone(c.roas, target)]}`}>
         {formatRoas(c.roas)}
         <span className="ml-1 text-[10px] font-normal text-[var(--muted)]">blend {formatRoas(blended)}</span>
