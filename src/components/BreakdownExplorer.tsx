@@ -11,6 +11,8 @@ const TONE: Record<string, string> = {
   bad: "text-[var(--bad)]",
   none: "text-[var(--muted)]",
 };
+const DIV = "border-l border-[var(--card-border)]"; // divider between traffic & store metrics
+const sum = <T,>(a: T[], f: (t: T) => number) => a.reduce((s, t) => s + (f(t) || 0), 0);
 
 interface AdRow {
   key: string;
@@ -57,6 +59,7 @@ export default function BreakdownExplorer({
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
   const [storeSummary, setStoreSummary] = useState<{ orders: number; revenue: number; spend: number; roas: number | null } | null>(null);
+  const [storeAttributed, setStoreAttributed] = useState(false);
 
   const dims = dimensionsFor(channel);
 
@@ -78,6 +81,7 @@ export default function BreakdownExplorer({
         setKind(j.kind ?? "ad");
         setNote(j.note ?? "");
         setStoreSummary(j.storeSummary ?? null);
+        setStoreAttributed(!!j.storeAttributed);
         if (j.error && (!j.rows || !j.rows.length)) setErr(j.error);
       })
       .catch((e) => !cancelled && setErr(String(e)))
@@ -142,6 +146,21 @@ export default function BreakdownExplorer({
                   <td className="px-2 py-1.5 text-right">{formatIls(r.aov)}</td>
                 </tr>
               ))}
+              {(() => {
+                const s = rows as StoreRow[];
+                const orders = sum(s, (r) => r.orders);
+                const revenue = sum(s, (r) => r.revenue);
+                const discount = sum(s, (r) => r.discount);
+                return (
+                  <tr className="border-t-2 border-[var(--card-border)] font-semibold">
+                    <td className="px-2 py-1.5 text-left">Total</td>
+                    <td className="px-2 py-1.5 text-right">{formatNumber(orders)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatIls(revenue)}</td>
+                    <td className="px-2 py-1.5 text-right text-[var(--muted)]">{formatIls(discount)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatIls(orders ? revenue / orders : null)}</td>
+                  </tr>
+                );
+              })()}
             </tbody>
           </table>
         ) : (
@@ -167,7 +186,7 @@ export default function BreakdownExplorer({
                 <th className="px-2 py-1.5 text-right">Clicks</th>
                 <th className="px-2 py-1.5 text-right">CTR</th>
                 <th className="px-2 py-1.5 text-right">CPC</th>
-                <th className="px-2 py-1.5 text-right">Purch</th>
+                <th className={`px-2 py-1.5 text-right ${DIV}`}>Purch</th>
                 <th className="px-2 py-1.5 text-right">Revenue</th>
                 <th className="px-2 py-1.5 text-right">AOV</th>
                 <th className="px-2 py-1.5 text-right">ROAS</th>
@@ -182,14 +201,39 @@ export default function BreakdownExplorer({
                   <td className="px-2 py-1.5 text-right">{formatNumber(r.clicks)}</td>
                   <td className="px-2 py-1.5 text-right">{formatPct(r.ctr)}</td>
                   <td className="px-2 py-1.5 text-right">{formatIls(r.cpc)}</td>
-                  <td className="px-2 py-1.5 text-right">{formatNumber(r.purchases)}</td>
+                  <td className={`px-2 py-1.5 text-right ${DIV}`}>{formatNumber(r.purchases)}</td>
                   <td className="px-2 py-1.5 text-right">{formatIls(r.revenue)}</td>
                   <td className="px-2 py-1.5 text-right">{formatIls(r.aov)}</td>
                   <td className={`px-2 py-1.5 text-right ${TONE[roasTone(r.roas, 3)]}`}>{formatRoas(r.roas)}</td>
                 </tr>
               ))}
+              {(() => {
+                const a = rows as AdRow[];
+                const spend = sum(a, (r) => r.spend);
+                const impressions = sum(a, (r) => r.impressions);
+                const clicks = sum(a, (r) => r.clicks);
+                const purchases = sum(a, (r) => r.purchases ?? 0);
+                const revenue = sum(a, (r) => r.revenue ?? 0);
+                return (
+                  <tr className="border-t-2 border-[var(--card-border)] font-semibold">
+                    <td className="px-2 py-1.5 text-left">Total</td>
+                    <td className="px-2 py-1.5 text-right">{formatIls(spend)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatNumber(impressions)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatNumber(clicks)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatPct(impressions ? clicks / impressions : null)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatIls(clicks ? spend / clicks : null)}</td>
+                    <td className={`px-2 py-1.5 text-right ${DIV}`}>{formatNumber(purchases)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatIls(revenue)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatIls(purchases ? revenue / purchases : null)}</td>
+                    <td className={`px-2 py-1.5 text-right ${TONE[roasTone(spend ? revenue / spend : null, 3)]}`}>{formatRoas(spend ? revenue / spend : null)}</td>
+                  </tr>
+                );
+              })()}
             </tbody>
           </table>
+          {storeAttributed ? (
+            <div className="mt-2 text-[11px] text-[var(--muted)]">Purch · Revenue · AOV · ROAS are <span className="text-[var(--foreground)]">store-attributed</span> per campaign (store utm_campaign → ad campaign). Spend · Impr · Clicks are platform-reported.</div>
+          ) : null}
           </>
         )}
       </div>

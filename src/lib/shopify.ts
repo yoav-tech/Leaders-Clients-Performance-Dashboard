@@ -17,12 +17,16 @@ const FIELDS =
   "created_at,total_price,currency,financial_status,customer,discount_codes,landing_site,referring_site";
 
 // Pull utm_source/utm_medium from a Shopify landing_site (a path+query like "/?utm_source=ig&…").
-function parseUtm(landingSite: string | undefined): { source?: string; medium?: string } {
+function parseUtm(landingSite: string | undefined): { source?: string; medium?: string; campaign?: string } {
   if (!landingSite) return {};
   const qi = landingSite.indexOf("?");
   if (qi < 0) return {};
   const q = new URLSearchParams(landingSite.slice(qi + 1));
-  return { source: q.get("utm_source") ?? undefined, medium: q.get("utm_medium") ?? undefined };
+  return {
+    source: q.get("utm_source") ?? undefined,
+    medium: q.get("utm_medium") ?? undefined,
+    campaign: q.get("utm_campaign") ?? undefined,
+  };
 }
 
 // Read a per-brand env var, tolerating hyphen→underscore or removed (LA_BEAUTE / LABEAUTE).
@@ -198,6 +202,7 @@ export async function fetchShopifyPaidOrders(
         customerId: String(o.customer?.id ?? ""),
         utmSource: utm.source,
         utmMedium: utm.medium,
+        utmCampaign: utm.campaign,
         referrer: o.referring_site ?? undefined,
       });
       if (onOrder) {
