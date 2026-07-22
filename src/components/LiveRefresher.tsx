@@ -3,41 +3,54 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-// After first paint, warm the live-today cache for the viewed brand + range, then refresh the
-// server components so today's numbers become live. Re-warms periodically while the tab is open.
-// The page itself never blocks on this — it renders instantly with the cached snapshot first.
-export default function LiveRefresher({ brand, includesToday }: { brand: string; includesToday: boolean }) {
+// Keeps a view live after first paint. If `warmPath` is given, it POST-warms that endpoint
+// (e.g. re-ingest today) before refreshing; otherwise it just re-renders the server components
+// (which re-fetch their own live sources). Runs on mount and on an interval. Non-blocking — the
+// page always renders instantly first.
+export default function LiveRefresher({
+  brand,
+  active,
+  warmPath,
+  intervalMs = 90_000,
+}: {
+  brand: string;
+  active: boolean;
+  warmPath?: string;
+  intervalMs?: number;
+}) {
   const router = useRouter();
   const [state, setState] = useState<"idle" | "updating" | "live">("idle");
 
   useEffect(() => {
-    if (!includesToday) return;
+    if (!active) return;
     let cancelled = false;
 
     const tick = async () => {
       setState("updating");
-      try {
-        await fetch(`/api/live-warm?brand=${encodeURIComponent(brand)}`, { cache: "no-store" });
-      } catch {
-        /* ignore */
+      if (warmPath) {
+        try {
+          await fetch(`${warmPath}?brand=${encodeURIComponent(brand)}`, { cache: "no-store" });
+        } catch {
+          /* ignore */
+        }
       }
       if (cancelled) return;
       setState("live");
-      router.refresh(); // re-render server components with the now-warm live cache
+      router.refresh();
     };
 
     tick();
-    const iv = setInterval(tick, 90_000); // keep today fresh
+    const iv = setInterval(tick, intervalMs);
     return () => {
       cancelled = true;
       clearInterval(iv);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [brand, includesToday]);
+  }, [brand, active, warmPath, intervalMs]);
 
-  if (!includesToday) return null;
+  if (!active) return null;
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)]" title="Today's numbers update live">
+    <span className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)]" title="Updates live">
       <span className={`h-2 w-2 rounded-full ${state === "updating" ? "bg-[var(--warn)] animate-pulse" : "bg-[var(--good)]"}`} />
       {state === "updating" ? "updating…" : "live"}
     </span>
