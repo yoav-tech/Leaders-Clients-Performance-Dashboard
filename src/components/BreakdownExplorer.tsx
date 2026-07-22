@@ -19,6 +19,7 @@ interface AdRow {
   clicks: number;
   purchases: number | null;
   revenue: number | null;
+  aov: number | null;
   ctr: number | null;
   cpc: number | null;
   cpm: number | null;
@@ -157,7 +158,7 @@ export default function BreakdownExplorer({
           {note ? (
             <div className="mb-2 text-xs text-[var(--warn)]">{note}</div>
           ) : null}
-          <table className="w-full min-w-[760px] border-collapse text-sm">
+          <table className="w-full min-w-[820px] border-collapse text-sm">
             <thead>
               <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
                 <th className="px-2 py-1.5 text-left">{DIMENSION_LABELS[dimension]}</th>
@@ -168,6 +169,7 @@ export default function BreakdownExplorer({
                 <th className="px-2 py-1.5 text-right">CPC</th>
                 <th className="px-2 py-1.5 text-right">Purch</th>
                 <th className="px-2 py-1.5 text-right">Revenue</th>
+                <th className="px-2 py-1.5 text-right">AOV</th>
                 <th className="px-2 py-1.5 text-right">ROAS</th>
               </tr>
             </thead>
@@ -182,6 +184,7 @@ export default function BreakdownExplorer({
                   <td className="px-2 py-1.5 text-right">{formatIls(r.cpc)}</td>
                   <td className="px-2 py-1.5 text-right">{formatNumber(r.purchases)}</td>
                   <td className="px-2 py-1.5 text-right">{formatIls(r.revenue)}</td>
+                  <td className="px-2 py-1.5 text-right">{formatIls(r.aov)}</td>
                   <td className={`px-2 py-1.5 text-right ${TONE[roasTone(r.roas, 3)]}`}>{formatRoas(r.roas)}</td>
                 </tr>
               ))}

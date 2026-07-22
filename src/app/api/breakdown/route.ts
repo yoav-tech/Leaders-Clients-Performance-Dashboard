@@ -143,6 +143,7 @@ export async function GET(request: Request) {
           clicks: Math.round(a.clicks),
           purchases: metricsAvailable ? Math.round(a.purchases * 10) / 10 : null,
           revenue: metricsAvailable ? Math.round(revenue) : null,
+          aov: metricsAvailable && a.purchases ? Math.round(revenue / a.purchases) : null,
           ctr: a.impressions ? a.clicks / a.impressions : null,
           cpc: a.clicks ? spend / a.clicks : null,
           cpm: a.impressions ? (spend / a.impressions) * 1000 : null,
