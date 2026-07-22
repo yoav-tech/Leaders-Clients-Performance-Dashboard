@@ -15,6 +15,33 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const normId = (v: unknown) => String(v ?? "").replace(/^act_/i, "").trim();
 const toIls = (v: number, cur: string) => (cur === "USD" ? v * 3 : v);
 
+// Group paid store orders by utm_campaign (lowercased) → { orders, revenue (ILS) }. Used to
+// attribute store revenue to each ad campaign (store utm_campaign == ad campaign id or name).
+async function fetchStoreByCampaign(brand: BrandConfig, from: string, to: string): Promise<Map<string, { orders: number; revenue: number }>> {
+  const map = new Map<string, { orders: number; revenue: number }>();
+  const add = (utmCampaign: string | undefined, total: number, cur: string) => {
+    const c = (utmCampaign ?? "").trim().toLowerCase();
+    if (!c) return;
+    const e = map.get(c) ?? { orders: 0, revenue: 0 };
+    e.orders += 1;
+    e.revenue += toIls(total, cur);
+    map.set(c, e);
+  };
+  try {
+    if (brand.storePlatform === "shopify") {
+      const { orders, currency } = await fetchShopifyPaidOrders(brand, from, to);
+      const cur = (currency ?? brand.nativeCurrency).toUpperCase();
+      for (const o of orders) add(o.utmCampaign, o.total, cur);
+    } else {
+      const orders = await fetchQuickShopPaidOrders(brand, from, to);
+      for (const o of orders) add(o.utmCampaign, o.total, brand.nativeCurrency);
+    }
+  } catch {
+    /* empty attribution on failure */
+  }
+  return map;
+}
+
 function adAccount(brand: BrandConfig, channel: Channel): string | null {
   if (channel === "google") return brand.googleAccountId;
   if (channel === "meta") return brand.metaAccountId;
@@ -79,7 +106,10 @@ export async function GET(request: Request) {
     const valueField = revenueField ?? map.revenueRoasField ?? null;
     const roasField = revenueField ? null : (map.revenueRoasField ?? null);
 
-    const baseFields = ["account_id", "currency", dimField, "spend", "impressions", "clicks"];
+    // For the campaign dimension we attribute STORE revenue per campaign (matched by the store's
+    // utm_campaign to the ad campaign id/name), so fetch campaign_id too.
+    const isCampaign = dimension === "campaign";
+    const baseFields = ["account_id", "currency", dimField, "spend", "impressions", "clicks", ...(isCampaign ? ["campaign_id"] : [])];
     const fetchOpts = {
       connector: map.connector,
       dateFrom: from,
@@ -111,7 +141,7 @@ export async function GET(request: Request) {
     const target = normId(account);
     const agg = new Map<
       string,
-      { spend: number; impressions: number; clicks: number; purchases: number; revenue: number; cur: string }
+      { spend: number; impressions: number; clicks: number; purchases: number; revenue: number; cur: string; cid?: string }
     >();
     for (const r of raw) {
       if (normId(r.account_id) !== target) continue;
@@ -129,25 +159,38 @@ export async function GET(request: Request) {
           ? num(r[roasField]) * spend
           : 0;
       a.cur = cur;
+      if (isCampaign && r.campaign_id) a.cid = String(r.campaign_id);
       agg.set(key, a);
     }
+
+    // Per-campaign store attribution: group paid store orders by utm_campaign.
+    const storeByCampaign = isCampaign ? await fetchStoreByCampaign(brand, from, to) : null;
 
     const rows = [...agg]
       .map(([key, a]) => {
         const spend = toIls(a.spend, a.cur);
-        const revenue = toIls(a.revenue, a.cur);
+        let purchases: number | null;
+        let revenue: number | null;
+        if (storeByCampaign) {
+          const st = storeByCampaign.get(String(a.cid ?? "").toLowerCase()) ?? storeByCampaign.get(key.toLowerCase()) ?? { orders: 0, revenue: 0 };
+          purchases = Math.round(st.orders);
+          revenue = Math.round(st.revenue);
+        } else {
+          purchases = metricsAvailable ? Math.round(a.purchases * 10) / 10 : null;
+          revenue = metricsAvailable ? Math.round(toIls(a.revenue, a.cur)) : null;
+        }
         return {
           key,
           spend: Math.round(spend),
           impressions: Math.round(a.impressions),
           clicks: Math.round(a.clicks),
-          purchases: metricsAvailable ? Math.round(a.purchases * 10) / 10 : null,
-          revenue: metricsAvailable ? Math.round(revenue) : null,
-          aov: metricsAvailable && a.purchases ? Math.round(revenue / a.purchases) : null,
+          purchases,
+          revenue,
+          aov: purchases && revenue !== null ? Math.round(revenue / purchases) : null,
           ctr: a.impressions ? a.clicks / a.impressions : null,
           cpc: a.clicks ? spend / a.clicks : null,
           cpm: a.impressions ? (spend / a.impressions) * 1000 : null,
-          roas: metricsAvailable && spend ? revenue / spend : null,
+          roas: revenue !== null && spend ? revenue / spend : null,
         };
       })
       .sort((x, y) => y.spend - x.spend)
@@ -174,6 +217,7 @@ export async function GET(request: Request) {
       dimension,
       rows,
       metricsAvailable,
+      storeAttributed: isCampaign,
       storeSummary,
       ...(metricsAvailable ? {} : { note: "Conversions aren't available for this breakdown — showing spend & traffic only." }),
     });
