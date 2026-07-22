@@ -55,6 +55,7 @@ export default function BreakdownExplorer({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
+  const [storeSummary, setStoreSummary] = useState<{ orders: number; revenue: number; spend: number; roas: number | null } | null>(null);
 
   const dims = dimensionsFor(channel);
 
@@ -75,6 +76,7 @@ export default function BreakdownExplorer({
         setRows(j.rows ?? []);
         setKind(j.kind ?? "ad");
         setNote(j.note ?? "");
+        setStoreSummary(j.storeSummary ?? null);
         if (j.error && (!j.rows || !j.rows.length)) setErr(j.error);
       })
       .catch((e) => !cancelled && setErr(String(e)))
@@ -143,6 +145,15 @@ export default function BreakdownExplorer({
           </table>
         ) : (
           <>
+          {storeSummary ? (
+            <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-[var(--panel-border)] bg-[var(--background)]/40 px-3 py-2 text-sm">
+              <span className="text-[11px] uppercase tracking-wide text-[var(--muted)]">🏪 Store total (UTM-attributed)</span>
+              <span>עסקאות <span className="font-semibold">{formatNumber(storeSummary.orders)}</span></span>
+              <span>הכנסות <span className="font-semibold">{formatIls(storeSummary.revenue)}</span></span>
+              <span>רואס חנות <span className={`font-semibold ${TONE[roasTone(storeSummary.roas, 3)]}`}>{formatRoas(storeSummary.roas)}</span></span>
+              <span className="text-[var(--muted)]">spend {formatIls(storeSummary.spend)}</span>
+            </div>
+          ) : null}
           {note ? (
             <div className="mb-2 text-xs text-[var(--warn)]">{note}</div>
           ) : null}
