@@ -5,6 +5,7 @@ import { DIMENSION_FIELDS, type Dimension } from "@/lib/breakdowns";
 import { fetchWindsor, num } from "@/lib/windsor";
 import { fetchQuickShopPaidOrders } from "@/lib/quickshop";
 import { fetchShopifyPaidOrders } from "@/lib/shopify";
+import { getSupabase, hasDb } from "@/lib/db";
 import type { Channel } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -151,12 +152,28 @@ export async function GET(request: Request) {
       .sort((x, y) => y.spend - x.spend)
       .slice(0, 200);
 
+    // Store-attributed total for this channel (first-party UTM) — the real store outcome, vs
+    // the platform-reported per-campaign numbers above.
+    let storeSummary: { orders: number; revenue: number; spend: number; roas: number | null } | null = null;
+    if (hasDb()) {
+      const sb = getSupabase();
+      const [utmRes, metRes] = await Promise.all([
+        sb.from("daily_utm").select("purchases,revenue_ils").eq("brand_id", brand.id).eq("channel", channel).gte("date", from).lte("date", to),
+        sb.from("daily_metrics").select("spend_ils").eq("brand_id", brand.id).eq("channel", channel).gte("date", from).lte("date", to),
+      ]);
+      const orders = (utmRes.data ?? []).reduce((s, r) => s + Number(r.purchases), 0);
+      const revenue = (utmRes.data ?? []).reduce((s, r) => s + Number(r.revenue_ils), 0);
+      const spend = (metRes.data ?? []).reduce((s, r) => s + Number(r.spend_ils), 0);
+      storeSummary = { orders: Math.round(orders), revenue: Math.round(revenue), spend: Math.round(spend), roas: spend ? revenue / spend : null };
+    }
+
     return NextResponse.json({
       kind: "ad",
       channel,
       dimension,
       rows,
       metricsAvailable,
+      storeSummary,
       ...(metricsAvailable ? {} : { note: "Conversions aren't available for this breakdown — showing spend & traffic only." }),
     });
   } catch (e) {
