@@ -60,6 +60,8 @@ export default function BreakdownExplorer({
   const [note, setNote] = useState("");
   const [storeSummary, setStoreSummary] = useState<{ orders: number; revenue: number; spend: number; roas: number | null } | null>(null);
   const [storeAttributed, setStoreAttributed] = useState(false);
+  const [sortCol, setSortCol] = useState("spend");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const dims = dimensionsFor(channel);
 
@@ -82,6 +84,8 @@ export default function BreakdownExplorer({
         setNote(j.note ?? "");
         setStoreSummary(j.storeSummary ?? null);
         setStoreAttributed(!!j.storeAttributed);
+        setSortCol(j.kind === "store" ? "revenue" : "spend");
+        setSortDir("desc");
         if (j.error && (!j.rows || !j.rows.length)) setErr(j.error);
       })
       .catch((e) => !cancelled && setErr(String(e)))
@@ -94,6 +98,35 @@ export default function BreakdownExplorer({
 
   const pill = (active: boolean) =>
     `rounded-md px-3 py-1 text-sm transition-colors ${active ? "bg-blue-600 text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`;
+
+  const toggleSort = (col: string) => {
+    if (col === sortCol) setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    else {
+      setSortCol(col);
+      setSortDir("desc");
+    }
+  };
+  const sortedRows = [...rows].sort((a, b) => {
+    const av = (a as unknown as Record<string, unknown>)[sortCol];
+    const bv = (b as unknown as Record<string, unknown>)[sortCol];
+    if (typeof av === "string" || typeof bv === "string") {
+      const r = String(av ?? "").localeCompare(String(bv ?? ""));
+      return sortDir === "desc" ? -r : r;
+    }
+    const an = typeof av === "number" ? av : -Infinity;
+    const bn = typeof bv === "number" ? bv : -Infinity;
+    return sortDir === "desc" ? bn - an : an - bn;
+  });
+  // Sortable header cell. `align` left for the label column, right otherwise.
+  const Th = (label: string, col: string, align: "left" | "right" = "right", extra = "") => (
+    <th
+      onClick={() => toggleSort(col)}
+      className={`px-2 py-1.5 text-${align} cursor-pointer select-none hover:text-[var(--foreground)] ${col === sortCol ? "text-[var(--foreground)]" : ""} ${extra}`}
+    >
+      {label}
+      {col === sortCol ? (sortDir === "desc" ? " ▼" : " ▲") : ""}
+    </th>
+  );
 
   return (
     <div className="panel p-4">
@@ -129,15 +162,15 @@ export default function BreakdownExplorer({
           <table className="w-full min-w-[560px] border-collapse text-sm">
             <thead>
               <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
-                <th className="px-2 py-1.5 text-left">Discount code</th>
-                <th className="px-2 py-1.5 text-right">Orders</th>
-                <th className="px-2 py-1.5 text-right">Revenue</th>
-                <th className="px-2 py-1.5 text-right">Discount</th>
-                <th className="px-2 py-1.5 text-right">AOV</th>
+                {Th("Discount code", "key", "left")}
+                {Th("Orders", "orders")}
+                {Th("Revenue", "revenue")}
+                {Th("Discount", "discount")}
+                {Th("AOV", "aov")}
               </tr>
             </thead>
             <tbody className="tabular-nums">
-              {(rows as StoreRow[]).map((r) => (
+              {(sortedRows as StoreRow[]).map((r) => (
                 <tr key={r.key} className="border-t border-[var(--card-border)]">
                   <td className="px-2 py-1.5 text-left font-medium">{r.key}</td>
                   <td className="px-2 py-1.5 text-right">{formatNumber(r.orders)}</td>
@@ -180,20 +213,20 @@ export default function BreakdownExplorer({
           <table className="w-full min-w-[820px] border-collapse text-sm">
             <thead>
               <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
-                <th className="px-2 py-1.5 text-left">{DIMENSION_LABELS[dimension]}</th>
-                <th className="px-2 py-1.5 text-right">Spend</th>
-                <th className="px-2 py-1.5 text-right">Impr</th>
-                <th className="px-2 py-1.5 text-right">Clicks</th>
-                <th className="px-2 py-1.5 text-right">CTR</th>
-                <th className="px-2 py-1.5 text-right">CPC</th>
-                <th className={`px-2 py-1.5 text-right ${DIV}`}>Purch</th>
-                <th className="px-2 py-1.5 text-right">Revenue</th>
-                <th className="px-2 py-1.5 text-right">AOV</th>
-                <th className="px-2 py-1.5 text-right">ROAS</th>
+                {Th(DIMENSION_LABELS[dimension], "key", "left")}
+                {Th("Spend", "spend")}
+                {Th("Impr", "impressions")}
+                {Th("Clicks", "clicks")}
+                {Th("CTR", "ctr")}
+                {Th("CPC", "cpc")}
+                {Th("Purch", "purchases", "right", DIV)}
+                {Th("Revenue", "revenue")}
+                {Th("AOV", "aov")}
+                {Th("ROAS", "roas")}
               </tr>
             </thead>
             <tbody className="tabular-nums">
-              {(rows as AdRow[]).map((r) => (
+              {(sortedRows as AdRow[]).map((r) => (
                 <tr key={r.key} className="border-t border-[var(--card-border)]">
                   <td className="max-w-[220px] truncate px-2 py-1.5 text-left font-medium" title={r.key}>{r.key}</td>
                   <td className="px-2 py-1.5 text-right">{formatIls(r.spend)}</td>
