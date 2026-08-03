@@ -21,7 +21,10 @@ async function snapshot(): Promise<string> {
     collectAlerts().catch(() => []),
   ]);
   const brands = metrics
-    .filter((m) => !getBrand(m.brandId)?.mediaPlan)
+    .filter((m) => {
+      const b = getBrand(m.brandId);
+      return !b?.mediaPlan && !b?.appInstall;
+    })
     .map((m) => ({
     brand: m.brandId,
     spend: Math.round(m.total.spend),

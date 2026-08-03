@@ -20,6 +20,8 @@ import ThemeToggle from "@/components/ThemeToggle";
 import LiveRefresher from "@/components/LiveRefresher";
 import MediaPlanView from "@/components/MediaPlanView";
 import { getMediaPlanExecution } from "@/lib/mediaPlan";
+import AppInstallView from "@/components/AppInstallView";
+import { getAppInstallStats } from "@/lib/appInstall";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +36,11 @@ export default async function Home({
   const brand = getBrand(brandId)!;
 
   const isMediaPlan = !!brand.mediaPlan;
+  const isAppInstall = !!brand.appInstall;
+  const isSpecial = isMediaPlan || isAppInstall;
   const exec = isMediaPlan ? await getMediaPlanExecution(brand) : null;
-  const conv = isMediaPlan
+  const appStats = isAppInstall ? await getAppInstallStats(brand, range.from, range.to) : null;
+  const conv = isSpecial
     ? null
     : await (async () => {
         const [allMetrics, monthSpend, breakdownMap, sourceMap, forecast, store] = await Promise.all([
@@ -72,7 +77,7 @@ export default async function Home({
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {isMediaPlan ? (
+          {isSpecial ? (
             <LiveRefresher brand={brandId} active />
           ) : (
             <LiveRefresher brand={brandId} active={range.to >= today()} warmPath="/api/live-warm" />
@@ -98,6 +103,12 @@ export default async function Home({
       <div className="mt-4">
         {isMediaPlan && exec ? (
           <MediaPlanView brand={brand} exec={exec} />
+        ) : isAppInstall ? (
+          appStats ? (
+            <AppInstallView brand={brand} stats={appStats} from={range.from} to={range.to} />
+          ) : (
+            <div className="panel p-4 text-sm text-[var(--muted)]">No app-install data for this range.</div>
+          )
         ) : conv ? (
           <BrandView
             brand={brand}
