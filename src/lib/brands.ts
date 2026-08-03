@@ -27,6 +27,9 @@ export interface BrandConfig {
   // Awareness/media-plan brands (no store, no ROAS) — get the plan-vs-execution view instead
   // of the conversion dashboard, and are excluded from digest/alerts.
   mediaPlan?: MediaPlan;
+  // App-install brands (e.g. Haat) — KPI is installs/CPI, get the app-install view; excluded
+  // from the conversion digest/alerts.
+  appInstall?: boolean;
 }
 
 // A planned media buy line (video/awareness), per platform + campaign type, over a flight.
@@ -128,6 +131,20 @@ export const BRANDS: BrandConfig[] = [
         { platform: "tiktok", type: "ugc", budget: 1800, views: 82721, thruplay: 26471, flightStart: "2026-07-09", flightEnd: "2026-07-31" },
       ],
     },
+  },
+  {
+    id: "haat",
+    name: "Haat Delivery",
+    nameHe: "האט",
+    metaAccountId: "1234295457784453", // Meta: Haat Delivery IL
+    googleAccountId: null,
+    tiktokAccountId: null,
+    storePlatform: "quickshop", // no store — app installs (storeId null ⇒ skipped)
+    storeId: null,
+    nativeCurrency: "ILS",
+    targetRoas: 0,
+    monthlyBudget: 0,
+    appInstall: true,
   },
 ];
 
