@@ -30,6 +30,16 @@ export interface BrandConfig {
   // App-install brands (e.g. Haat) — KPI is installs/CPI, get the app-install view; excluded
   // from the conversion digest/alerts.
   appInstall?: boolean;
+  // Multi-section app/leads report: each section is a Meta account (Delivery app + HR leads).
+  appSections?: AppSectionConfig[];
+}
+
+export interface AppSectionConfig {
+  key: string;
+  title: string;
+  account: string; // Meta account id
+  kind: "app" | "leads"; // app funnel (install→reg→purchase) vs leads
+  budget?: number; // monthly ad budget (ILS) for pacing; 0/undefined = projection only
 }
 
 // A planned media buy line (video/awareness), per platform + campaign type, over a flight.
@@ -145,6 +155,10 @@ export const BRANDS: BrandConfig[] = [
     targetRoas: 0,
     monthlyBudget: 0,
     appInstall: true,
+    appSections: [
+      { key: "delivery", title: "Delivery · אפליקציה", account: "1234295457784453", kind: "app", budget: 0 },
+      { key: "hr", title: "HR · גיוס עובדים", account: "1063774221665705", kind: "leads", budget: 0 },
+    ],
   },
 ];
 
