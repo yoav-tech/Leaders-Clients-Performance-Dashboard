@@ -20,8 +20,8 @@ import ThemeToggle from "@/components/ThemeToggle";
 import LiveRefresher from "@/components/LiveRefresher";
 import MediaPlanView from "@/components/MediaPlanView";
 import { getMediaPlanExecution } from "@/lib/mediaPlan";
-import AppInstallView from "@/components/AppInstallView";
-import { getAppInstallStats } from "@/lib/appInstall";
+import AppReportView from "@/components/AppReportView";
+import { getAppReport } from "@/lib/appReport";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +39,7 @@ export default async function Home({
   const isAppInstall = !!brand.appInstall;
   const isSpecial = isMediaPlan || isAppInstall;
   const exec = isMediaPlan ? await getMediaPlanExecution(brand) : null;
-  const appStats = isAppInstall ? await getAppInstallStats(brand, range.from, range.to) : null;
+  const appReport = isAppInstall ? await getAppReport(brand, range.from, range.to) : null;
   const conv = isSpecial
     ? null
     : await (async () => {
@@ -104,10 +104,10 @@ export default async function Home({
         {isMediaPlan && exec ? (
           <MediaPlanView brand={brand} exec={exec} />
         ) : isAppInstall ? (
-          appStats ? (
-            <AppInstallView brand={brand} stats={appStats} from={range.from} to={range.to} />
+          appReport ? (
+            <AppReportView brand={brand} report={appReport} from={range.from} to={range.to} />
           ) : (
-            <div className="panel p-4 text-sm text-[var(--muted)]">No app-install data for this range.</div>
+            <div className="panel p-4 text-sm text-[var(--muted)]">No app data for this range.</div>
           )
         ) : conv ? (
           <BrandView
