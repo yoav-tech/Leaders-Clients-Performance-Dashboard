@@ -120,10 +120,35 @@ async function fetchSource(cfg: AwarenessSourceConfig, brand: BrandConfig, from:
   };
 }
 
+async function fetchTrend(cfg: AwarenessSourceConfig, from: string, to: string, filter: string): Promise<Map<string, { spend: number; views: number }>> {
+  const acc = normId(cfg.account);
+  const fields = cfg.platform === "meta"
+    ? ["date", "account_id", "campaign", "spend", "video_thruplay_watched_actions"]
+    : ["date", "account_id", "campaign", "spend", "video_views"];
+  const rows = await fetchWindsor({ connector: cfg.platform === "meta" ? "facebook" : "google_ads", fields, dateFrom: from, dateTo: to, accounts: [cfg.account], cacheSeconds: 60 }).catch(() => []);
+  const m = new Map<string, { spend: number; views: number }>();
+  for (const r of rows) {
+    if (normId(r.account_id) !== acc) continue;
+    if (!String(r.campaign ?? "").toLowerCase().includes(filter)) continue;
+    const d = String(r.date ?? "").slice(0, 10);
+    if (!d) continue;
+    const e = m.get(d) ?? { spend: 0, views: 0 };
+    e.spend += num(r.spend);
+    e.views += cfg.platform === "meta" ? sumAction(r.video_thruplay_watched_actions) : num(r.video_views);
+    m.set(d, e);
+  }
+  return m;
+}
+
 export async function getAwarenessReport(brand: BrandConfig, from: string, to: string): Promise<AwarenessReport | null> {
   if (!brand.awarenessSources?.length) return null;
   const filter = (brand.campaignFilter ?? "").toLowerCase();
-  const sources = await Promise.all(brand.awarenessSources.map((s) => fetchSource(s, brand, from, to, filter)));
+
+  // Fetch all source + trend queries concurrently (Windsor is slow, esp. Meta video fields).
+  const [sources, trendMaps] = await Promise.all([
+    Promise.all(brand.awarenessSources.map((s) => fetchSource(s, brand, from, to, filter))),
+    Promise.all(brand.awarenessSources.map((s) => fetchTrend(s, from, to, filter))),
+  ]);
 
   const T = sources.reduce((a, s) => ({ spend: a.spend + s.spend, impressions: a.impressions + s.impressions, reach: a.reach + s.reach, views: a.views + s.views }), { spend: 0, impressions: 0, reach: 0, views: 0 });
   const totals = {
@@ -132,27 +157,15 @@ export async function getAwarenessReport(brand: BrandConfig, from: string, to: s
     cpv: T.views ? T.spend / T.views : null,
   };
 
-  // Combined daily trend (spend + views) across sources.
   const byDate = new Map<string, { spend: number; views: number }>();
-  await Promise.all(
-    brand.awarenessSources.map(async (cfg) => {
-      const acc = normId(cfg.account);
-      const fields = cfg.platform === "meta"
-        ? ["date", "account_id", "campaign", "spend", "video_thruplay_watched_actions"]
-        : ["date", "account_id", "campaign", "spend", "video_views"];
-      const rows = await fetchWindsor({ connector: cfg.platform === "meta" ? "facebook" : "google_ads", fields, dateFrom: from, dateTo: to, accounts: [cfg.account], cacheSeconds: 60 }).catch(() => []);
-      for (const r of rows) {
-        if (normId(r.account_id) !== acc) continue;
-        if (!String(r.campaign ?? "").toLowerCase().includes(filter)) continue;
-        const d = String(r.date ?? "").slice(0, 10);
-        if (!d) continue;
-        const e = byDate.get(d) ?? { spend: 0, views: 0 };
-        e.spend += num(r.spend);
-        e.views += cfg.platform === "meta" ? sumAction(r.video_thruplay_watched_actions) : num(r.video_views);
-        byDate.set(d, e);
-      }
-    }),
-  );
+  for (const m of trendMaps) {
+    for (const [d, e] of m) {
+      const x = byDate.get(d) ?? { spend: 0, views: 0 };
+      x.spend += e.spend;
+      x.views += e.views;
+      byDate.set(d, x);
+    }
+  }
   const trend = [...byDate].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([date, e]) => ({ date, spend: Math.round(e.spend), views: Math.round(e.views) }));
 
   return { sources, totals, trend };

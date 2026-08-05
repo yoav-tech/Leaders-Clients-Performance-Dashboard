@@ -1,4 +1,6 @@
-import type { BrandConfig } from "@/lib/brands";
+"use client";
+
+import { useEffect, useState } from "react";
 import type { AwarenessReport, AwSource } from "@/lib/awarenessReport";
 import { formatIls, formatNumber } from "@/lib/metrics";
 
@@ -74,11 +76,54 @@ function SourceBlock({ s }: { s: AwSource }) {
   );
 }
 
-export default function AwarenessView({ brand, report, from, to }: { brand: BrandConfig; report: AwarenessReport; from: string; to: string }) {
+export default function AwarenessView({
+  brandId,
+  brandName,
+  campaignFilter,
+  from,
+  to,
+}: {
+  brandId: string;
+  brandName: string;
+  campaignFilter: string;
+  from: string;
+  to: string;
+}) {
+  const [report, setReport] = useState<AwarenessReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = (showSpinner: boolean) => {
+      if (showSpinner) setLoading(true);
+      setErr("");
+      fetch(`/api/report/awareness?brand=${encodeURIComponent(brandId)}&from=${from}&to=${to}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((j) => {
+          if (cancelled) return;
+          if (j.error) setErr(j.error);
+          else setReport(j.report);
+        })
+        .catch((e) => !cancelled && setErr(String(e)))
+        .finally(() => !cancelled && setLoading(false));
+    };
+    load(true);
+    const iv = setInterval(() => load(false), 90_000); // keep live
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
+  }, [brandId, from, to]);
+
+  if (loading && !report) return <div className="panel p-10 text-center text-sm text-[var(--muted)]">Loading {brandName}…</div>;
+  if (err && !report) return <div className="panel p-4 text-sm text-[var(--muted)]">Couldn&apos;t load: {err}</div>;
+  if (!report) return <div className="panel p-4 text-sm text-[var(--muted)]">No awareness data for this range.</div>;
+
   const t = report.totals;
   return (
     <div className="space-y-4">
-      <Panel title={`${brand.name} · awareness · ${from} → ${to} · campaigns matching “${brand.campaignFilter}”`}>
+      <Panel title={`${brandName} · awareness · ${from} → ${to} · campaigns matching “${campaignFilter}”`}>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <Stat label="Spend" value={formatIls(t.spend)} />
           <Stat label="Impressions" value={formatNumber(t.impressions)} />
