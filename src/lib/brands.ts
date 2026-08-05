@@ -32,6 +32,9 @@ export interface BrandConfig {
   appInstall?: boolean;
   // Multi-section app/leads report: each section is a Meta account (Delivery app + HR leads).
   appSections?: AppSectionConfig[];
+  // Awareness report across shared accounts, filtered by campaign name (e.g. SCJ).
+  awarenessSources?: AwarenessSourceConfig[];
+  campaignFilter?: string; // lowercase substring campaigns must contain
 }
 
 export interface AppSectionConfig {
@@ -40,6 +43,14 @@ export interface AppSectionConfig {
   account: string; // Meta account id
   kind: "app" | "leads"; // app funnel (install→reg→purchase) vs leads
   budget?: number; // monthly ad budget (ILS) for pacing; 0/undefined = projection only
+}
+
+// Awareness report (e.g. SCJ) — reach/views campaigns inside SHARED accounts, matched by a
+// campaign-name filter (campaignFilter).
+export interface AwarenessSourceConfig {
+  platform: "meta" | "google";
+  account: string;
+  title: string;
 }
 
 // A planned media buy line (video/awareness), per platform + campaign type, over a flight.
@@ -153,11 +164,29 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 0,
-    monthlyBudget: 0,
+    monthlyBudget: 150000, // total Haat monthly budget (both sections) for pacing
     appInstall: true,
     appSections: [
       { key: "delivery", title: "Delivery · אפליקציה", account: "1234295457784453", kind: "app", budget: 0 },
       { key: "hr", title: "HR · גיוס עובדים", account: "1063774221665705", kind: "leads", budget: 0 },
+    ],
+  },
+  {
+    id: "scj",
+    name: "SCJ",
+    nameHe: "SCJ",
+    metaAccountId: null,
+    googleAccountId: null,
+    tiktokAccountId: null,
+    storePlatform: "quickshop",
+    storeId: null,
+    nativeCurrency: "ILS",
+    targetRoas: 0,
+    monthlyBudget: 0,
+    campaignFilter: "scj",
+    awarenessSources: [
+      { platform: "meta", account: "638387658529372", title: "Meta · LEADERS" },
+      { platform: "google", account: "566-212-3115", title: "Google · LDRS" },
     ],
   },
 ];

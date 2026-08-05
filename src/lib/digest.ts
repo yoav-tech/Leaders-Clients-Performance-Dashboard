@@ -44,7 +44,7 @@ export async function buildDigest(alerts?: Alert[]): Promise<string> {
 
   const rows: string[][] = [];
   for (const brand of BRANDS) {
-    if (brand.mediaPlan || brand.appInstall) continue; // non-conversion brands aren't in the digest
+    if (brand.mediaPlan || brand.appInstall || brand.awarenessSources) continue; // non-conversion brands aren't in the digest
     const m = metrics.find((x) => x.brandId === brand.id);
     if (!m) continue;
     const orders = Math.round(m.channels.site.purchases);
