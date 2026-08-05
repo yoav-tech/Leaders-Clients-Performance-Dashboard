@@ -22,6 +22,8 @@ import MediaPlanView from "@/components/MediaPlanView";
 import { getMediaPlanExecution } from "@/lib/mediaPlan";
 import AppReportView from "@/components/AppReportView";
 import { getAppReport } from "@/lib/appReport";
+import AwarenessView from "@/components/AwarenessView";
+import { getAwarenessReport } from "@/lib/awarenessReport";
 
 export const dynamic = "force-dynamic";
 
@@ -37,9 +39,11 @@ export default async function Home({
 
   const isMediaPlan = !!brand.mediaPlan;
   const isAppInstall = !!brand.appInstall;
-  const isSpecial = isMediaPlan || isAppInstall;
+  const isAwareness = !!brand.awarenessSources;
+  const isSpecial = isMediaPlan || isAppInstall || isAwareness;
   const exec = isMediaPlan ? await getMediaPlanExecution(brand) : null;
   const appReport = isAppInstall ? await getAppReport(brand, range.from, range.to) : null;
+  const awReport = isAwareness ? await getAwarenessReport(brand, range.from, range.to) : null;
   const conv = isSpecial
     ? null
     : await (async () => {
@@ -108,6 +112,12 @@ export default async function Home({
             <AppReportView brand={brand} report={appReport} from={range.from} to={range.to} />
           ) : (
             <div className="panel p-4 text-sm text-[var(--muted)]">No app data for this range.</div>
+          )
+        ) : isAwareness ? (
+          awReport ? (
+            <AwarenessView brand={brand} report={awReport} from={range.from} to={range.to} />
+          ) : (
+            <div className="panel p-4 text-sm text-[var(--muted)]">No awareness data for this range.</div>
           )
         ) : conv ? (
           <BrandView

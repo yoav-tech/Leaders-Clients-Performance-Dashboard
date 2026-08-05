@@ -108,9 +108,28 @@ function Trend({ s }: { s: AppSection }) {
 }
 
 export default function AppReportView({ brand, report, from, to }: { brand: BrandConfig; report: AppReport; from: string; to: string }) {
+  const budget = brand.monthlyBudget;
+  const mtdSpend = report.sections.reduce((a, s) => a + (s.pacing?.monthSpend ?? 0), 0);
+  const projSpend = report.sections.reduce((a, s) => a + (s.pacing?.projectedSpend ?? 0), 0);
+
   return (
     <div className="space-y-6">
       <div className="text-sm text-[var(--muted)]">{brand.name} · LDRS-managed campaigns only · {from} → {to} · live from Windsor</div>
+
+      {budget > 0 && (
+        <Panel title="Haat · total budget pacing (all sections, from ads)">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <Stat label="Monthly budget" value={formatIls(budget)} />
+            <Stat label="Spent (MTD)" value={formatIls(mtdSpend)} />
+            <Stat label="Projected EOM" value={formatIls(projSpend)} />
+            <Stat label="Projected vs budget" value={`${Math.round((projSpend / budget) * 100)}%`} />
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--background)]">
+            <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, (mtdSpend / budget) * 100)}%` }} />
+          </div>
+        </Panel>
+      )}
+
       {report.sections.map((s) => (
         <div key={s.key} className="space-y-4">
           <div className="text-base font-bold">{s.title}</div>
