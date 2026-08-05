@@ -35,6 +35,8 @@ export interface BrandConfig {
   // Awareness report across shared accounts, filtered by campaign name (e.g. SCJ).
   awarenessSources?: AwarenessSourceConfig[];
   campaignFilter?: string; // lowercase substring campaigns must contain
+  // Google search snapshot by competitive campaign type (e.g. Colgate: Total + Optic White).
+  googleSnapshot?: GoogleSnapshotConfig[];
 }
 
 export interface AppSectionConfig {
@@ -50,6 +52,12 @@ export interface AppSectionConfig {
 export interface AwarenessSourceConfig {
   platform: "meta" | "google";
   account: string;
+  title: string;
+}
+
+// Google search snapshot (e.g. Colgate) — accounts grouped by competitive campaign type.
+export interface GoogleSnapshotConfig {
+  account: string; // Google Ads account id
   title: string;
 }
 
@@ -187,6 +195,23 @@ export const BRANDS: BrandConfig[] = [
     awarenessSources: [
       { platform: "meta", account: "638387658529372", title: "Meta · LEADERS" },
       { platform: "google", account: "566-212-3115", title: "Google · LDRS" },
+    ],
+  },
+  {
+    id: "colgate",
+    name: "Colgate",
+    nameHe: "קולגייט",
+    metaAccountId: null,
+    googleAccountId: null,
+    tiktokAccountId: null,
+    storePlatform: "quickshop",
+    storeId: null,
+    nativeCurrency: "ILS",
+    targetRoas: 0,
+    monthlyBudget: 0,
+    googleSnapshot: [
+      { account: "265-522-0192", title: "Total" },
+      { account: "565-797-1550", title: "Optic White" },
     ],
   },
 ];

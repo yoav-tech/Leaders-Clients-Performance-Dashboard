@@ -23,6 +23,7 @@ import { getMediaPlanExecution } from "@/lib/mediaPlan";
 import AppReportView from "@/components/AppReportView";
 import { getAppReport } from "@/lib/appReport";
 import AwarenessView from "@/components/AwarenessView";
+import SearchSnapshotView from "@/components/SearchSnapshotView";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,8 @@ export default async function Home({
   const isMediaPlan = !!brand.mediaPlan;
   const isAppInstall = !!brand.appInstall;
   const isAwareness = !!brand.awarenessSources;
-  const isSpecial = isMediaPlan || isAppInstall || isAwareness;
+  const isSnapshot = !!brand.googleSnapshot;
+  const isSpecial = isMediaPlan || isAppInstall || isAwareness || isSnapshot;
   const exec = isMediaPlan ? await getMediaPlanExecution(brand) : null;
   const appReport = isAppInstall ? await getAppReport(brand, range.from, range.to) : null;
   const conv = isSpecial
@@ -113,6 +115,8 @@ export default async function Home({
           )
         ) : isAwareness ? (
           <AwarenessView brandId={brandId} brandName={brand.name} campaignFilter={brand.campaignFilter ?? ""} from={range.from} to={range.to} />
+        ) : isSnapshot ? (
+          <SearchSnapshotView brandId={brandId} brandName={brand.name} from={range.from} to={range.to} />
         ) : conv ? (
           <BrandView
             brand={brand}
