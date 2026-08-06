@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { runIngest } from "@/lib/ingest";
 import { getBrand } from "@/lib/brands";
 import { today } from "@/lib/dates";
+import { getServerSession, canAccessBrand } from "@/lib/serverSession";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // Windsor can be slow; runs in the background, not on page render
@@ -13,6 +14,9 @@ export async function GET(request: Request) {
   const brand = new URL(request.url).searchParams.get("brand") ?? "";
   if (!getBrand(brand)) {
     return NextResponse.json({ ok: false, error: "unknown brand" }, { status: 400 });
+  }
+  if (!canAccessBrand(await getServerSession(), brand)) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
   try {
     const t = today();

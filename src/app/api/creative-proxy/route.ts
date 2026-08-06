@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { verifyCreativeSig } from "@/lib/creativeSign";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -23,10 +24,16 @@ function hostAllowed(hostname: string): boolean {
   return ALLOWED_HOST_SUFFIXES.some((s) => h.endsWith(s));
 }
 
-// GET /api/creative-proxy?u=<url-encoded creative url>  (auth-gated by middleware)
+// GET /api/creative-proxy?u=<creative url>&sig=<hmac>  (auth-gated by middleware)
+// The signature ties each URL to one the server issued via /api/creatives (which is brand-guarded),
+// so a logged-in client can't proxy an arbitrary — or another client's — creative URL.
 export async function GET(request: Request) {
-  const u = new URL(request.url).searchParams.get("u");
+  const params = new URL(request.url).searchParams;
+  const u = params.get("u");
   if (!u) return NextResponse.json({ error: "missing u" }, { status: 400 });
+  if (!(await verifyCreativeSig(u, params.get("sig")))) {
+    return NextResponse.json({ error: "bad signature" }, { status: 403 });
+  }
 
   let target: URL;
   try {

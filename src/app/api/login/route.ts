@@ -1,18 +1,22 @@
 import { NextResponse } from "next/server";
-import { SESSION_COOKIE, issueSession, safeEqual, sameOrigin } from "@/lib/auth";
+import { SESSION_COOKIE, safeEqual, sameOrigin } from "@/lib/auth";
+import { issueSession } from "@/lib/session";
+import { getUserByEmail } from "@/lib/users";
+import { verifyPassword } from "@/lib/password";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
+// Two login modes:
+//  - Client: { email, password } → looked up in dashboard_users; session scoped to their brands.
+//  - Team:   { password } matching DASHBOARD_PASSWORD → admin session (all brands).
 export async function POST(request: Request) {
-  const password = process.env.DASHBOARD_PASSWORD;
+  const adminPassword = process.env.DASHBOARD_PASSWORD;
 
-  // CSRF: only accept credential submissions from our own origin.
   if (!sameOrigin(request)) {
     return NextResponse.json({ ok: false, error: "Bad origin" }, { status: 403 });
   }
 
-  // Throttle brute-force attempts per IP.
   const limited = rateLimit(`login:${clientIp(request)}`);
   if (!limited.ok) {
     return NextResponse.json(
@@ -21,22 +25,36 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json().catch(() => ({}))) as { password?: string };
+  const body = (await request.json().catch(() => ({}))) as { email?: string; password?: string };
+  const email = String(body.email ?? "").trim().toLowerCase();
+  const password = String(body.password ?? "");
+  const now = Math.floor(Date.now() / 1000);
 
-  if (!password || !(await safeEqual(String(body.password ?? ""), password))) {
-    return NextResponse.json({ ok: false, error: "Incorrect password" }, { status: 401 });
+  let session: { role: "admin" | "client"; sub: string; brands: string[] } | null = null;
+
+  if (email) {
+    // Client (or DB-defined admin) login.
+    const user = await getUserByEmail(email);
+    if (user && (await verifyPassword(password, user.passwordHash))) {
+      session = { role: user.role, sub: user.email, brands: user.brandIds };
+    }
+  } else if (adminPassword && (await safeEqual(password, adminPassword))) {
+    // Team shared-password login → admin.
+    session = { role: "admin", sub: "team", brands: [] };
   }
 
-  // Issue a fresh, expiring token on every successful login (rotation + anti-fixation).
-  const now = Math.floor(Date.now() / 1000);
-  const session = await issueSession(password, now);
+  if (!session) {
+    return NextResponse.json({ ok: false, error: "Incorrect email or password" }, { status: 401 });
+  }
+
+  const issued = await issueSession(session, now);
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(SESSION_COOKIE, session.value, {
+  res.cookies.set(SESSION_COOKIE, issued.value, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
     path: "/",
-    maxAge: session.maxAge,
+    maxAge: issued.maxAge,
   });
   return res;
 }
@@ -47,7 +65,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ ok: false, error: "Bad origin" }, { status: 403 });
   }
   const res = NextResponse.json({ ok: true });
-  // __Host- cookies require Secure + Path=/ to be cleared.
   res.cookies.set(SESSION_COOKIE, "", { path: "/", secure: true, maxAge: 0 });
   return res;
 }

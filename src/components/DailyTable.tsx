@@ -19,12 +19,14 @@ export default function DailyTable({
   target,
   from,
   to,
+  isClient = false,
 }: {
   breakdown: DayBreakdown[];
   source: SourceDaily;
   target: number;
   from: string;
   to: string;
+  isClient?: boolean;
 }) {
   const [sel, setSel] = useState("all");
   const isAll = sel === "all";
@@ -65,7 +67,7 @@ export default function DailyTable({
                 <th className={`px-2 py-1.5 text-right ${DIV}`}>Site Rev</th>
                 <th className="px-2 py-1.5 text-right">AOV</th>
                 <th className="px-2 py-1.5 text-right">CVR</th>
-                <th className="px-2 py-1.5 text-right">CAC</th>
+                {!isClient && <th className="px-2 py-1.5 text-right">CAC</th>}
                 <th className="px-2 py-1.5 text-right">Blended</th>
               </tr>
             </thead>
@@ -86,7 +88,7 @@ export default function DailyTable({
                     <td className={`px-2 py-1.5 text-right ${DIV}`}>{formatIls(site.revenue)}</td>
                     <td className="px-2 py-1.5 text-right">{formatIls(aov)}</td>
                     <td className="px-2 py-1.5 text-right">{formatPct(cvr)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatIls(cac)}</td>
+                    {!isClient && <td className="px-2 py-1.5 text-right">{formatIls(cac)}</td>}
                     <td className={`px-2 py-1.5 text-right font-semibold ${TONE[roasTone(d.blendedRoas, target)]}`}>{formatRoas(d.blendedRoas)}</td>
                   </tr>
                 );

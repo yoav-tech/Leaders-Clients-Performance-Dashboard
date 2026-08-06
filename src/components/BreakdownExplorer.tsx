@@ -6,9 +6,8 @@ import type { Channel } from "@/lib/types";
 import type { AdCreative, CreativeMap } from "@/lib/creatives";
 import { formatIls, formatNumber, formatPct, formatRoas, roasTone } from "@/lib/metrics";
 
-// Serve signed/expiring Meta & TikTok creative URLs through the first-party proxy so the strict
-// CSP (self-only) stays intact.
-const proxied = (u: string) => `/api/creative-proxy?u=${encodeURIComponent(u)}`;
+// creatives arrive from /api/creatives as ready signed first-party /api/creative-proxy paths
+// (keeps the strict self-only CSP intact); the client uses thumb/video verbatim.
 
 const TONE: Record<string, string> = {
   good: "text-[var(--good)]",
@@ -54,7 +53,7 @@ function ThumbCell({ cre, loading, title, onOpen }: { cre: AdCreative | undefine
         >
           {cre.thumb ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={proxied(cre.thumb)} alt="" loading="lazy" className="h-full w-full object-cover" />
+            <img src={cre.thumb} alt="" loading="lazy" className="h-full w-full object-cover" />
           ) : (
             <span className="flex h-full w-full items-center justify-center bg-[var(--card-border)]/30 text-[10px] text-[var(--muted)]">🎬</span>
           )}
@@ -73,16 +72,19 @@ export default function BreakdownExplorer({
   brandId,
   from,
   to,
+  isClient = false,
 }: {
   brandId: string;
   from: string;
   to: string;
+  isClient?: boolean;
 }) {
+  // The Store channel exposes discount codes — hidden from external clients.
   const channels: { id: Channel; label: string }[] = [
     { id: "meta", label: "Meta" },
     { id: "google", label: "Google" },
     { id: "tiktok", label: "TikTok" },
-    { id: "site", label: "Store" },
+    ...(isClient ? [] : [{ id: "site" as Channel, label: "Store" }]),
   ];
 
   const [channel, setChannel] = useState<Channel>("meta");
@@ -344,8 +346,8 @@ export default function BreakdownExplorer({
             </div>
             {lightbox.creative.video ? (
               <video
-                src={proxied(lightbox.creative.video)}
-                poster={lightbox.creative.thumb ? proxied(lightbox.creative.thumb) : undefined}
+                src={lightbox.creative.video}
+                poster={lightbox.creative.thumb ?? undefined}
                 controls
                 autoPlay
                 playsInline
@@ -353,7 +355,7 @@ export default function BreakdownExplorer({
               />
             ) : lightbox.creative.thumb ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={proxied(lightbox.creative.thumb)} alt="" className="max-h-[80vh] max-w-[88vw] rounded object-contain" />
+              <img src={lightbox.creative.thumb} alt="" className="max-h-[80vh] max-w-[88vw] rounded object-contain" />
             ) : null}
           </div>
         </div>

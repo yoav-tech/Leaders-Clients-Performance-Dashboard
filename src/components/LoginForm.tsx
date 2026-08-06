@@ -4,6 +4,7 @@ import { useState } from "react";
 import LeadersLogo from "./LeadersLogo";
 
 export default function LoginForm() {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -15,14 +16,14 @@ export default function LoginForm() {
     const res = await fetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify(email.trim() ? { email: email.trim(), password } : { password }),
     });
     if (res.ok) {
       // Full navigation so the middleware sees the freshly-set cookie.
       const next = new URLSearchParams(window.location.search).get("next") || "/";
       window.location.href = next.startsWith("/") ? next : "/";
     } else {
-      setError("Incorrect password");
+      setError("Incorrect email or password");
       setLoading(false);
     }
   };
@@ -42,11 +43,19 @@ export default function LoginForm() {
           <form onSubmit={submit} className="flex flex-col gap-3">
             <input
               className="login-input"
+              type="email"
+              placeholder="Email (clients)"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoFocus
+              autoComplete="username"
+            />
+            <input
+              className="login-input"
               type="password"
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              autoFocus
               autoComplete="current-password"
             />
             {error && <div className="text-xs text-[var(--bad)]">{error}</div>}

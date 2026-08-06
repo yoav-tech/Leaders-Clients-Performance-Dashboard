@@ -101,3 +101,18 @@ ALTER TABLE clickup_state ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clickup_state FORCE  ROW LEVEL SECURITY;
 REVOKE ALL ON alerts_sent   FROM anon, authenticated;
 REVOKE ALL ON clickup_state FROM anon, authenticated;
+
+-- Dashboard users for per-client access control. role=admin sees every brand; role=client is
+-- scoped to brand_ids. A single client can have multiple user rows (share brand_ids).
+-- password_hash is scrypt ("scrypt$N$r$p$salthex$hashhex"). Accessed only via service_role.
+CREATE TABLE IF NOT EXISTS dashboard_users (
+  email         text PRIMARY KEY,
+  password_hash text NOT NULL,
+  role          text NOT NULL DEFAULT 'client',   -- 'admin' | 'client'
+  brand_ids     text[] NOT NULL DEFAULT '{}',
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE dashboard_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE dashboard_users FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON dashboard_users FROM anon, authenticated;

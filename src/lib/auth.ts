@@ -23,7 +23,7 @@ export async function safeEqual(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
-async function hmacHex(password: string, msg: string): Promise<string> {
+export async function hmacHex(password: string, msg: string): Promise<string> {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",

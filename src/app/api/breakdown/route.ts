@@ -6,6 +6,7 @@ import { fetchWindsor, num } from "@/lib/windsor";
 import { fetchQuickShopPaidOrders } from "@/lib/quickshop";
 import { fetchShopifyPaidOrders } from "@/lib/shopify";
 import { getSupabase, hasDb } from "@/lib/db";
+import { getServerSession, canAccessBrand } from "@/lib/serverSession";
 import type { Channel } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -60,6 +61,9 @@ export async function GET(request: Request) {
 
   if (!brand || !DATE_RE.test(from) || !DATE_RE.test(to)) {
     return NextResponse.json({ error: "bad params", rows: [] }, { status: 400 });
+  }
+  if (!canAccessBrand(await getServerSession(), brand.id)) {
+    return NextResponse.json({ error: "forbidden", rows: [] }, { status: 403 });
   }
 
   try {
