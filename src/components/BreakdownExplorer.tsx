@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react";
 import { dimensionsFor, DIMENSION_LABELS, type Dimension } from "@/lib/breakdowns";
 import type { Channel } from "@/lib/types";
+import type { AdCreative, CreativeMap } from "@/lib/creatives";
 import { formatIls, formatNumber, formatPct, formatRoas, roasTone } from "@/lib/metrics";
+
+// Serve signed/expiring Meta & TikTok creative URLs through the first-party proxy so the strict
+// CSP (self-only) stays intact.
+const proxied = (u: string) => `/api/creative-proxy?u=${encodeURIComponent(u)}`;
 
 const TONE: Record<string, string> = {
   good: "text-[var(--good)]",
@@ -35,6 +40,35 @@ interface StoreRow {
   aov: number;
 }
 
+// Thumbnail cell for the per-ad view. Shows the creative image (proxied), a ▶ badge for TikTok
+// video, a skeleton while loading, or an empty placeholder if the ad has no asset.
+function ThumbCell({ cre, loading, title, onOpen }: { cre: AdCreative | undefined; loading: boolean; title: string; onOpen: (v: { title: string; creative: AdCreative }) => void }) {
+  return (
+    <td className="w-[48px] px-1 py-1">
+      {cre?.thumb || cre?.video ? (
+        <button
+          type="button"
+          onClick={() => onOpen({ title, creative: cre })}
+          className="relative block h-10 w-10 overflow-hidden rounded border border-[var(--card-border)]"
+          title={cre.video ? "נגן וידאו" : "הצג תמונה"}
+        >
+          {cre.thumb ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={proxied(cre.thumb)} alt="" loading="lazy" className="h-full w-full object-cover" />
+          ) : (
+            <span className="flex h-full w-full items-center justify-center bg-[var(--card-border)]/30 text-[10px] text-[var(--muted)]">🎬</span>
+          )}
+          {cre.video && <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-[11px] text-white">▶</span>}
+        </button>
+      ) : loading ? (
+        <div className="h-10 w-10 animate-pulse rounded bg-[var(--card-border)]" />
+      ) : (
+        <div className="h-10 w-10 rounded bg-[var(--card-border)]/20" />
+      )}
+    </td>
+  );
+}
+
 export default function BreakdownExplorer({
   brandId,
   from,
@@ -62,8 +96,13 @@ export default function BreakdownExplorer({
   const [storeAttributed, setStoreAttributed] = useState(false);
   const [sortCol, setSortCol] = useState("spend");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [creatives, setCreatives] = useState<CreativeMap>({});
+  const [creLoading, setCreLoading] = useState(false);
+  const [lightbox, setLightbox] = useState<{ title: string; creative: AdCreative } | null>(null);
 
   const dims = dimensionsFor(channel);
+  // Creatives (ad visuals) are only fetched for the per-ad view on Meta/TikTok.
+  const showThumb = dimension === "ad" && (channel === "meta" || channel === "tiktok");
 
   useEffect(() => {
     const d = dims.includes(dimension) ? dimension : dims[0];
@@ -95,6 +134,23 @@ export default function BreakdownExplorer({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brandId, channel, dimension, from, to]);
+
+  // Lazily load ad creatives for the per-ad view (slow ~110s first time, then Windsor-cached).
+  // Kept separate from the breakdown fetch so the table renders immediately and thumbs fill in.
+  useEffect(() => {
+    setCreatives({});
+    if (!showThumb) return;
+    let cancelled = false;
+    setCreLoading(true);
+    fetch(`/api/creatives?brand=${brandId}&channel=${channel}&from=${from}&to=${to}`)
+      .then((r) => r.json())
+      .then((j) => !cancelled && setCreatives(j.creatives ?? {}))
+      .catch(() => !cancelled && setCreatives({}))
+      .finally(() => !cancelled && setCreLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [brandId, channel, dimension, from, to, showThumb]);
 
   const pill = (active: boolean) =>
     `rounded-md px-3 py-1 text-sm transition-colors ${active ? "bg-blue-600 text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`;
@@ -213,6 +269,7 @@ export default function BreakdownExplorer({
           <table className="w-full min-w-[820px] border-collapse text-sm">
             <thead>
               <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
+                {showThumb && <th className="px-1 py-1.5" />}
                 {Th(DIMENSION_LABELS[dimension], "key", "left")}
                 {Th("Spend", "spend")}
                 {Th("Impr", "impressions")}
@@ -228,6 +285,7 @@ export default function BreakdownExplorer({
             <tbody className="tabular-nums">
               {(sortedRows as AdRow[]).map((r) => (
                 <tr key={r.key} className="border-t border-[var(--card-border)]">
+                  {showThumb && <ThumbCell cre={creatives[r.key]} loading={creLoading} title={r.key} onOpen={setLightbox} />}
                   <td className="max-w-[220px] truncate px-2 py-1.5 text-left font-medium" title={r.key}>{r.key}</td>
                   <td className="px-2 py-1.5 text-right">{formatIls(r.spend)}</td>
                   <td className="px-2 py-1.5 text-right">{formatNumber(r.impressions)}</td>
@@ -249,6 +307,7 @@ export default function BreakdownExplorer({
                 const revenue = sum(a, (r) => r.revenue ?? 0);
                 return (
                   <tr className="border-t-2 border-[var(--card-border)] font-semibold">
+                    {showThumb && <td className="px-1 py-1.5" />}
                     <td className="px-2 py-1.5 text-left">Total</td>
                     <td className="px-2 py-1.5 text-right">{formatIls(spend)}</td>
                     <td className="px-2 py-1.5 text-right">{formatNumber(impressions)}</td>
@@ -267,9 +326,38 @@ export default function BreakdownExplorer({
           {storeAttributed ? (
             <div className="mt-2 text-[11px] text-[var(--muted)]">Purch · Revenue · AOV · ROAS are <span className="text-[var(--foreground)]">store-attributed</span> per campaign (store utm_campaign → ad campaign). Spend · Impr · Clicks are platform-reported.</div>
           ) : null}
+          {showThumb ? (
+            <div className="mt-2 text-[11px] text-[var(--muted)]">
+              {creLoading ? "טוען תמונות מודעה… (הפעם הראשונה בטווח איטית, אח״כ מהיר)" : "לחיצה על תמונה פותחת תצוגה מלאה · TikTok מנגן וידאו · המדיה מוגשת דרך שרת פנימי."}
+            </div>
+          ) : null}
           </>
         )}
       </div>
+
+      {lightbox ? (
+        <div onClick={() => setLightbox(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div onClick={(e) => e.stopPropagation()} className="max-h-[92vh] max-w-[92vw] overflow-hidden rounded-lg border border-[var(--card-border)] bg-[var(--background)] p-2">
+            <div className="mb-2 flex items-center justify-between gap-3 px-1">
+              <span className="truncate text-sm font-medium" dir="auto" title={lightbox.title}>{lightbox.title}</span>
+              <button onClick={() => setLightbox(null)} className="shrink-0 text-[var(--muted)] hover:text-[var(--foreground)]">✕</button>
+            </div>
+            {lightbox.creative.video ? (
+              <video
+                src={proxied(lightbox.creative.video)}
+                poster={lightbox.creative.thumb ? proxied(lightbox.creative.thumb) : undefined}
+                controls
+                autoPlay
+                playsInline
+                className="max-h-[80vh] max-w-[88vw] rounded"
+              />
+            ) : lightbox.creative.thumb ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={proxied(lightbox.creative.thumb)} alt="" className="max-h-[80vh] max-w-[88vw] rounded object-contain" />
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
