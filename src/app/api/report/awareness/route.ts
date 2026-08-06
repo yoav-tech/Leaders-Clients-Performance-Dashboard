@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBrand } from "@/lib/brands";
 import { getAwarenessReport } from "@/lib/awarenessReport";
+import { getServerSession, canAccessBrand } from "@/lib/serverSession";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // Windsor is slow; this runs client-side (non-blocking), not on page render
@@ -13,6 +14,9 @@ export async function GET(request: Request) {
   const from = url.searchParams.get("from") ?? "";
   const to = url.searchParams.get("to") ?? "";
   if (!brand) return NextResponse.json({ error: "unknown brand" }, { status: 400 });
+  if (!canAccessBrand(await getServerSession(), brand.id)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   try {
     const report = await getAwarenessReport(brand, from, to);
     return NextResponse.json({ report });

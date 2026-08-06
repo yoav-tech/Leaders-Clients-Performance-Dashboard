@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { BRANDS } from "@/lib/brands";
+import type { BrandConfig } from "@/lib/brands";
 
-// Brand switcher — one brand at a time. Preserves the current date-range query.
-export default function BrandTabs({ active, rangeQuery }: { active: string; rangeQuery: string }) {
+// Brand switcher — one brand at a time. Preserves the current date-range query. Only the brands
+// the current session may see are passed in (admin → all; client → its own).
+export default function BrandTabs({ brands, active, rangeQuery }: { brands: BrandConfig[]; active: string; rangeQuery: string }) {
   return (
     <div className="flex flex-wrap gap-1 rounded-lg border border-[var(--card-border)] bg-[var(--card)] p-1">
-      {BRANDS.map((b) => {
+      {brands.map((b) => {
         const isActive = b.id === active;
         return (
           <Link

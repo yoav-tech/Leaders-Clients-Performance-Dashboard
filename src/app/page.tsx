@@ -24,6 +24,8 @@ import AppReportView from "@/components/AppReportView";
 import { getAppReport } from "@/lib/appReport";
 import AwarenessView from "@/components/AwarenessView";
 import SearchSnapshotView from "@/components/SearchSnapshotView";
+import { getServerSession, allowedBrands } from "@/lib/serverSession";
+import PasswordChanger from "@/components/PasswordChanger";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +36,19 @@ export default async function Home({
 }) {
   const sp = await searchParams;
   const range = resolveRange(sp);
-  const brandId = BRANDS.some((b) => b.id === sp.brand) ? sp.brand! : BRANDS[0].id;
+
+  // Per-client scoping: a client sees only its brands; admin (team) sees all.
+  const session = await getServerSession();
+  const allowed = allowedBrands(session);
+  const isClient = session?.role === "client";
+  if (allowed.length === 0) {
+    return (
+      <main className="dash-aura mx-auto max-w-7xl px-4 py-6">
+        <div className="panel p-6 text-sm text-[var(--muted)]">No brands are assigned to your account. Contact Leaders.</div>
+      </main>
+    );
+  }
+  const brandId = allowed.some((b) => b.id === sp.brand) ? sp.brand! : allowed[0].id;
   const brand = getBrand(brandId)!;
 
   const isMediaPlan = !!brand.mediaPlan;
@@ -89,14 +103,17 @@ export default async function Home({
           {!isMediaPlan && (
             <DateRangePicker activeKey={range.key} from={range.from} to={range.to} brand={brandId} />
           )}
+          {isClient && <PasswordChanger />}
           <ThemeToggle />
           <LogoutButton />
         </div>
       </header>
 
-      <div className="mt-4">
-        <BrandTabs active={brandId} rangeQuery={rangeQuery} />
-      </div>
+      {allowed.length > 1 && (
+        <div className="mt-4">
+          <BrandTabs brands={allowed} active={brandId} rangeQuery={rangeQuery} />
+        </div>
+      )}
 
       {!hasDb() && (
         <div className="mt-4 rounded-lg border border-[var(--warn)]/40 bg-[var(--warn)]/10 px-4 py-3 text-sm text-[var(--warn)]">
@@ -128,6 +145,7 @@ export default async function Home({
             monthSpend={conv.monthSpend}
             from={range.from}
             to={range.to}
+            isClient={isClient}
           />
         ) : null}
       </div>

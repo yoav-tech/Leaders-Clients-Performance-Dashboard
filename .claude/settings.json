@@ -20,7 +20,31 @@
       "Bash(curl -s -o /dev/null -w \"  /icon.svg HTTP %{http_code}\\\\n\" \"https://leaders-clients-performance-dashboa.vercel.app/icon.svg\")",
       "Bash(curl -s -o /dev/null -w \"  logo   : %{http_code}\\\\n\" \"https://leaders-clients-performance-dashboa.vercel.app/leaders-logo-white.png\")",
       "Bash(curl -s -o /dev/null -w \"  icon   : %{http_code}\\\\n\" \"https://leaders-clients-performance-dashboa.vercel.app/icon.svg\")",
-      "Bash(curl -s -o /dev/null -w \"  / \\(out\\): %{http_code}\\\\n\" \"https://leaders-clients-performance-dashboa.vercel.app/\")"
+      "Bash(curl -s -o /dev/null -w \"  / \\(out\\): %{http_code}\\\\n\" \"https://leaders-clients-performance-dashboa.vercel.app/\")",
+      "Bash(python3 -c 'import sys,json; d=json.load\\(sys.stdin\\)[\"data\"]; *)",
+      "WebFetch(domain:community.shopify.dev)",
+      "WebFetch(domain:shopify.dev)",
+      "Bash(python3 -c 'import sys,json *)",
+      "Bash(python3 -)",
+      "Bash(ck items *)",
+      "Bash(ck marketplace *)",
+      "Bash(python3 -c ' *)",
+      "Bash(ck access *)",
+      "Bash(python3 -c \"import sys,json;d=json.load\\(sys.stdin\\).get\\('data',[]\\);print\\('  live 07-18 meta spend =', round\\(sum\\(float\\(r.get\\('spend'\\) or 0\\) for r in d if str\\(r.get\\('account_id'\\)\\)=='1443549792685858'\\),2\\)\\)\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(timeout 115 npm run ingest)",
+      "mcp__claude_ai_ClickUp__clickup_get_chat_channels",
+      "WebFetch(domain:developer.clickup.com)",
+      "mcp__claude_ai_ClickUp__clickup_get_workspace_hierarchy",
+      "mcp__claude_ai_ClickUp__clickup_get_chat_message_replies",
+      "Bash(python3 -c 'import sys,json;d=json.load\\(sys.stdin\\).get\\(\"data\",[]\\);seen=set\\(\\) *)",
+      "Bash(python3 -c 'import sys,json;d=json.load\\(sys.stdin\\).get\\(\"data\",[]\\) *)",
+      "Bash(python3 -c 'import sys,json;d=json.load\\(sys.stdin\\) *)",
+      "Bash(perl -i -pe 's/brand\\\\.mediaPlan \\\\|\\\\| brand\\\\.appInstall \\\\|\\\\| brand\\\\.awarenessSources/brand.mediaPlan || brand.appInstall || brand.awarenessSources || brand.googleSnapshot/g' src/lib/digest.ts src/lib/alerts.ts)",
+      "Bash(perl -i -pe 's/!brand \\\\|\\\\| brand\\\\.mediaPlan \\\\|\\\\| brand\\\\.appInstall \\\\|\\\\| brand\\\\.awarenessSources/!brand || brand.mediaPlan || brand.appInstall || brand.awarenessSources || brand.googleSnapshot/g' src/lib/alerts.ts)",
+      "Bash(perl -i -pe 's/!b\\\\?\\\\.mediaPlan && !b\\\\?\\\\.appInstall && !b\\\\?\\\\.awarenessSources/!b?.mediaPlan \\\\&\\\\& !b?.appInstall \\\\&\\\\& !b?.awarenessSources \\\\&\\\\& !b?.googleSnapshot/g' src/lib/qa.ts)",
+      "Bash(node --env-file=.env.local --experimental-strip-types snaptest.mjs)",
+      "Bash(grep -iE \"^search_term|_search_term_view|^query|keyword_text$|^keyword$|^keyword_|match_type\")"
     ]
   }
 }

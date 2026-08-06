@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, verifySession } from "@/lib/auth";
+import { SESSION_COOKIE } from "@/lib/auth";
+import { readSession } from "@/lib/session";
 
 // Cookie-based gate for the dashboard (it shows client revenue).
 // - Enforced only when DASHBOARD_PASSWORD is set (so local dev / pre-config deploys aren't locked out).
@@ -14,9 +15,11 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // Authenticated iff a valid identity session is present. Per-brand authorization is enforced
+  // downstream (SSR pages + each data route) via canAccessBrand.
   const cookie = req.cookies.get(SESSION_COOKIE)?.value;
   const now = Math.floor(Date.now() / 1000);
-  if (await verifySession(cookie, password, now)) {
+  if (await readSession(cookie, now)) {
     return NextResponse.next();
   }
 

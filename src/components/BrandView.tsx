@@ -84,6 +84,7 @@ export default function BrandView({
   monthSpend,
   from,
   to,
+  isClient = false,
 }: {
   brand: BrandConfig;
   metrics: BrandMetrics;
@@ -94,6 +95,7 @@ export default function BrandView({
   monthSpend: number;
   from: string;
   to: string;
+  isClient?: boolean;
 }) {
   const { total, channels, blendedRoas, cac, newRevenue, returningRevenue, previous } = metrics;
   const p = previous;
@@ -116,7 +118,8 @@ export default function BrandView({
     { label: "Store AOV", metric: "aov", value: formatIls(storeAov), cur: storeAov, prev: prevStoreAov },
     { label: "Store CVR", metric: "storeCvr", value: formatPct(storeCvr), cur: storeCvr, prev: prevStoreCvr },
     { label: "Blended ROAS", metric: "blendedRoas", value: formatRoas(blendedRoas), cur: blendedRoas, prev: p?.blendedRoas ?? null, tone: roasTone(blendedRoas, target) },
-    { label: "CAC", metric: "cac", value: formatIls(cac), cur: cac, prev: p?.cac ?? null },
+    // CAC is an internal cost metric — hidden from external clients.
+    ...(isClient ? [] : [{ label: "CAC", metric: "cac", value: formatIls(cac), cur: cac, prev: p?.cac ?? null }]),
   ];
   // Ads (platform-attributed).
   const adKpis = [
@@ -267,10 +270,10 @@ export default function BrandView({
       </Panel>
 
       {/* Breakdown explorer (on-demand) */}
-      <BreakdownExplorer brandId={brand.id} from={from} to={to} />
+      <BreakdownExplorer brandId={brand.id} from={from} to={to} isClient={isClient} />
 
       {/* Daily breakdown (with by-source filter) */}
-      <DailyTable breakdown={breakdown} source={sourceDaily} target={target} from={from} to={to} />
+      <DailyTable breakdown={breakdown} source={sourceDaily} target={target} from={from} to={to} isClient={isClient} />
     </div>
   );
 }
