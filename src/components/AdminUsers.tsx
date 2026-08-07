@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 interface UserSummary {
+  id: string;
   username: string;
   email: string | null;
   fullName: string | null;
@@ -61,8 +62,8 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
 
   const remove = async (u: UserSummary) => {
     if (!confirm(`למחוק את ${u.username}?`)) return;
-    await fetch(`/api/admin/users?username=${encodeURIComponent(u.username)}`, { method: "DELETE" });
-    setUsers((us) => us.filter((x) => x.username !== u.username));
+    await fetch(`/api/admin/users?id=${encodeURIComponent(u.id)}`, { method: "DELETE" });
+    setUsers((us) => us.filter((x) => x.id !== u.id));
   };
 
   const copy = async () => {
@@ -121,7 +122,7 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
         <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">משתמשים ({users.length})</div>
         <div className="space-y-2">
           {users.map((u) => (
-            <div key={u.username} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm">
+            <div key={u.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm">
               <div className="min-w-0">
                 <span className="font-medium" dir="ltr">{u.username}</span>
                 {u.fullName && <span className="mr-2 text-xs text-[var(--muted)]">· {u.fullName}</span>}

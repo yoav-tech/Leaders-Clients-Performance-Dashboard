@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { sameOrigin } from "@/lib/auth";
 import { getServerSession } from "@/lib/serverSession";
-import { getUserByUsername, setUserPassword } from "@/lib/users";
+import { getUserById, setUserPassword } from "@/lib/users";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
@@ -30,11 +30,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "New password must be at least 8 characters." }, { status: 400 });
   }
 
-  const user = await getUserByUsername(session.sub);
+  const user = await getUserById(session.sub);
   if (!user || !user.passwordHash || !(await verifyPassword(current, user.passwordHash))) {
     return NextResponse.json({ ok: false, error: "Current password is incorrect." }, { status: 401 });
   }
 
-  await setUserPassword(user.username, await hashPassword(next));
+  await setUserPassword(user.id, await hashPassword(next));
   return NextResponse.json({ ok: true });
 }

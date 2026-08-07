@@ -18,10 +18,10 @@ function secret(): string {
   return p;
 }
 
-// Token binds the client's username (the account the invite activates).
-export async function issueInviteToken(username: string, nowSec: number): Promise<string> {
+// Token binds the user's id (the account the invite activates).
+export async function issueInviteToken(userId: string, nowSec: number): Promise<string> {
   const exp = nowSec + INVITE_TTL_SECONDS;
-  const payload = b64urlEncode(JSON.stringify({ u: username.trim().toLowerCase(), x: exp }));
+  const payload = b64urlEncode(JSON.stringify({ u: userId, x: exp }));
   const sig = await hmacHex(secret(), "invite-v1:" + payload);
   return `${payload}.${sig}`;
 }

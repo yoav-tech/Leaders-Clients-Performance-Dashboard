@@ -45,19 +45,26 @@ export function localDate(ts: string | Date): string {
   }).format(new Date(ts));
 }
 
-export type RangeKey = "today" | "7d" | "30d" | "this_month" | "last_month" | "custom";
+export type RangeKey = "today" | "yesterday" | "7d" | "14d" | "30d" | "this_month" | "last_month" | "all_time" | "custom";
 
 export interface RangePreset {
   key: RangeKey;
   label: string;
 }
 
+// Earliest date covered by "all time" (before any Leaders ad data).
+export const ALL_TIME_START = "2024-01-01";
+
 // Preset buttons shown in the date-range picker (Google-Ads-style).
 export const RANGE_PRESETS: RangePreset[] = [
-  { key: "today", label: "Today" },
-  { key: "7d", label: "Last 7 days" },
-  { key: "this_month", label: "This month" },
-  { key: "last_month", label: "Last month" },
+  { key: "today", label: "היום" },
+  { key: "yesterday", label: "אתמול" },
+  { key: "7d", label: "7 ימים אחרונים" },
+  { key: "14d", label: "14 ימים אחרונים" },
+  { key: "30d", label: "30 ימים אחרונים" },
+  { key: "this_month", label: "החודש" },
+  { key: "last_month", label: "חודש שעבר" },
+  { key: "all_time", label: "כל הזמן" },
 ];
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -80,10 +87,18 @@ export function resolveRange(sp: {
   switch (sp.range) {
     case "today":
       return { key: "today", from: t, to: t };
+    case "yesterday": {
+      const y = addDays(t, -1);
+      return { key: "yesterday", from: y, to: y };
+    }
     case "7d":
       return { key: "7d", from: addDays(t, -6), to: t };
+    case "14d":
+      return { key: "14d", from: addDays(t, -13), to: t };
     case "30d":
       return { key: "30d", from: addDays(t, -29), to: t };
+    case "all_time":
+      return { key: "all_time", from: ALL_TIME_START, to: t };
     case "last_month": {
       const firstThis = t.slice(0, 8) + "01";
       const to = addDays(firstThis, -1); // last day of previous month
