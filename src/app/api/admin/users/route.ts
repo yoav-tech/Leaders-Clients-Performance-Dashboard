@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { sameOrigin } from "@/lib/auth";
 import { getServerSession } from "@/lib/serverSession";
 import { getBrand } from "@/lib/brands";
-import { listUsers, createInvitedUser, updateUserBrands, deleteUser, getUserByEmail } from "@/lib/users";
+import { listUsers, createInvitedUser, updateUserBrands, deleteUser, getUserByUsername, RESERVED_USERNAMES, normUsername } from "@/lib/users";
 import { issueInviteToken } from "@/lib/invite";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,8 @@ function cleanBrands(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   return [...new Set(v.map((b) => String(b).trim()).filter((b) => getBrand(b)))];
 }
-const emailOk = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+// Usernames: 3–30 chars, letters/digits/._- , not reserved.
+const usernameOk = (u: string) => /^[a-z0-9._-]{3,30}$/.test(u) && !RESERVED_USERNAMES.has(u);
 
 // GET → list users (admin only)
 export async function GET() {
@@ -23,46 +24,46 @@ export async function GET() {
   return NextResponse.json({ users: await listUsers() });
 }
 
-// POST { email, brandIds, role? } → create an invited client + return a shareable invite link.
+// POST { username, brandIds, role? } → create an invited client + return a shareable invite link.
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ error: "bad origin" }, { status: 403 });
   if (!(await requireAdmin())) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  const body = (await request.json().catch(() => ({}))) as { email?: string; brandIds?: unknown; role?: string };
-  const email = String(body.email ?? "").trim().toLowerCase();
+  const body = (await request.json().catch(() => ({}))) as { username?: string; brandIds?: unknown; role?: string };
+  const username = normUsername(String(body.username ?? ""));
   const role = body.role === "admin" ? "admin" : "client";
   const brandIds = cleanBrands(body.brandIds);
-  if (!emailOk(email)) return NextResponse.json({ error: "Invalid email" }, { status: 400 });
-  if (role === "client" && brandIds.length === 0) return NextResponse.json({ error: "Pick at least one brand" }, { status: 400 });
+  if (!usernameOk(username)) return NextResponse.json({ error: "שם משתמש לא תקין (3–30 תווים, אותיות/ספרות/._- ולא 'admin')" }, { status: 400 });
+  if (role === "client" && brandIds.length === 0) return NextResponse.json({ error: "בחר לפחות מותג אחד" }, { status: 400 });
 
-  await createInvitedUser(email, role, brandIds);
-  const token = await issueInviteToken(email, Math.floor(Date.now() / 1000));
+  await createInvitedUser(username, role, brandIds);
+  const token = await issueInviteToken(username, Math.floor(Date.now() / 1000));
   const origin = new URL(request.url).origin;
-  return NextResponse.json({ ok: true, inviteUrl: `${origin}/invite?token=${token}` });
+  return NextResponse.json({ ok: true, username, inviteUrl: `${origin}/invite?token=${token}` });
 }
 
-// PATCH { email, brandIds, role } → update an existing user's access.
+// PATCH { username, brandIds, role } → update an existing user's access.
 export async function PATCH(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ error: "bad origin" }, { status: 403 });
   if (!(await requireAdmin())) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  const body = (await request.json().catch(() => ({}))) as { email?: string; brandIds?: unknown; role?: string };
-  const email = String(body.email ?? "").trim().toLowerCase();
+  const body = (await request.json().catch(() => ({}))) as { username?: string; brandIds?: unknown; role?: string };
+  const username = normUsername(String(body.username ?? ""));
   const role = body.role === "admin" ? "admin" : "client";
   const brandIds = cleanBrands(body.brandIds);
-  if (!email || !(await getUserByEmail(email))) return NextResponse.json({ error: "Unknown user" }, { status: 404 });
-  if (role === "client" && brandIds.length === 0) return NextResponse.json({ error: "Pick at least one brand" }, { status: 400 });
+  if (!username || !(await getUserByUsername(username))) return NextResponse.json({ error: "Unknown user" }, { status: 404 });
+  if (role === "client" && brandIds.length === 0) return NextResponse.json({ error: "בחר לפחות מותג אחד" }, { status: 400 });
 
-  await updateUserBrands(email, role, brandIds);
+  await updateUserBrands(username, role, brandIds);
   return NextResponse.json({ ok: true });
 }
 
-// DELETE ?email= → remove a user.
+// DELETE ?username= → remove a user.
 export async function DELETE(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ error: "bad origin" }, { status: 403 });
   if (!(await requireAdmin())) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  const email = new URL(request.url).searchParams.get("email")?.trim().toLowerCase();
-  if (!email) return NextResponse.json({ error: "missing email" }, { status: 400 });
-  await deleteUser(email);
+  const username = normUsername(new URL(request.url).searchParams.get("username") ?? "");
+  if (!username) return NextResponse.json({ error: "missing username" }, { status: 400 });
+  await deleteUser(username);
   return NextResponse.json({ ok: true });
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { sameOrigin } from "@/lib/auth";
 import { getServerSession } from "@/lib/serverSession";
-import { getUserByEmail, setUserPassword } from "@/lib/users";
+import { getUserByUsername, setUserPassword } from "@/lib/users";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   }
 
   const session = await getServerSession();
-  if (!session || !session.sub || session.sub === "team") {
+  if (!session || !session.sub || session.sub === "admin") {
     return NextResponse.json({ ok: false, error: "Not available for this account." }, { status: 400 });
   }
 
@@ -30,11 +30,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "New password must be at least 8 characters." }, { status: 400 });
   }
 
-  const user = await getUserByEmail(session.sub);
+  const user = await getUserByUsername(session.sub);
   if (!user || !user.passwordHash || !(await verifyPassword(current, user.passwordHash))) {
     return NextResponse.json({ ok: false, error: "Current password is incorrect." }, { status: 401 });
   }
 
-  await setUserPassword(user.email, await hashPassword(next));
+  await setUserPassword(user.username, await hashPassword(next));
   return NextResponse.json({ ok: true });
 }
