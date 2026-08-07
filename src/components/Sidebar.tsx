@@ -40,20 +40,23 @@ export default function Sidebar({
 
       <nav aria-label="ניווט ראשי" className="flex-1 overflow-y-auto px-2">
         <div className={groupTitle}>לקוחות</div>
-        <ul>
-          {brands.map((b) => (
-            <li key={b.id}>
-              <Link
-                href={`/?brand=${b.id}${rangeQuery}`}
-                onClick={close}
-                aria-current={activeSection === "brands" && activeBrand === b.id ? "page" : undefined}
-                className={item(activeSection === "brands" && activeBrand === b.id)}
-              >
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted)]" />
-                {b.name}
-              </Link>
-            </li>
-          ))}
+        <ul className="space-y-1.5">
+          {brands.map((b) => {
+            const active = activeSection === "brands" && activeBrand === b.id;
+            return (
+              <li key={b.id}>
+                <Link
+                  href={`/?brand=${b.id}${rangeQuery}`}
+                  onClick={close}
+                  aria-current={active ? "page" : undefined}
+                  className={`nav-bubble ${active ? "nav-bubble-active" : ""}`}
+                >
+                  <span className="nav-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted)]" />
+                  {b.name}
+                </Link>
+              </li>
+            );
+          })}
           {brands.length === 0 && <li className="px-3 py-2 text-xs text-[var(--muted)]">אין מותגים</li>}
         </ul>
 
