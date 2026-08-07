@@ -36,9 +36,9 @@ const ALL_METRICS: Metric[] = [
 const fmtValue = (v: number | null, fmt: Fmt) =>
   fmt === "ils" ? formatIls(v) : fmt === "roas" ? formatRoas(v) : fmt === "pct" ? formatPct(v) : formatNumber(v);
 
-export default function TrendChart({ data, isClient = false }: { data: DayBreakdown[]; isClient?: boolean }) {
+export default function TrendChart({ data, isClient = false, defaultMetric = "blendedRoas" }: { data: DayBreakdown[]; isClient?: boolean; defaultMetric?: string }) {
   const metrics = useMemo(() => ALL_METRICS.filter((m) => !(isClient && m.key === "cac")), [isClient]);
-  const [key, setKey] = useState("blendedRoas");
+  const [key, setKey] = useState(defaultMetric);
   const metric = metrics.find((m) => m.key === key) ?? metrics[0];
 
   const [open, setOpen] = useState(false);

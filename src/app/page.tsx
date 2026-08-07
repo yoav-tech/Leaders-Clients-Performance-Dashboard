@@ -20,6 +20,7 @@ import { getAppReport } from "@/lib/appReport";
 import AwarenessView from "@/components/AwarenessView";
 import SearchSnapshotView from "@/components/SearchSnapshotView";
 import CampaignPerfView from "@/components/CampaignPerfView";
+import ClientSummaryView from "@/components/ClientSummaryView";
 import AppShell from "@/components/AppShell";
 import DateRangeCalendar from "@/components/DateRangeCalendar";
 import { getServerSession, allowedBrands } from "@/lib/serverSession";
@@ -134,18 +135,28 @@ export default async function Home({
       ) : isPerf ? (
         <CampaignPerfView brandId={brandId} brandName={brand.name} campaignFilter={brand.campaignFilter ?? ""} from={range.from} to={range.to} />
       ) : conv ? (
-        <BrandView
-          brand={brand}
-          metrics={conv.metrics}
-          breakdown={conv.breakdownMap[brandId] ?? []}
-          sourceDaily={conv.sourceMap[brandId] ?? emptySource}
-          forecast={conv.forecast}
-          store={conv.store}
-          monthSpend={conv.monthSpend}
-          from={range.from}
-          to={range.to}
-          isClient={isClient}
-        />
+        isClient ? (
+          <ClientSummaryView
+            brand={brand}
+            metrics={conv.metrics}
+            breakdown={conv.breakdownMap[brandId] ?? []}
+            forecast={conv.forecast}
+            monthSpend={conv.monthSpend}
+          />
+        ) : (
+          <BrandView
+            brand={brand}
+            metrics={conv.metrics}
+            breakdown={conv.breakdownMap[brandId] ?? []}
+            sourceDaily={conv.sourceMap[brandId] ?? emptySource}
+            forecast={conv.forecast}
+            store={conv.store}
+            monthSpend={conv.monthSpend}
+            from={range.from}
+            to={range.to}
+            isClient={isClient}
+          />
+        )
       ) : null}
     </AppShell>
   );
