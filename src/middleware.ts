@@ -11,7 +11,13 @@ export async function middleware(req: NextRequest) {
   if (!password) return NextResponse.next();
 
   const { pathname } = req.nextUrl;
-  if (pathname === "/login" || pathname.startsWith("/api/login")) {
+  // Public routes: login + invite acceptance (invite is gated by a signed token instead).
+  if (
+    pathname === "/login" ||
+    pathname.startsWith("/api/login") ||
+    pathname === "/invite" ||
+    pathname.startsWith("/api/invite")
+  ) {
     return NextResponse.next();
   }
 

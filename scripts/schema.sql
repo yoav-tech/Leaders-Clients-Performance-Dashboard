@@ -107,9 +107,10 @@ REVOKE ALL ON clickup_state FROM anon, authenticated;
 -- password_hash is scrypt ("scrypt$N$r$p$salthex$hashhex"). Accessed only via service_role.
 CREATE TABLE IF NOT EXISTS dashboard_users (
   email         text PRIMARY KEY,
-  password_hash text NOT NULL,
+  password_hash text,                              -- NULL until an invited user sets their password
   role          text NOT NULL DEFAULT 'client',   -- 'admin' | 'client'
   brand_ids     text[] NOT NULL DEFAULT '{}',
+  invited_at    timestamptz,                       -- set when created via invite, cleared on activation
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now()
 );

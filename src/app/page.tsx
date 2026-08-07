@@ -106,6 +106,9 @@ export default async function Home({
             <DateRangePicker activeKey={range.key} from={range.from} to={range.to} brand={brandId} />
           )}
           {isClient && <PasswordChanger />}
+          {session?.role === "admin" && (
+            <a href="/admin" className="rounded-md border border-[var(--card-border)] px-2.5 py-1 text-xs text-[var(--muted)] hover:text-[var(--foreground)]">ניהול</a>
+          )}
           <ThemeToggle />
           <LogoutButton />
         </div>
