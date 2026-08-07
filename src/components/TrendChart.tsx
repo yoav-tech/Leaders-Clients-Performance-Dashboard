@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { DayBreakdown } from "@/lib/types";
 import { formatIls, formatNumber, formatPct, formatRoas } from "@/lib/metrics";
@@ -41,6 +41,15 @@ export default function TrendChart({ data, isClient = false }: { data: DayBreakd
   const [key, setKey] = useState("blendedRoas");
   const metric = metrics.find((m) => m.key === key) ?? metrics[0];
 
+  const [open, setOpen] = useState(false);
+  const ddRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ddRef.current && !ddRef.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
   // Chronological ascending, mapped to the selected series.
   const series = useMemo(() => {
     const rows = [...data].sort((a, b) => a.date.localeCompare(b.date));
@@ -54,18 +63,34 @@ export default function TrendChart({ data, isClient = false }: { data: DayBreakd
     <div dir="ltr">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="text-[11px] uppercase tracking-wide text-[var(--muted)]">Trend</div>
-        <select
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-          className="rounded-md border border-[var(--card-border)] bg-[var(--background)] px-2 py-1 text-sm text-[var(--foreground)]"
-        >
-          <optgroup label="Store">
-            {metrics.filter((m) => m.group === "store").map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-          </optgroup>
-          <optgroup label="Ads">
-            {metrics.filter((m) => m.group === "ads").map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-          </optgroup>
-        </select>
+        <div className="relative" ref={ddRef}>
+          <button
+            onClick={() => setOpen((o) => !o)}
+            className="flex items-center gap-2 rounded-md border border-[var(--card-border)] bg-[var(--background)] px-2.5 py-1 text-sm text-[var(--foreground)] transition-colors hover:border-[var(--panel-border)]"
+          >
+            {metric.label}
+            <span className="text-[10px] text-[var(--muted)]">▾</span>
+          </button>
+          {open && (
+            <div className="absolute left-0 top-full z-50 mt-1 max-h-72 w-48 overflow-y-auto rounded-lg border border-[var(--panel-border)] bg-[var(--card)] p-1 shadow-xl">
+              {(["store", "ads"] as const).map((g) => (
+                <div key={g}>
+                  <div className="px-2 pb-0.5 pt-1.5 text-[10px] uppercase tracking-wide text-[var(--muted)]">{g === "store" ? "Store" : "Ads"}</div>
+                  {metrics.filter((m) => m.group === g).map((m) => (
+                    <button
+                      key={m.key}
+                      onClick={() => { setKey(m.key); setOpen(false); }}
+                      className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${m.key === key ? "bg-[var(--sidebar-active)] text-[var(--foreground)]" : "text-[var(--muted)] hover:bg-[var(--background)] hover:text-[var(--foreground)]"}`}
+                    >
+                      <span>{m.label}</span>
+                      {m.key === key && <span style={{ color: "#8b5cf6" }}>✓</span>}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {!hasData ? (
