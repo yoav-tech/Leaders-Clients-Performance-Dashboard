@@ -30,7 +30,7 @@ export default function AuthShell({
             <span className="auth-headline-accent">בזמן אמת.</span>
           </h1>
           <p className="mt-4 max-w-md text-sm leading-relaxed text-[rgba(244,244,245,0.65)]">
-            כל הביצועים במקום אחד — מתעדכן חי מהמקורות.
+            כל הביצועים במקום אחד.
           </p>
           <ul className="mt-8 space-y-3">
             {FEATURES.map((f) => (
