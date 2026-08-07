@@ -63,10 +63,8 @@ export default function DateRangeCalendar({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  const label = useMemo(() => {
-    if (activeKey !== "custom") return RANGE_PRESETS.find((p) => p.key === activeKey)?.label ?? `${fmt(from)} – ${fmt(to)}`;
-    return from === to ? fmt(from) : `${fmt(to)} – ${fmt(from)}`;
-  }, [activeKey, from, to]);
+  // Always show the actual date (range) we're viewing, not the preset name.
+  const label = useMemo(() => (from === to ? fmt(from) : `${fmt(from)} – ${fmt(to)}`), [from, to]);
 
   const goPreset = (key: RangeKey) => { setOpen(false); router.push(`/?range=${key}${brandQ}`); };
   const applyCustom = (s: string, e: string) => {
@@ -110,7 +108,7 @@ export default function DateRangeCalendar({
         onClick={() => setOpen((o) => !o)}
         className="rounded-md border border-[var(--card-border)] bg-[var(--card)] px-3 py-1.5 text-sm font-medium text-[var(--foreground)] hover:border-[var(--muted)]"
       >
-        📅 {label}
+        {label}
       </button>
 
       {open && (
