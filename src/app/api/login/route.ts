@@ -35,7 +35,7 @@ export async function POST(request: Request) {
   if (email) {
     // Client (or DB-defined admin) login.
     const user = await getUserByEmail(email);
-    if (user && (await verifyPassword(password, user.passwordHash))) {
+    if (user && user.passwordHash && (await verifyPassword(password, user.passwordHash))) {
       session = { role: user.role, sub: user.email, brands: user.brandIds };
     }
   } else if (adminPassword && (await safeEqual(password, adminPassword))) {

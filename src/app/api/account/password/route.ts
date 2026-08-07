@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   }
 
   const user = await getUserByEmail(session.sub);
-  if (!user || !(await verifyPassword(current, user.passwordHash))) {
+  if (!user || !user.passwordHash || !(await verifyPassword(current, user.passwordHash))) {
     return NextResponse.json({ ok: false, error: "Current password is incorrect." }, { status: 401 });
   }
 
