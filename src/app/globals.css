@@ -89,8 +89,8 @@ body {
   width: 100%;
   color: #f4f4f5;
   background:
-    radial-gradient(1200px 600px at 15% 30%, rgba(139, 92, 246, 0.16), transparent 60%),
-    radial-gradient(900px 500px at 40% 80%, rgba(234, 88, 12, 0.1), transparent 55%),
+    radial-gradient(1200px 600px at 85% 30%, rgba(139, 92, 246, 0.16), transparent 60%),
+    radial-gradient(900px 500px at 60% 80%, rgba(234, 88, 12, 0.1), transparent 55%),
     linear-gradient(160deg, #0f0b18, #0a0810);
 }
 .auth-hero {
@@ -99,7 +99,7 @@ body {
   flex-direction: column;
   width: 46%;
   padding: 3rem;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
 }
 .auth-form-col {
   display: flex;
