@@ -63,10 +63,16 @@ export default function Sidebar({
         {isAdmin && (
           <>
             <div className={groupTitle}>ניהול</div>
-            <ul>
+            <ul className="space-y-1.5">
               <li>
-                <Link href="/admin" onClick={close} aria-current={activeSection === "admin" ? "page" : undefined} className={item(activeSection === "admin")}>
-                  <span>🔑</span> הרשאות
+                <Link
+                  href="/admin"
+                  onClick={close}
+                  aria-current={activeSection === "admin" ? "page" : undefined}
+                  className={`nav-bubble ${activeSection === "admin" ? "nav-bubble-active" : ""}`}
+                >
+                  <span className="nav-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted)]" />
+                  הרשאות
                 </Link>
               </li>
             </ul>
