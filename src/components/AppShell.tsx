@@ -37,7 +37,9 @@ export default function AppShell({
       />
       <div className="app-main">
         {topBar ? <div className="app-topbar">{topBar}</div> : null}
-        <main className="app-content dash-aura">{children}</main>
+        {/* Report content is English → render LTR. The sidebar + top bar stay RTL. Hebrew
+            sub-panels (account/admin forms) set their own dir="rtl" locally. */}
+        <main className="app-content dash-aura" dir="ltr">{children}</main>
       </div>
     </div>
   );
