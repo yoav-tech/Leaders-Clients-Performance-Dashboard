@@ -24,6 +24,7 @@ import AppReportView from "@/components/AppReportView";
 import { getAppReport } from "@/lib/appReport";
 import AwarenessView from "@/components/AwarenessView";
 import SearchSnapshotView from "@/components/SearchSnapshotView";
+import CampaignPerfView from "@/components/CampaignPerfView";
 import { getServerSession, allowedBrands } from "@/lib/serverSession";
 import PasswordChanger from "@/components/PasswordChanger";
 
@@ -55,7 +56,8 @@ export default async function Home({
   const isAppInstall = !!brand.appInstall;
   const isAwareness = !!brand.awarenessSources;
   const isSnapshot = !!brand.googleSnapshot;
-  const isSpecial = isMediaPlan || isAppInstall || isAwareness || isSnapshot;
+  const isPerf = !!brand.perfSources;
+  const isSpecial = isMediaPlan || isAppInstall || isAwareness || isSnapshot || isPerf;
   const exec = isMediaPlan ? await getMediaPlanExecution(brand) : null;
   const appReport = isAppInstall ? await getAppReport(brand, range.from, range.to) : null;
   const conv = isSpecial
@@ -134,6 +136,8 @@ export default async function Home({
           <AwarenessView brandId={brandId} brandName={brand.name} campaignFilter={brand.campaignFilter ?? ""} from={range.from} to={range.to} />
         ) : isSnapshot ? (
           <SearchSnapshotView brandId={brandId} brandName={brand.name} from={range.from} to={range.to} />
+        ) : isPerf ? (
+          <CampaignPerfView brandId={brandId} brandName={brand.name} campaignFilter={brand.campaignFilter ?? ""} from={range.from} to={range.to} />
         ) : conv ? (
           <BrandView
             brand={brand}

@@ -23,7 +23,7 @@ async function snapshot(): Promise<string> {
   const brands = metrics
     .filter((m) => {
       const b = getBrand(m.brandId);
-      return !b?.mediaPlan && !b?.appInstall && !b?.awarenessSources && !b?.googleSnapshot;
+      return !b?.mediaPlan && !b?.appInstall && !b?.awarenessSources && !b?.googleSnapshot && !b?.perfSources;
     })
     .map((m) => ({
     brand: m.brandId,

@@ -37,6 +37,9 @@ export interface BrandConfig {
   campaignFilter?: string; // lowercase substring campaigns must contain
   // Google search snapshot by competitive campaign type (e.g. Colgate: Total + Optic White).
   googleSnapshot?: GoogleSnapshotConfig[];
+  // General campaign-performance report across shared accounts, filtered by campaignFilter
+  // (e.g. Leaders / Bestie inside the LEADERS Meta + LDRS Google accounts).
+  perfSources?: PerfSourceConfig[];
 }
 
 export interface AppSectionConfig {
@@ -58,6 +61,14 @@ export interface AwarenessSourceConfig {
 // Google search snapshot (e.g. Colgate) — accounts grouped by competitive campaign type.
 export interface GoogleSnapshotConfig {
   account: string; // Google Ads account id
+  title: string;
+}
+
+// General campaign-performance sources (e.g. Leaders / Bestie) — pull campaigns from shared
+// Meta/Google accounts, filtered by campaign name, shown as a per-campaign performance table.
+export interface PerfSourceConfig {
+  platform: "meta" | "google";
+  account: string;
   title: string;
 }
 
@@ -212,6 +223,42 @@ export const BRANDS: BrandConfig[] = [
     googleSnapshot: [
       { account: "265-522-0192", title: "Total" },
       { account: "565-797-1550", title: "Optic White" },
+    ],
+  },
+  {
+    id: "leaders",
+    name: "Leaders",
+    nameHe: "לידרס",
+    metaAccountId: null,
+    googleAccountId: null,
+    tiktokAccountId: null,
+    storePlatform: "quickshop",
+    storeId: null,
+    nativeCurrency: "ILS",
+    targetRoas: 0,
+    monthlyBudget: 0,
+    campaignFilter: "leaders",
+    perfSources: [
+      { platform: "meta", account: "638387658529372", title: "Meta · LEADERS" },
+      { platform: "google", account: "566-212-3115", title: "Google · LDRS" },
+    ],
+  },
+  {
+    id: "bestie",
+    name: "Bestie",
+    nameHe: "בסטי",
+    metaAccountId: null,
+    googleAccountId: null,
+    tiktokAccountId: null,
+    storePlatform: "quickshop",
+    storeId: null,
+    nativeCurrency: "ILS",
+    targetRoas: 0,
+    monthlyBudget: 0,
+    campaignFilter: "bestie",
+    perfSources: [
+      { platform: "meta", account: "638387658529372", title: "Meta · LEADERS" },
+      { platform: "google", account: "566-212-3115", title: "Google · LDRS" },
     ],
   },
 ];
