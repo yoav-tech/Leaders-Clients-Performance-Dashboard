@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { sameOrigin } from "@/lib/auth";
 import { verifyInviteToken } from "@/lib/invite";
-import { getUserByUsername, activateUser, emailTakenByOther } from "@/lib/users";
+import { getUserById, activateUser, emailTakenByOther } from "@/lib/users";
 import { hashPassword } from "@/lib/password";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
@@ -18,9 +18,9 @@ export async function POST(request: Request) {
   if (!limited.ok) return NextResponse.json({ ok: false, error: "Too many attempts." }, { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } });
 
   const body = (await request.json().catch(() => ({}))) as { token?: string; fullName?: string; email?: string; phone?: string; password?: string };
-  const username = await verifyInviteToken(body.token, Math.floor(Date.now() / 1000));
-  if (!username) return NextResponse.json({ ok: false, error: "Invite link is invalid or expired." }, { status: 400 });
-  if (!(await getUserByUsername(username))) return NextResponse.json({ ok: false, error: "This invite is no longer valid." }, { status: 400 });
+  const userId = await verifyInviteToken(body.token, Math.floor(Date.now() / 1000));
+  if (!userId) return NextResponse.json({ ok: false, error: "Invite link is invalid or expired." }, { status: 400 });
+  if (!(await getUserById(userId))) return NextResponse.json({ ok: false, error: "This invite is no longer valid." }, { status: 400 });
 
   const fullName = String(body.fullName ?? "").trim();
   const email = String(body.email ?? "").trim().toLowerCase();
@@ -31,8 +31,8 @@ export async function POST(request: Request) {
   if (!emailOk(email)) return NextResponse.json({ ok: false, error: "מייל לא תקין." }, { status: 400 });
   if (phone.replace(/\D/g, "").length < 7) return NextResponse.json({ ok: false, error: "מספר טלפון לא תקין." }, { status: 400 });
   if (password.length < 8) return NextResponse.json({ ok: false, error: "הסיסמה חייבת לפחות 8 תווים." }, { status: 400 });
-  if (await emailTakenByOther(email, username)) return NextResponse.json({ ok: false, error: "המייל כבר בשימוש." }, { status: 400 });
+  if (await emailTakenByOther(email, userId)) return NextResponse.json({ ok: false, error: "המייל כבר בשימוש." }, { status: 400 });
 
-  await activateUser(username, { fullName, email, phone, passwordHash: await hashPassword(password) });
-  return NextResponse.json({ ok: true, username });
+  await activateUser(userId, { fullName, email, phone, passwordHash: await hashPassword(password) });
+  return NextResponse.json({ ok: true });
 }

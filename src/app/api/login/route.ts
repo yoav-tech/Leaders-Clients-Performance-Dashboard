@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     // Client login by username or email.
     const user = await getUserByIdentifier(identifier);
     if (user && user.passwordHash && (await verifyPassword(password, user.passwordHash))) {
-      session = { role: user.role, sub: user.username, brands: user.brandIds };
+      session = { role: user.role, sub: user.id, brands: user.brandIds };
     }
   }
 

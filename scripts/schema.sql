@@ -108,14 +108,18 @@ REVOKE ALL ON clickup_state FROM anon, authenticated;
 -- Login is by username OR email. The team logs in as the reserved username "admin" (verified
 -- against DASHBOARD_PASSWORD, no row here). Clients are created by an admin with a username, then
 -- self-onboard via an invite link (full_name, email, phone, password) which activates the row.
+-- Surrogate uuid PK so username stays editable; invited_by links a client's team members (≤3) to
+-- the primary client that invited them.
 CREATE TABLE IF NOT EXISTS dashboard_users (
-  username      text PRIMARY KEY,
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  username      text UNIQUE NOT NULL,
   email         text UNIQUE,                       -- collected at onboarding (NULL until then)
   full_name     text,
   phone         text,
   password_hash text,                              -- NULL until the invited user sets their password
   role          text NOT NULL DEFAULT 'client',   -- 'admin' | 'client'
   brand_ids     text[] NOT NULL DEFAULT '{}',
+  invited_by    uuid REFERENCES dashboard_users(id) ON DELETE CASCADE,  -- primary client; deleting them removes their team
   invited_at    timestamptz,                       -- set when created via invite, cleared on activation
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now()

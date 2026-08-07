@@ -29,8 +29,9 @@ async function main() {
   if (bad.length) { console.error(`Unknown brand slug(s): ${bad.join(", ")}`); process.exit(1); }
 
   const password = arg("password") ?? genPassword();
-  await createInvitedUser(username, role, brands);
-  await setUserPassword(username, await hashPassword(password)); // activate immediately
+  const id = await createInvitedUser(username, role, brands);
+  if (!id) { console.error("create failed"); process.exit(1); }
+  await setUserPassword(id, await hashPassword(password)); // activate immediately
   console.log(`✓ ${username}  role=${role}  brands=[${brands.join(", ")}]`);
   console.log(`  password: ${password}`);
 }
