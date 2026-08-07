@@ -105,9 +105,15 @@ REVOKE ALL ON clickup_state FROM anon, authenticated;
 -- Dashboard users for per-client access control. role=admin sees every brand; role=client is
 -- scoped to brand_ids. A single client can have multiple user rows (share brand_ids).
 -- password_hash is scrypt ("scrypt$N$r$p$salthex$hashhex"). Accessed only via service_role.
+-- Login is by username OR email. The team logs in as the reserved username "admin" (verified
+-- against DASHBOARD_PASSWORD, no row here). Clients are created by an admin with a username, then
+-- self-onboard via an invite link (full_name, email, phone, password) which activates the row.
 CREATE TABLE IF NOT EXISTS dashboard_users (
-  email         text PRIMARY KEY,
-  password_hash text,                              -- NULL until an invited user sets their password
+  username      text PRIMARY KEY,
+  email         text UNIQUE,                       -- collected at onboarding (NULL until then)
+  full_name     text,
+  phone         text,
+  password_hash text,                              -- NULL until the invited user sets their password
   role          text NOT NULL DEFAULT 'client',   -- 'admin' | 'client'
   brand_ids     text[] NOT NULL DEFAULT '{}',
   invited_at    timestamptz,                       -- set when created via invite, cleared on activation

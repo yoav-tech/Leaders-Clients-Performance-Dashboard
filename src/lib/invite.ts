@@ -18,9 +18,10 @@ function secret(): string {
   return p;
 }
 
-export async function issueInviteToken(email: string, nowSec: number): Promise<string> {
+// Token binds the client's username (the account the invite activates).
+export async function issueInviteToken(username: string, nowSec: number): Promise<string> {
   const exp = nowSec + INVITE_TTL_SECONDS;
-  const payload = b64urlEncode(JSON.stringify({ e: email.trim().toLowerCase(), x: exp }));
+  const payload = b64urlEncode(JSON.stringify({ u: username.trim().toLowerCase(), x: exp }));
   const sig = await hmacHex(secret(), "invite-v1:" + payload);
   return `${payload}.${sig}`;
 }
@@ -33,9 +34,9 @@ export async function verifyInviteToken(token: string | undefined, nowSec: numbe
   const sig = token.slice(dot + 1);
   if (!(await safeEqual(sig, await hmacHex(secret(), "invite-v1:" + payload)))) return null;
   try {
-    const o = JSON.parse(b64urlDecode(payload)) as { e?: string; x?: number };
-    if (!o?.e || typeof o.x !== "number" || o.x < nowSec) return null;
-    return o.e;
+    const o = JSON.parse(b64urlDecode(payload)) as { u?: string; x?: number };
+    if (!o?.u || typeof o.x !== "number" || o.x < nowSec) return null;
+    return o.u;
   } catch {
     return null;
   }

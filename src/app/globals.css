@@ -77,9 +77,103 @@ body {
 }
 /* The login / invite card is always dark, so keep the white logo white there even in light theme
    (otherwise the invert above turns it black → invisible on the dark card). */
-:root[data-theme="light"] .login-bg .logo-img {
+:root[data-theme="light"] .login-bg .logo-img,
+:root[data-theme="light"] .auth-bg .logo-img {
   filter: none;
 }
+
+/* ---- Split-screen auth (login + onboarding) — always dark, theme-independent ---- */
+.auth-bg {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  color: #f4f4f5;
+  background:
+    radial-gradient(1200px 600px at 15% 30%, rgba(139, 92, 246, 0.16), transparent 60%),
+    radial-gradient(900px 500px at 40% 80%, rgba(234, 88, 12, 0.1), transparent 55%),
+    linear-gradient(160deg, #0f0b18, #0a0810);
+}
+.auth-hero {
+  display: none;
+  position: relative;
+  flex-direction: column;
+  width: 46%;
+  padding: 3rem;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+.auth-form-col {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(160deg, rgba(24, 20, 34, 0.9), rgba(14, 11, 21, 0.9));
+  padding: 2rem 1.75rem;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+.auth-headline {
+  font-size: 2.6rem;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.auth-headline-accent {
+  background: linear-gradient(90deg, #a78bfa, #818cf8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+@media (min-width: 1024px) {
+  .auth-hero { display: flex; }
+}
+
+.auth-input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.7rem 0.9rem;
+  color: #f4f4f5;
+  -webkit-text-fill-color: #f4f4f5;
+  caret-color: #f4f4f5;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.auth-input::placeholder {
+  color: rgba(244, 244, 245, 0.4);
+  -webkit-text-fill-color: rgba(244, 244, 245, 0.4);
+}
+.auth-input:focus {
+  border-color: rgba(139, 92, 246, 0.7);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+}
+.auth-input:-webkit-autofill,
+.auth-input:-webkit-autofill:hover,
+.auth-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #f4f4f5;
+  caret-color: #f4f4f5;
+  -webkit-box-shadow: 0 0 0 1000px #1a1626 inset;
+  transition: background-color 9999s ease-out 0s;
+}
+.auth-btn {
+  width: 100%;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(90deg, #7c3aed, #6366f1);
+  transition: filter 0.15s ease, opacity 0.15s ease;
+}
+.auth-btn:hover { filter: brightness(1.08); }
+.auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ---- Premium panel: violet-tinted border + soft glow ---- */
 .panel {

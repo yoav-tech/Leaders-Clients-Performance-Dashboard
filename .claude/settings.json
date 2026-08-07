@@ -46,7 +46,8 @@
       "Bash(node --env-file=.env.local --experimental-strip-types snaptest.mjs)",
       "Bash(grep -iE \"^search_term|_search_term_view|^query|keyword_text$|^keyword$|^keyword_|match_type\")",
       "Bash(perl -i -pe 's/brand\\\\.awarenessSources \\\\|\\\\| brand\\\\.googleSnapshot/brand.awarenessSources || brand.googleSnapshot || brand.perfSources/g' src/lib/digest.ts src/lib/alerts.ts)",
-      "Bash(perl -i -pe 's/!b\\\\?\\\\.awarenessSources && !b\\\\?\\\\.googleSnapshot/!b?.awarenessSources \\\\&\\\\& !b?.googleSnapshot \\\\&\\\\& !b?.perfSources/g' src/lib/qa.ts)"
+      "Bash(perl -i -pe 's/!b\\\\?\\\\.awarenessSources && !b\\\\?\\\\.googleSnapshot/!b?.awarenessSources \\\\&\\\\& !b?.googleSnapshot \\\\&\\\\& !b?.perfSources/g' src/lib/qa.ts)",
+      "Bash(npx tsc *)"
     ]
   }
 }

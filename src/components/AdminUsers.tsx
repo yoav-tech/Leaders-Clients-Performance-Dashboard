@@ -3,7 +3,9 @@
 import { useState } from "react";
 
 interface UserSummary {
-  email: string;
+  username: string;
+  email: string | null;
+  fullName: string | null;
   role: "admin" | "client";
   brandIds: string[];
   pending: boolean;
@@ -15,7 +17,7 @@ interface BrandOpt {
 
 export default function AdminUsers({ initialUsers, brands }: { initialUsers: UserSummary[]; brands: BrandOpt[] }) {
   const [users, setUsers] = useState<UserSummary[]>(initialUsers);
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -32,17 +34,17 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true); setErr(""); setInviteUrl("");
+    setBusy(true); setErr(""); setInviteUrl(""); setCopied(false);
     const res = await fetch("/api/admin/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.trim(), brandIds: [...sel] }),
+      body: JSON.stringify({ username: username.trim(), brandIds: [...sel] }),
     });
     const j = await res.json().catch(() => ({}));
     setBusy(false);
     if (res.ok && j.ok) {
       setInviteUrl(j.inviteUrl);
-      setEmail(""); setSel(new Set());
+      setUsername(""); setSel(new Set());
       refresh();
     } else setErr(j.error ?? "שגיאה");
   };
@@ -51,16 +53,16 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
     const res = await fetch("/api/admin/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: u.email, brandIds: u.brandIds, role: u.role }),
+      body: JSON.stringify({ username: u.username, brandIds: u.brandIds, role: u.role }),
     });
     const j = await res.json().catch(() => ({}));
     if (j.inviteUrl) { setInviteUrl(j.inviteUrl); setCopied(false); }
   };
 
   const remove = async (u: UserSummary) => {
-    if (!confirm(`למחוק את ${u.email}?`)) return;
-    await fetch(`/api/admin/users?email=${encodeURIComponent(u.email)}`, { method: "DELETE" });
-    setUsers((us) => us.filter((x) => x.email !== u.email));
+    if (!confirm(`למחוק את ${u.username}?`)) return;
+    await fetch(`/api/admin/users?username=${encodeURIComponent(u.username)}`, { method: "DELETE" });
+    setUsers((us) => us.filter((x) => x.username !== u.username));
   };
 
   const copy = async () => {
@@ -71,14 +73,17 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
 
   return (
     <div className="space-y-4" dir="rtl">
-      {/* Add client */}
+      {/* Create client */}
       <div className="panel p-4">
-        <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">הזמנת לקוח חדש</div>
+        <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">יצירת גישה ללקוח</div>
         <form onSubmit={create} className="space-y-3">
-          <input
-            type="email" placeholder="מייל הלקוח" value={email} onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-[var(--card-border)] bg-[var(--background)] px-3 py-2 text-sm"
-          />
+          <div>
+            <div className="mb-1 text-xs text-[var(--muted)]">שם משתמש ללקוח (הוא יקבל אותו וישלים פרטים בהזמנה):</div>
+            <input
+              type="text" placeholder="לדוגמה: colgate" value={username} onChange={(e) => setUsername(e.target.value)}
+              className="w-full rounded-md border border-[var(--card-border)] bg-[var(--background)] px-3 py-2 text-sm" dir="ltr"
+            />
+          </div>
           <div>
             <div className="mb-1.5 text-xs text-[var(--muted)]">מותגים שהלקוח יראה:</div>
             <div className="flex flex-wrap gap-2">
@@ -93,7 +98,7 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
             </div>
           </div>
           {err && <div className="text-xs text-[var(--bad)]">{err}</div>}
-          <button type="submit" disabled={busy || !email.trim() || sel.size === 0}
+          <button type="submit" disabled={busy || !username.trim() || sel.size === 0}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-50">
             {busy ? "יוצר…" : "צור וקבל קישור הזמנה"}
           </button>
@@ -101,7 +106,7 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
 
         {inviteUrl && (
           <div className="mt-3 rounded-lg border border-[var(--card-border)] bg-[var(--background)]/50 p-3">
-            <div className="mb-1 text-xs text-[var(--muted)]">קישור הזמנה (שלח ללקוח — הוא יקבע סיסמה בעצמו, תקף 7 ימים):</div>
+            <div className="mb-1 text-xs text-[var(--muted)]">קישור הזמנה (שלח ללקוח — הוא ישלים שם/מייל/טלפון ויקבע סיסמה, תקף 7 ימים):</div>
             <div className="flex items-center gap-2">
               <input readOnly value={inviteUrl} onFocus={(e) => e.currentTarget.select()}
                 className="flex-1 rounded-md border border-[var(--card-border)] bg-[var(--background)] px-2 py-1 text-xs" dir="ltr" />
@@ -116,15 +121,16 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
         <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">משתמשים ({users.length})</div>
         <div className="space-y-2">
           {users.map((u) => (
-            <div key={u.email} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm">
+            <div key={u.username} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm">
               <div className="min-w-0">
-                <span className="font-medium" dir="ltr">{u.email}</span>
+                <span className="font-medium" dir="ltr">{u.username}</span>
+                {u.fullName && <span className="mr-2 text-xs text-[var(--muted)]">· {u.fullName}</span>}
                 {u.role === "admin" ? (
                   <span className="mr-2 rounded bg-[var(--card-border)] px-1.5 py-0.5 text-[10px]">admin · כל המותגים</span>
                 ) : (
                   <span className="mr-2 text-xs text-[var(--muted)]">· {u.brandIds.map(nameOf).join(", ") || "—"}</span>
                 )}
-                {u.pending && <span className="mr-2 rounded bg-[var(--warn)]/20 px-1.5 py-0.5 text-[10px] text-[var(--warn)]">ממתין להפעלה</span>}
+                {u.pending && <span className="mr-2 rounded bg-[var(--warn)]/20 px-1.5 py-0.5 text-[10px] text-[var(--warn)]">ממתין להשלמה</span>}
               </div>
               <div className="flex items-center gap-2">
                 {u.role !== "admin" && (

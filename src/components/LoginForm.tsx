@@ -1,16 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import LeadersLogo from "./LeadersLogo";
-
-type Mode = "team" | "client";
+import AuthShell from "./AuthShell";
 
 export default function LoginForm() {
-  const [mode, setMode] = useState<Mode>("team");
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPw, setShowPw] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,73 +17,60 @@ export default function LoginForm() {
     const res = await fetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(mode === "client" ? { email: email.trim(), password } : { password }),
+      body: JSON.stringify({ identifier: identifier.trim(), password }),
     });
     if (res.ok) {
       const next = new URLSearchParams(window.location.search).get("next") || "/";
       window.location.href = next.startsWith("/") ? next : "/";
     } else {
-      setError(mode === "client" ? "מייל או סיסמה שגויים" : "סיסמה שגויה");
+      setError("שם משתמש/מייל או סיסמה שגויים");
       setLoading(false);
     }
   };
 
-  const tab = (m: Mode, label: string) => (
-    <button
-      type="button"
-      onClick={() => { setMode(m); setError(""); }}
-      className={`flex-1 rounded-md px-3 py-1.5 text-sm transition-colors ${mode === m ? "bg-[rgba(139,92,246,0.9)] text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`}
-      style={mode === m ? {} : { color: "rgba(244,244,245,0.6)" }}
-    >
-      {label}
-    </button>
-  );
-
   return (
-    <div className="login-bg">
-      <div className="login-glow">
-        <div className="login-inner">
-          <div className="mb-6 text-center">
-            <div className="mb-4 flex justify-center">
-              <LeadersLogo height={44} />
-            </div>
-            <h1 className="login-title text-2xl font-bold">Clients Performance</h1>
-            <p className="mt-1 text-xs text-[var(--muted)]">Sign in to view the dashboard</p>
-          </div>
-
-          <div className="mb-3 flex gap-1 rounded-lg border border-[rgba(255,255,255,0.12)] p-1">
-            {tab("team", "צוות Leaders")}
-            {tab("client", "לקוח")}
-          </div>
-
-          <form onSubmit={submit} className="flex flex-col gap-3" dir="rtl">
-            {mode === "client" && (
-              <input
-                className="login-input"
-                type="email"
-                placeholder="מייל"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoFocus
-                autoComplete="email"
-              />
-            )}
+    <AuthShell title="כניסה" subtitle="התחברות ללוח הבקרה">
+      <form onSubmit={submit} className="flex flex-col gap-3" dir="rtl">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-[rgba(244,244,245,0.6)]">שם משתמש או מייל</span>
+          <input
+            className="auth-input"
+            type="text"
+            placeholder="admin או your@email.com"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            autoFocus
+            autoComplete="username"
+            dir="ltr"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-[rgba(244,244,245,0.6)]">סיסמה</span>
+          <div className="relative">
             <input
-              className="login-input"
-              type="password"
-              placeholder="סיסמה"
+              className="auth-input w-full"
+              type={showPw ? "text" : "password"}
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              autoFocus={mode === "team"}
               autoComplete="current-password"
+              dir="ltr"
             />
-            {error && <div className="text-xs text-[var(--bad)]">{error}</div>}
-            <button className="login-btn" type="submit" disabled={loading || !password || (mode === "client" && !email.trim())}>
-              {loading ? "Signing in…" : "Sign in"}
+            <button
+              type="button"
+              onClick={() => setShowPw((v) => !v)}
+              className="absolute inset-y-0 left-2 flex items-center text-xs text-[rgba(244,244,245,0.5)] hover:text-[rgba(244,244,245,0.9)]"
+              tabIndex={-1}
+            >
+              {showPw ? "הסתר" : "הצג"}
             </button>
-          </form>
-        </div>
-      </div>
-    </div>
+          </div>
+        </label>
+        {error && <div className="text-xs text-[var(--bad)]">{error}</div>}
+        <button className="auth-btn mt-1" type="submit" disabled={loading || !identifier.trim() || !password}>
+          {loading ? "מתחבר…" : "התחברות →"}
+        </button>
+      </form>
+    </AuthShell>
   );
 }
