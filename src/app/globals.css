@@ -179,7 +179,43 @@ body {
 :root { --sidebar-active: rgba(99, 102, 241, 0.14); --sidebar-hover: rgba(120, 120, 140, 0.1); }
 :root[data-theme="light"] { --sidebar-active: rgba(99, 102, 241, 0.12); --sidebar-hover: rgba(0, 0, 0, 0.04); }
 .app-shell { display: flex; min-height: 100vh; }
-.app-sidebar { width: 240px; flex-shrink: 0; background: var(--card); border-left: 1px solid var(--card-border); z-index: 50; }
+.app-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  z-index: 50;
+  border-left: 1px solid var(--panel-border);
+  /* Same premium violet aura as the dashboard, tuned for the vertical rail. */
+  background:
+    radial-gradient(26rem 18rem at 100% -4%, var(--aura-1), transparent 62%),
+    radial-gradient(22rem 18rem at 0% 104%, var(--aura-2), transparent 62%),
+    var(--card);
+}
+
+/* Brand ("client") nav items — framed bubbles for structure. */
+.nav-bubble {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--card-border);
+  background: color-mix(in srgb, var(--card) 55%, transparent);
+  padding: 0.5rem 0.7rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.nav-bubble:hover {
+  color: var(--foreground);
+  border-color: var(--panel-border);
+}
+.nav-bubble-active {
+  color: var(--foreground);
+  font-weight: 500;
+  border-color: var(--panel-border);
+  background: var(--sidebar-active);
+  box-shadow: 0 0 0 1px var(--panel-border), 0 8px 20px -8px rgba(139, 92, 246, 0.55);
+}
+.nav-bubble-active .nav-dot { background: rgba(139, 92, 246, 0.95); }
 .app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .app-topbar {
   position: sticky; top: 0; z-index: 30;
