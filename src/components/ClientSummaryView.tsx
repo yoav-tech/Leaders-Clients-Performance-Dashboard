@@ -19,10 +19,28 @@ function Panel({ title, children }: { title?: string; children: React.ReactNode 
   );
 }
 
-function BigKpi({ label, value, metric, cur, prev, tone }: { label: string; value: string; metric?: string; cur?: number | null; prev?: number | null; tone?: string }) {
+function BigKpi({
+  label,
+  value,
+  metric,
+  cur,
+  prev,
+  tone,
+  variant = "inner",
+}: {
+  label: string;
+  value: string;
+  metric?: string;
+  cur?: number | null;
+  prev?: number | null;
+  tone?: string;
+  variant?: "panel" | "inner";
+}) {
   const delta = metric && cur !== undefined ? deltaPct(cur ?? null, prev ?? null) : null;
+  // "panel" = top-level premium card (violet glow); "inner" = subtle card inside a panel.
+  const cls = variant === "panel" ? "panel p-4" : "rounded-xl border border-[var(--card-border)] bg-[var(--background)]/40 p-4";
   return (
-    <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/40 p-4">
+    <div className={cls}>
       <div className="text-[11px] uppercase tracking-wide text-[var(--muted)]">{label}</div>
       <div className="mt-1 flex items-baseline gap-2">
         <span className={`text-2xl font-bold ${tone ? TONE[tone] : ""}`}>{value}</span>
@@ -77,14 +95,14 @@ export default function ClientSummaryView({
     <div className="space-y-4" dir="rtl">
       {/* Headline outcomes */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <BigKpi label="הכנסות חנות" value={formatIls(storeRev)} metric="siteRevenue" cur={storeRev} prev={p?.siteRevenue ?? null} />
-        <BigKpi label="הזמנות" value={formatNumber(orders)} metric="storeOrders" cur={orders} prev={p?.siteOrders ?? null} />
-        <BigKpi label="ROAS" value={formatRoas(blendedRoas)} metric="blendedRoas" cur={blendedRoas} prev={p?.blendedRoas ?? null} tone={roasTone(blendedRoas, target)} />
-        <BigKpi label="הוצאה" value={formatIls(total.spend)} metric="spend" cur={total.spend} prev={p?.spend ?? null} />
-        <BigKpi label="AOV" value={formatIls(storeAov)} metric="aov" cur={storeAov} prev={prevAov} />
-        <BigKpi label="המרה (CVR)" value={formatPct(storeCvr)} metric="storeCvr" cur={storeCvr} prev={prevCvr} />
-        <BigKpi label="הכנסות ממודעות" value={formatIls(total.revenue)} metric="revenue" cur={total.revenue} prev={p?.revenue ?? null} />
-        <BigKpi label="רכישות (מודעות)" value={formatNumber(total.purchases)} metric="purchases" cur={total.purchases} prev={p?.purchases ?? null} />
+        <BigKpi variant="panel" label="הכנסות חנות" value={formatIls(storeRev)} metric="siteRevenue" cur={storeRev} prev={p?.siteRevenue ?? null} />
+        <BigKpi variant="panel" label="הזמנות" value={formatNumber(orders)} metric="storeOrders" cur={orders} prev={p?.siteOrders ?? null} />
+        <BigKpi variant="panel" label="ROAS" value={formatRoas(blendedRoas)} metric="blendedRoas" cur={blendedRoas} prev={p?.blendedRoas ?? null} tone={roasTone(blendedRoas, target)} />
+        <BigKpi variant="panel" label="הוצאה" value={formatIls(total.spend)} metric="spend" cur={total.spend} prev={p?.spend ?? null} />
+        <BigKpi variant="panel" label="AOV" value={formatIls(storeAov)} metric="aov" cur={storeAov} prev={prevAov} />
+        <BigKpi variant="panel" label="המרה (CVR)" value={formatPct(storeCvr)} metric="storeCvr" cur={storeCvr} prev={prevCvr} />
+        <BigKpi variant="panel" label="הכנסות ממודעות" value={formatIls(total.revenue)} metric="revenue" cur={total.revenue} prev={p?.revenue ?? null} />
+        <BigKpi variant="panel" label="רכישות (מודעות)" value={formatNumber(total.purchases)} metric="purchases" cur={total.purchases} prev={p?.purchases ?? null} />
       </div>
 
       {/* Trend */}
@@ -117,14 +135,8 @@ export default function ClientSummaryView({
         {/* New vs returning */}
         <Panel title="לקוחות חדשים מול חוזרים">
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg border border-[var(--card-border)] bg-[var(--background)]/40 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-[var(--muted)]">חדשים ({Math.round(newPct)}%)</div>
-              <div className="mt-0.5 text-lg font-bold">{formatIls(newRevenue)}</div>
-            </div>
-            <div className="rounded-lg border border-[var(--card-border)] bg-[var(--background)]/40 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-[var(--muted)]">חוזרים ({Math.round(100 - newPct)}%)</div>
-              <div className="mt-0.5 text-lg font-bold">{formatIls(returningRevenue)}</div>
-            </div>
+            <BigKpi label={`חדשים (${Math.round(newPct)}%)`} value={formatIls(newRevenue)} />
+            <BigKpi label={`חוזרים (${Math.round(100 - newPct)}%)`} value={formatIls(returningRevenue)} />
           </div>
           <div className="mt-3 flex h-2 w-full overflow-hidden rounded-full bg-[var(--background)]">
             <div className="h-full bg-[var(--good)]" style={{ width: `${newPct}%` }} />
