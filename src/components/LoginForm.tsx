@@ -37,25 +37,25 @@ export default function LoginForm() {
               <LeadersLogo height={44} />
             </div>
             <h1 className="login-title text-2xl font-bold">Clients Performance</h1>
-            <p className="mt-1 text-xs text-[var(--muted)]">Sign in to view the dashboard</p>
+            <p className="mt-1 text-xs text-[var(--muted)]">לקוחות: מייל + סיסמה · צוות Leaders: סיסמה בלבד</p>
           </div>
 
           <form onSubmit={submit} className="flex flex-col gap-3">
             <input
               className="login-input"
               type="email"
-              placeholder="Email (clients)"
+              placeholder="מייל (לקוחות בלבד)"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              autoFocus
-              autoComplete="username"
+              autoComplete="email"
             />
             <input
               className="login-input"
               type="password"
-              placeholder="Password"
+              placeholder="סיסמה"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoFocus
               autoComplete="current-password"
             />
             {error && <div className="text-xs text-[var(--bad)]">{error}</div>}

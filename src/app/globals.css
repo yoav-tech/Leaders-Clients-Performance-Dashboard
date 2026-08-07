@@ -169,14 +169,32 @@ body {
 .login-input {
   width: 100%;
   border-radius: 10px;
-  border: 1px solid var(--card-border);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
   padding: 0.7rem 0.9rem;
-  color: var(--foreground);
+  /* The login card is always dark regardless of the OS/browser theme, so pin the text to a
+     light colour (var(--foreground) would be black in light mode → unreadable on the dark card). */
+  color: #f4f4f5;
+  -webkit-text-fill-color: #f4f4f5;
+  caret-color: #f4f4f5;
   outline: none;
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease;
+}
+.login-input::placeholder {
+  color: rgba(244, 244, 245, 0.45);
+  -webkit-text-fill-color: rgba(244, 244, 245, 0.45);
+}
+/* Keep browser autofill readable (light text on the dark card, no white autofill background). */
+.login-input:-webkit-autofill,
+.login-input:-webkit-autofill:hover,
+.login-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #f4f4f5;
+  caret-color: #f4f4f5;
+  -webkit-box-shadow: 0 0 0 1000px #1a1626 inset;
+  box-shadow: 0 0 0 1000px #1a1626 inset;
+  transition: background-color 9999s ease-out 0s;
 }
 .login-input:focus {
   border-color: rgba(139, 92, 246, 0.7);
