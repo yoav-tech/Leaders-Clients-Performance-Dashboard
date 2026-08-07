@@ -69,7 +69,7 @@ export default function LoginForm() {
         </label>
         {error && <div className="text-xs text-[var(--bad)]">{error}</div>}
         <button className="auth-btn mt-1" type="submit" disabled={loading || !identifier.trim() || !password}>
-          {loading ? "מתחבר…" : "התחברות →"}
+          {loading ? "מתחבר…" : "← התחברות"}
         </button>
       </form>
     </AuthShell>
