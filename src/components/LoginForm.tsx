@@ -49,6 +49,7 @@ export default function LoginForm() {
           <div className="relative">
             <input
               className="auth-input w-full"
+              style={{ paddingLeft: "3.5rem" }}
               type={showPw ? "text" : "password"}
               placeholder="••••••••"
               value={password}
@@ -59,7 +60,7 @@ export default function LoginForm() {
             <button
               type="button"
               onClick={() => setShowPw((v) => !v)}
-              className="absolute inset-y-0 left-2 flex items-center text-xs text-[rgba(244,244,245,0.5)] hover:text-[rgba(244,244,245,0.9)]"
+              className="absolute inset-y-0 left-0 flex items-center px-3 text-xs text-[rgba(244,244,245,0.5)] hover:text-[rgba(244,244,245,0.9)]"
               tabIndex={-1}
             >
               {showPw ? "הסתר" : "הצג"}
