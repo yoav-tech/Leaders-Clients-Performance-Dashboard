@@ -75,6 +75,11 @@ body {
 :root[data-theme="light"] .logo-img {
   filter: invert(1) brightness(0.35);
 }
+/* The login / invite card is always dark, so keep the white logo white there even in light theme
+   (otherwise the invert above turns it black → invisible on the dark card). */
+:root[data-theme="light"] .login-bg .logo-img {
+  filter: none;
+}
 
 /* ---- Premium panel: violet-tinted border + soft glow ---- */
 .panel {
