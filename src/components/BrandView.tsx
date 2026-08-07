@@ -14,7 +14,7 @@ import {
   roasTone,
 } from "@/lib/metrics";
 import type { SourceDaily, MonthForecast } from "@/lib/queries";
-import Sparkline from "./Sparkline";
+import TrendChart from "./TrendChart";
 import BreakdownExplorer from "./BreakdownExplorer";
 import DailyTable from "./DailyTable";
 
@@ -264,9 +264,9 @@ export default function BrandView({
         {store && <StoreInsights store={store} />}
       </div>
 
-      {/* Trend */}
-      <Panel title="Trend · ROAS">
-        <Sparkline data={breakdown.map((d) => ({ date: d.date, roas: d.blendedRoas, revenue: d.channels.site.revenue })).reverse()} />
+      {/* Trend (selectable metric, dated x-axis, hover values) */}
+      <Panel title="Trend">
+        <TrendChart data={breakdown} isClient={isClient} />
       </Panel>
 
       {/* Breakdown explorer (on-demand) */}

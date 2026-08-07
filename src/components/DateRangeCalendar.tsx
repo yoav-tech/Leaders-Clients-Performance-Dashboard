@@ -17,6 +17,23 @@ const shiftDays = (s: string, n: number) => { const d = new Date(s + "T00:00:00Z
 const WEEK = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
 const HE_MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
 
+// "N days up to today/yesterday" — free-form window like Google Ads.
+function DayInput({ label, onApply }: { label: string; onApply: (n: number) => void }) {
+  const [v, setV] = useState("");
+  const go = () => { const n = parseInt(v, 10); if (n >= 1) onApply(n); };
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-[var(--muted)]">
+      <input
+        type="number" min={1} value={v} placeholder="30"
+        onChange={(e) => setV(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); go(); } }}
+        className="w-14 rounded-md border border-[var(--card-border)] bg-[var(--background)] px-1 py-0.5 text-center text-[var(--foreground)]"
+      />
+      <span>{label}</span>
+    </div>
+  );
+}
+
 export default function DateRangeCalendar({
   activeKey,
   from,
@@ -109,6 +126,10 @@ export default function DateRangeCalendar({
                 {p.label}
               </button>
             ))}
+            <div className="mt-1 flex w-full flex-col gap-1.5 border-t border-[var(--card-border)] pt-2">
+              <DayInput label="ימים עד היום" onApply={(n) => applyCustom(shiftDays(today, -(n - 1)), today)} />
+              <DayInput label="ימים עד אתמול" onApply={(n) => { const y = shiftDays(today, -1); applyCustom(shiftDays(y, -(n - 1)), y); }} />
+            </div>
           </div>
 
           {/* Calendar */}
