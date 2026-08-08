@@ -17,6 +17,15 @@ const shiftDays = (s: string, n: number) => { const d = new Date(s + "T00:00:00Z
 const WEEK = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
 const HE_MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
 
+// Clean chevron (replaces ▶/◀ glyphs). d="r" points right, d="l" points left.
+function Chevron({ d }: { d: "l" | "r" }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {d === "r" ? <path d="M9 6l6 6-6 6" /> : <path d="M15 6l-6 6 6 6" />}
+    </svg>
+  );
+}
+
 // "N days up to today/yesterday" — free-form window like Google Ads.
 function DayInput({ label, onApply }: { label: string; onApply: (n: number) => void }) {
   const [v, setV] = useState("");
@@ -102,8 +111,8 @@ export default function DateRangeCalendar({
 
   return (
     <div className="relative flex items-center gap-1.5" ref={ref} dir="rtl">
-      <button onClick={() => step(-1)} className={btn} title="יום אחורה">▶</button>
-      <button onClick={() => step(1)} disabled={to >= today} className={btn} title="יום קדימה">◀</button>
+      <button onClick={() => step(-1)} className={btn} title="יום אחורה" aria-label="יום אחורה"><Chevron d="r" /></button>
+      <button onClick={() => step(1)} disabled={to >= today} className={btn} title="יום קדימה" aria-label="יום קדימה"><Chevron d="l" /></button>
       <button
         onClick={() => setOpen((o) => !o)}
         className="rounded-md border border-[var(--card-border)] bg-[var(--card)] px-3 py-1.5 text-sm font-medium text-[var(--foreground)] hover:border-[var(--muted)]"
@@ -133,9 +142,9 @@ export default function DateRangeCalendar({
           {/* Calendar */}
           <div className="flex-1">
             <div className="mb-2 flex items-center justify-between">
-              <button onClick={() => setView((v) => (v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 }))} className={btn}>▶</button>
+              <button onClick={() => setView((v) => (v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 }))} className={btn} aria-label="חודש הבא"><Chevron d="r" /></button>
               <div className="text-sm font-semibold">{HE_MONTHS[view.m]} {view.y}</div>
-              <button onClick={() => setView((v) => (v.m === 0 ? { y: v.y - 1, m: 11 } : { y: v.y, m: v.m - 1 }))} className={btn}>◀</button>
+              <button onClick={() => setView((v) => (v.m === 0 ? { y: v.y - 1, m: 11 } : { y: v.y, m: v.m - 1 }))} className={btn} aria-label="חודש קודם"><Chevron d="l" /></button>
             </div>
             <div className="grid grid-cols-7 gap-0.5 text-center text-[11px] text-[var(--muted)]">
               {WEEK.map((w) => <div key={w} className="py-1">{w}</div>)}
