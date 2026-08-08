@@ -16,7 +16,8 @@ export async function middleware(req: NextRequest) {
     pathname === "/login" ||
     pathname.startsWith("/api/login") ||
     pathname === "/invite" ||
-    pathname.startsWith("/api/invite")
+    pathname.startsWith("/api/invite") ||
+    pathname.startsWith("/api/clickup") // signed task links from the digest email
   ) {
     return NextResponse.next();
   }

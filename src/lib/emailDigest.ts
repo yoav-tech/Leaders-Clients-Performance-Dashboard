@@ -2,6 +2,8 @@
 // Reuses the same DigestData as the ClickUp recap so the two never diverge.
 import { getDigestData, renderDigestText, type DigestData, type DigestRow } from "./digest";
 import type { Alert } from "./alerts";
+import { canCreateTasks } from "./clickup";
+import { signTask, appBaseUrl } from "./taskLink";
 
 const C = {
   text: "#1a1d26",
@@ -40,23 +42,29 @@ function td(html: string, align: "left" | "right" = "right", extra = "") {
 }
 
 function kpiTable(rows: DigestRow[]): string {
+  const dash = td("—");
   const body = rows.map((r) => `
     <tr>
       ${td(`<b>${esc(r.name)}</b>`, "left")}
       ${td(ils(r.spend))}
-      ${td(roas(r.adRoas))}
-      ${td(`<span style="color:${roasColor(r.blended, r.target)};font-weight:600">${roas(r.blended)}</span>${trend(r.blended, r.blendedPrev)}`)}
-      ${td(String(r.orders))}
+      ${r.conversion ? td(ils(r.revenue)) : dash}
+      ${r.conversion ? td(`<span style="color:${roasColor(r.blended, r.target)};font-weight:600">${roas(r.blended)}</span>${trend(r.blended, r.blendedPrev)}`) : dash}
+      ${r.conversion ? td(String(r.orders)) : dash}
       ${td(r.pacePct == null ? "—" : `${Math.round(r.pacePct)}%`)}
     </tr>`).join("");
   return `
   <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse">
-    <thead><tr>${th("Brand", "left")}${th("Spend")}${th("ROAS")}${th("Blended")}${th("Orders")}${th("Pace")}</tr></thead>
+    <thead><tr>${th("Brand", "left")}${th("Spend")}${th("Revenue")}${th("ROAS")}${th("Orders")}${th("Pace")}</tr></thead>
     <tbody>${body}</tbody>
   </table>`;
 }
 
-function alertsBlock(alerts: Alert[]): string {
+function taskButton(url: string): string {
+  return `<a href="${url}" style="display:inline-block;white-space:nowrap;padding:5px 10px;border:1px solid ${C.border};border-radius:8px;background:${C.violetSoft};color:${C.violet};font:600 11px/1 -apple-system,Segoe UI,Roboto,Arial,sans-serif;text-decoration:none">+ ClickUp</a>`;
+}
+
+// taskLinks: alert.key → signed task-creation URL (present only when ClickUp tasks are configured).
+function alertsBlock(alerts: Alert[], taskLinks: Record<string, string>): string {
   if (!alerts.length) {
     return `<div style="padding:12px 14px;border-radius:10px;background:#f0fdf4;color:${C.good};font:600 14px/1 -apple-system,Segoe UI,Roboto,Arial,sans-serif">✓ אין התראות פתוחות</div>`;
   }
@@ -70,13 +78,19 @@ function alertsBlock(alerts: Alert[]): string {
   const blocks = order.map((brand) => {
     const list = byBrand.get(brand)!.sort((a, b) => rank[a.severity] - rank[b.severity]);
     const worst = sevColor(list[0].severity);
-    const items = list.map((a) => `<li style="margin:2px 0;color:${C.text}">${esc(a.detail)}</li>`).join("");
+    const items = list.map((a) => {
+      const btn = taskLinks[a.key] ? taskButton(taskLinks[a.key]) : "";
+      return `<tr>
+        <td style="padding:4px 0;font:400 13px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${C.text}">• ${esc(a.detail)}</td>
+        <td align="left" valign="top" style="padding:4px 0 4px 8px;white-space:nowrap">${btn}</td>
+      </tr>`;
+    }).join("");
     return `
-    <div style="margin:8px 0;padding:12px 14px;border:1px solid ${C.border};border-left:3px solid ${worst};border-radius:10px;background:${C.card}">
-      <div style="font:700 14px/1 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${C.text};margin-bottom:6px">
+    <div style="margin:8px 0;padding:12px 14px;border:1px solid ${C.border};border-inline-start:3px solid ${worst};border-radius:10px;background:${C.card}">
+      <div style="font:700 14px/1 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${C.text};margin-bottom:4px">
         <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${worst};margin-inline-end:6px"></span>${esc(brand)}
       </div>
-      <ul style="margin:0;padding-inline-start:18px;font:400 13px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif">${items}</ul>
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%">${items}</table>
     </div>`;
   }).join("");
   return blocks;
@@ -93,7 +107,7 @@ function shell(inner: string): string {
   </table></body></html>`;
 }
 
-export function renderDigestHtml(data: DigestData): string {
+export function renderDigestHtml(data: DigestData, taskLinks: Record<string, string> = {}): string {
   const header = `
   <tr><td style="padding:22px 24px 18px;border-bottom:1px solid ${C.border};background:linear-gradient(135deg,${C.violetSoft},#ffffff)">
     <div style="font:800 20px/1 -apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:.14em;color:${C.text}">LEADERS</div>
@@ -110,7 +124,7 @@ export function renderDigestHtml(data: DigestData): string {
   const attention = `
   <tr><td style="padding:14px 20px 20px">
     <div style="font:600 11px/1 -apple-system,Segoe UI,Roboto,Arial,sans-serif;text-transform:uppercase;letter-spacing:.05em;color:${C.muted};margin:6px 4px 6px">צריך תשומת לב</div>
-    ${alertsBlock(data.alerts)}
+    ${alertsBlock(data.alerts, taskLinks)}
   </td></tr>`;
 
   const footer = `
@@ -121,18 +135,25 @@ export function renderDigestHtml(data: DigestData): string {
   return shell(`<div dir="rtl">${header}${kpis}${attention}${footer}</div>`);
 }
 
-// Pure: subject + html + plaintext from already-computed data (no extra DB/Windsor round).
-export function renderDigestEmail(data: DigestData): { subject: string; html: string; text: string } {
-  const critical = data.alerts.filter((a) => a.severity === "critical").length;
-  const flag = critical ? `🔴 ${critical} · ` : "";
+// subject + html + plaintext from already-computed data. Signs a one-click "+ ClickUp" link per
+// alert when ClickUp task-creation is configured.
+export async function buildDigestEmailFrom(data: DigestData): Promise<{ subject: string; html: string; text: string }> {
+  const taskLinks: Record<string, string> = {};
+  if (canCreateTasks()) {
+    const base = appBaseUrl();
+    for (const a of data.alerts) {
+      const token = await signTask(`[${a.brandName}] ${a.detail}`);
+      taskLinks[a.key] = `${base}/api/clickup/task?t=${token}`;
+    }
+  }
   return {
-    subject: `${flag}Leaders — דוח יומי · ${data.day}`,
-    html: renderDigestHtml(data),
+    subject: `דוח יומי לקוחות לידרס · ${data.day}`,
+    html: renderDigestHtml(data, taskLinks),
     text: renderDigestText(data),
   };
 }
 
 // Convenience wrapper that fetches live data first.
 export async function buildDigestEmail(alerts?: Alert[]): Promise<{ subject: string; html: string; text: string }> {
-  return renderDigestEmail(await getDigestData(alerts));
+  return buildDigestEmailFrom(await getDigestData(alerts));
 }

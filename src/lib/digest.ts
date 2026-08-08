@@ -58,12 +58,13 @@ function monoTable(headers: string[], rows: string[][], aligns: ("l" | "r")[]): 
 export interface DigestRow {
   name: string;
   spend: number;
-  adRoas: number | null;
-  blended: number | null;
+  revenue: number; // store revenue
+  blended: number | null; // store revenue ÷ ad spend
   blendedPrev: number | null;
   orders: number;
   pacePct: number | null;
   target: number;
+  conversion: boolean; // false for awareness/app/perf brands (no store outcome → dash rev/ROAS/orders)
 }
 export interface DigestData {
   day: string;
@@ -81,9 +82,10 @@ export async function getDigestData(alerts?: Alert[]): Promise<DigestData> {
 
   const rows: DigestRow[] = [];
   for (const brand of BRANDS) {
-    if (brand.mediaPlan || brand.appInstall || brand.awarenessSources || brand.googleSnapshot || brand.perfSources) continue; // non-conversion brands aren't in the digest
+    // Include every client that has metrics data (conversion + app/awareness brands).
     const m = metrics.find((x) => x.brandId === brand.id);
     if (!m) continue;
+    const conversion = !(brand.mediaPlan || brand.appInstall || brand.awarenessSources || brand.googleSnapshot || brand.perfSources);
     let pacePct: number | null = null;
     if (brand.monthlyBudget > 0) {
       const monthSpend = await getBrandMonthSpend(brand.id);
@@ -92,12 +94,13 @@ export async function getDigestData(alerts?: Alert[]): Promise<DigestData> {
     rows.push({
       name: brand.name,
       spend: m.total.spend,
-      adRoas: m.total.roas,
+      revenue: m.channels.site.revenue,
       blended: m.blendedRoas,
       blendedPrev: m.previous?.blendedRoas ?? null,
       orders: Math.round(m.channels.site.purchases),
       pacePct,
       target: brand.targetRoas,
+      conversion,
     });
   }
   return { day, rows, alerts: openAlerts };
@@ -107,12 +110,19 @@ export async function getDigestData(alerts?: Alert[]): Promise<DigestData> {
 export function renderDigestText(data: DigestData): string {
   const tableRows = data.rows.map((r) => {
     const trend = deltaArrow(r.blended, r.blendedPrev);
-    return [r.name, ils(r.spend), roas(r.adRoas), `${roas(r.blended)}${trend ? " " + trend : ""}`, String(r.orders), r.pacePct === null ? "—" : `${Math.round(r.pacePct)}%`];
+    return [
+      r.name,
+      ils(r.spend),
+      r.conversion ? ils(r.revenue) : "—",
+      r.conversion ? `${roas(r.blended)}${trend ? " " + trend : ""}` : "—",
+      r.conversion ? String(r.orders) : "—",
+      r.pacePct === null ? "—" : `${Math.round(r.pacePct)}%`,
+    ];
   });
   const lines: string[] = [];
   lines.push(`☀️ **Leaders — Daily recap** · ${data.day}`);
-  lines.push(monoTable(["Brand", "Spend", "ROAS", "Blended", "Orders", "Pace"], tableRows, ["l", "r", "r", "r", "r", "r"]));
-  lines.push("_Blended = store revenue ÷ ad spend · ▲▼ = vs previous day · Pace = MTD vs budget_");
+  lines.push(monoTable(["Brand", "Spend", "Revenue", "ROAS", "Orders", "Pace"], tableRows, ["l", "r", "r", "r", "r", "r"]));
+  lines.push("_Revenue = store revenue · ROAS = revenue ÷ spend · ▲▼ vs previous day · Pace = MTD vs budget_");
   if (data.alerts.length) lines.push("", `⚠️ **Needs attention**`, groupAlerts(data.alerts));
   else lines.push("", "✅ No open alerts.");
   return lines.join("\n");
