@@ -34,7 +34,9 @@ export async function generateConclusions(r: ManagerReport): Promise<string[]> {
         }
       : null,
     channels: m ? (["google", "meta", "tiktok"] as Channel[]).map((ch) => ({ channel: ch, spend: Math.round(m.channels[ch].spend), roas: m.channels[ch].roas })) : [],
-    topCreatives: r.topAds.map((a) => ({ name: a.name, spend: a.spend, ctrPct: a.ctr == null ? null : Math.round(a.ctr * 1000) / 10 })),
+    topCreatives: r.topAds.map((a) => (r.isEcom
+      ? { name: a.name, spend: a.spend, revenue: a.revenue, roas: a.roas, aov: a.aov }
+      : { name: a.name, spend: a.spend, ctrPct: a.ctr == null ? null : Math.round(a.ctr * 1000) / 10 })),
     promos: r.promos.map((pr) => ({ code: pr.code, orders: pr.orders, revenue: pr.revenue })),
   };
 

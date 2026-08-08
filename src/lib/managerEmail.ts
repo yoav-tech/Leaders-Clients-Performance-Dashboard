@@ -63,15 +63,22 @@ export function renderManagerHtml(r: ManagerReport, conclusions: string[]): stri
       </tr></table>`
     : "";
 
-  const creatives = tableRows(
-    [["מודעה", "left"], ["הוצאה", "right"], ["CTR", "right"]],
-    r.topAds.map((a) => [`<span dir="auto">${esc(a.name.length > 46 ? a.name.slice(0, 44) + "…" : a.name)}</span>`, ils(a.spend), a.ctr == null ? "—" : `${(a.ctr * 100).toFixed(1)}%`]),
-    ["left", "right", "right"],
-  );
+  const adName = (name: string) => `<span dir="auto">${esc(name.length > 40 ? name.slice(0, 38) + "…" : name)}</span>`;
+  const creatives = r.isEcom
+    ? tableRows(
+        [["מודעה", "right"], ["הוצאה", "right"], ["הכנסה", "right"], ["ROAS", "right"], ["סל ממוצע", "right"]],
+        r.topAds.map((a) => [adName(a.name), ils(a.spend), ils(a.revenue), roas(a.roas), ils(a.aov)]),
+        ["right", "right", "right", "right", "right"],
+      )
+    : tableRows(
+        [["מודעה", "right"], ["הוצאה", "right"], ["CTR", "right"]],
+        r.topAds.map((a) => [adName(a.name), ils(a.spend), a.ctr == null ? "—" : `${(a.ctr * 100).toFixed(1)}%`]),
+        ["right", "right", "right"],
+      );
   const promos = tableRows(
-    [["קוד", "left"], ["הזמנות", "right"], ["הכנסות", "right"], ["הנחה", "right"]],
+    [["קוד", "right"], ["הזמנות", "right"], ["הכנסות", "right"], ["הנחה", "right"]],
     r.promos.map((pr) => [esc(pr.code), n0(pr.orders), ils(pr.revenue), ils(pr.discount)]),
-    ["left", "right", "right", "right"],
+    ["right", "right", "right", "right"],
   );
 
   const inner = `<div dir="rtl">
