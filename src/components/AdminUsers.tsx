@@ -16,6 +16,10 @@ interface BrandOpt {
   name: string;
 }
 
+// Row-action buttons — clearly buttons, not text links.
+const chip = "rounded-md border border-[var(--card-border)] px-2.5 py-1 text-xs text-[var(--muted)] transition-colors hover:border-[var(--panel-border)] hover:text-[var(--foreground)]";
+const chipDanger = "rounded-md border border-[var(--bad)]/40 px-2.5 py-1 text-xs text-[var(--bad)] transition-colors hover:bg-[var(--bad)]/10";
+
 export default function AdminUsers({ initialUsers, brands }: { initialUsers: UserSummary[]; brands: BrandOpt[] }) {
   const [users, setUsers] = useState<UserSummary[]>(initialUsers);
   const [username, setUsername] = useState("");
@@ -156,12 +160,12 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
               </div>
               <div className="flex items-center gap-2">
                 {u.role !== "admin" && (
-                  <button onClick={() => reinvite(u)} className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]">קישור הזמנה</button>
+                  <button onClick={() => reinvite(u)} className={chip}>קישור הזמנה</button>
                 )}
                 {!u.pending && (
-                  <button onClick={() => resetPw(u)} className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]">אפס סיסמה</button>
+                  <button onClick={() => resetPw(u)} className={chip}>אפס סיסמה</button>
                 )}
-                <button onClick={() => remove(u)} className="text-xs text-[var(--bad)] hover:underline">מחק</button>
+                <button onClick={() => remove(u)} className={chipDanger}>מחק</button>
               </div>
             </div>
           ))}
