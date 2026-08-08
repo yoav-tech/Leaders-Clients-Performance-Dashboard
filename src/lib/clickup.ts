@@ -5,6 +5,32 @@
 // CLICKUP_CHANNEL_ID (the shared channel, e.g. "6-204891275-8").
 
 const BASE = "https://api.clickup.com/api/v3";
+const V2 = "https://api.clickup.com/api/v2";
+
+export function taskListId(): string {
+  return process.env.CLICKUP_TASK_LIST_ID ?? "";
+}
+export function canCreateTasks(): boolean {
+  return Boolean(process.env.CLICKUP_API_TOKEN && taskListId());
+}
+
+// Create a task in the configured list (ClickUp API v2). Returns { id, url }.
+export async function createTask(name: string, description?: string): Promise<{ id: string; url: string }> {
+  const token = process.env.CLICKUP_API_TOKEN;
+  const list = taskListId();
+  if (!token || !list) throw new Error("ClickUp tasks not configured (CLICKUP_API_TOKEN / CLICKUP_TASK_LIST_ID)");
+  const res = await fetch(`${V2}/list/${list}/task`, {
+    method: "POST",
+    headers: { Authorization: token, "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ name, description: description ?? "" }),
+  });
+  if (!res.ok) {
+    const b = await res.text().catch(() => "");
+    throw new Error(`ClickUp task ${res.status}: ${b.slice(0, 300)}`);
+  }
+  const j = (await res.json().catch(() => ({}))) as { id?: string; url?: string };
+  return { id: String(j.id ?? ""), url: String(j.url ?? "") };
+}
 
 function cfg(): { token: string; workspace: string; channel: string } {
   const token = process.env.CLICKUP_API_TOKEN;

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireCron } from "@/lib/cronAuth";
 import { getDigestData, renderDigestText } from "@/lib/digest";
-import { renderDigestEmail } from "@/lib/emailDigest";
+import { buildDigestEmailFrom } from "@/lib/emailDigest";
 import { postMessage, clickupConfigured } from "@/lib/clickup";
 import { emailConfigured, sendEmail } from "@/lib/email";
 import { mediaManagers } from "@/lib/recipients";
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     let emailed: string[] = [];
     const to = mediaManagers();
     if (!dry && emailConfigured() && to.length) {
-      const { subject, html, text: plain } = renderDigestEmail(data);
+      const { subject, html, text: plain } = await buildDigestEmailFrom(data);
       await sendEmail({ to, subject, html, text: plain });
       emailed = to;
     }
