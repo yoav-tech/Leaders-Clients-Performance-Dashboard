@@ -54,7 +54,24 @@ function monoTable(headers: string[], rows: string[][], aligns: ("l" | "r")[]): 
   return ["```", line(headers), ...rows.map(line), "```"].join("\n");
 }
 
-export async function buildDigest(alerts?: Alert[]): Promise<string> {
+// Structured daily-recap data — one source for both the ClickUp text and the HTML email.
+export interface DigestRow {
+  name: string;
+  spend: number;
+  adRoas: number | null;
+  blended: number | null;
+  blendedPrev: number | null;
+  orders: number;
+  pacePct: number | null;
+  target: number;
+}
+export interface DigestData {
+  day: string;
+  rows: DigestRow[];
+  alerts: Alert[];
+}
+
+export async function getDigestData(alerts?: Alert[]): Promise<DigestData> {
   const day = shiftDate(today(), -1); // yesterday (last full day)
   const [metrics, openAlerts] = await Promise.all([
     getBrandMetrics(day, day),
@@ -62,48 +79,47 @@ export async function buildDigest(alerts?: Alert[]): Promise<string> {
   ]);
   const { elapsed, daysInMonth } = monthProgress();
 
-  const rows: string[][] = [];
+  const rows: DigestRow[] = [];
   for (const brand of BRANDS) {
     if (brand.mediaPlan || brand.appInstall || brand.awarenessSources || brand.googleSnapshot || brand.perfSources) continue; // non-conversion brands aren't in the digest
     const m = metrics.find((x) => x.brandId === brand.id);
     if (!m) continue;
-    const orders = Math.round(m.channels.site.purchases);
-    let pace = "—";
+    let pacePct: number | null = null;
     if (brand.monthlyBudget > 0) {
       const monthSpend = await getBrandMonthSpend(brand.id);
-      const p = computePacing(brand.monthlyBudget, monthSpend, elapsed, daysInMonth);
-      pace = p.pacePct === null ? "—" : `${Math.round(p.pacePct)}%`;
+      pacePct = computePacing(brand.monthlyBudget, monthSpend, elapsed, daysInMonth).pacePct;
     }
-    const trend = deltaArrow(m.blendedRoas, m.previous?.blendedRoas ?? null);
-    rows.push([
-      brand.name,
-      ils(m.total.spend),
-      roas(m.total.roas),
-      `${roas(m.blendedRoas)}${trend ? " " + trend : ""}`,
-      String(orders),
-      pace,
-    ]);
+    rows.push({
+      name: brand.name,
+      spend: m.total.spend,
+      adRoas: m.total.roas,
+      blended: m.blendedRoas,
+      blendedPrev: m.previous?.blendedRoas ?? null,
+      orders: Math.round(m.channels.site.purchases),
+      pacePct,
+      target: brand.targetRoas,
+    });
   }
+  return { day, rows, alerts: openAlerts };
+}
 
+// ClickUp markdown recap (mono table + grouped alerts).
+export function renderDigestText(data: DigestData): string {
+  const tableRows = data.rows.map((r) => {
+    const trend = deltaArrow(r.blended, r.blendedPrev);
+    return [r.name, ils(r.spend), roas(r.adRoas), `${roas(r.blended)}${trend ? " " + trend : ""}`, String(r.orders), r.pacePct === null ? "—" : `${Math.round(r.pacePct)}%`];
+  });
   const lines: string[] = [];
-  lines.push(`☀️ **Leaders — Daily recap** · ${day}`);
-  lines.push(monoTable(
-    ["Brand", "Spend", "ROAS", "Blended", "Orders", "Pace"],
-    rows,
-    ["l", "r", "r", "r", "r", "r"],
-  ));
+  lines.push(`☀️ **Leaders — Daily recap** · ${data.day}`);
+  lines.push(monoTable(["Brand", "Spend", "ROAS", "Blended", "Orders", "Pace"], tableRows, ["l", "r", "r", "r", "r", "r"]));
   lines.push("_Blended = store revenue ÷ ad spend · ▲▼ = vs previous day · Pace = MTD vs budget_");
-
-  if (openAlerts.length) {
-    lines.push("");
-    lines.push(`⚠️ **Needs attention**`);
-    lines.push(groupAlerts(openAlerts));
-  } else {
-    lines.push("");
-    lines.push("✅ No open alerts.");
-  }
-
+  if (data.alerts.length) lines.push("", `⚠️ **Needs attention**`, groupAlerts(data.alerts));
+  else lines.push("", "✅ No open alerts.");
   return lines.join("\n");
+}
+
+export async function buildDigest(alerts?: Alert[]): Promise<string> {
+  return renderDigestText(await getDigestData(alerts));
 }
 
 // One compact message from a batch of freshly-fired alerts (used by the alerts cron).
