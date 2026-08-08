@@ -35,10 +35,10 @@ function trend(cur: number | null, prev: number | null): string {
 const sevColor = (s: Alert["severity"]) => (s === "critical" ? C.bad : s === "warning" ? C.warn : C.violet);
 
 function th(label: string, align: "left" | "right" = "right") {
-  return `<th style="padding:8px 10px;text-align:${align};font:600 11px/1 -apple-system,Segoe UI,Roboto,Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;color:${C.muted};border-bottom:1px solid ${C.border}">${label}</th>`;
+  return `<th style="padding:7px 5px;text-align:${align};font:600 10px/1 -apple-system,Segoe UI,Roboto,Arial,sans-serif;text-transform:uppercase;letter-spacing:.02em;color:${C.muted};border-bottom:1px solid ${C.border};white-space:nowrap">${label}</th>`;
 }
 function td(html: string, align: "left" | "right" = "right", extra = "") {
-  return `<td style="padding:9px 10px;text-align:${align};font:400 14px/1.3 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${C.text};border-bottom:1px solid ${C.border};${extra}">${html}</td>`;
+  return `<td style="padding:8px 5px;text-align:${align};font:400 13px/1.3 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${C.text};border-bottom:1px solid ${C.border};white-space:nowrap;${extra}">${html}</td>`;
 }
 
 function kpiTable(rows: DigestRow[]): string {
@@ -129,7 +129,7 @@ export function renderDigestHtml(data: DigestData, taskLinks: Record<string, str
 
   const footer = `
   <tr><td style="padding:14px 24px 20px;border-top:1px solid ${C.border}">
-    <div style="font:400 11px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${C.muted}">Leaders · Powered by People · מייל אוטומטי מלוח הבקרה</div>
+    <div style="font:400 11px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${C.muted}">Leaders · Powered by People</div>
   </td></tr>`;
 
   return shell(`<div dir="rtl">${header}${kpis}${attention}${footer}</div>`);

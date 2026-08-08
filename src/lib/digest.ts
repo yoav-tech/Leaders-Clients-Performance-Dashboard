@@ -82,9 +82,12 @@ export async function getDigestData(alerts?: Alert[]): Promise<DigestData> {
 
   const rows: DigestRow[] = [];
   for (const brand of BRANDS) {
-    // Include every client that has metrics data (conversion + app/awareness brands).
     const m = metrics.find((x) => x.brandId === brand.id);
     if (!m) continue;
+    // Only clients that actually have data in the daily pipeline. awareness/perf/snapshot brands
+    // (colgate/scj/leaders/bestie) aren't ingested → they'd show a FALSE ₪0, so skip them here.
+    const hasData = m.total.spend > 0 || m.total.impressions > 0 || m.total.clicks > 0 || m.channels.site.revenue > 0;
+    if (!hasData) continue;
     const conversion = !(brand.mediaPlan || brand.appInstall || brand.awarenessSources || brand.googleSnapshot || brand.perfSources);
     let pacePct: number | null = null;
     if (brand.monthlyBudget > 0) {
