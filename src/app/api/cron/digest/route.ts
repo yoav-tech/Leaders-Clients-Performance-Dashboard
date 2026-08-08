@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireCron } from "@/lib/cronAuth";
-import { getDigestData, renderDigestText } from "@/lib/digest";
-import { buildDigestEmailFrom } from "@/lib/emailDigest";
+import { getGroupedDigest, renderGroupedText } from "@/lib/digestGroups";
+import { buildGroupedEmailFrom } from "@/lib/emailDigest";
 import { postMessage, clickupConfigured } from "@/lib/clickup";
 import { emailConfigured, sendEmail } from "@/lib/email";
 import { mediaManagers } from "@/lib/recipients";
@@ -16,8 +16,8 @@ export async function GET(request: Request) {
 
   const dry = new URL(request.url).searchParams.get("dry") === "1";
   try {
-    const data = await getDigestData(); // computed once → reused for ClickUp + email
-    const text = renderDigestText(data);
+    const data = await getGroupedDigest(); // computed once → reused for ClickUp + email
+    const text = renderGroupedText(data);
 
     let posted = false;
     if (!dry && clickupConfigured()) {
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     let emailed: string[] = [];
     const to = mediaManagers();
     if (!dry && emailConfigured() && to.length) {
-      const { subject, html, text: plain } = await buildDigestEmailFrom(data);
+      const { subject, html, text: plain } = await buildGroupedEmailFrom(data);
       await sendEmail({ to, subject, html, text: plain });
       emailed = to;
     }

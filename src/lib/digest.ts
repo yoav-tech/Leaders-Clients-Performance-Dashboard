@@ -16,7 +16,7 @@ const sevDot = (s: Alert["severity"]) => (s === "critical" ? "🔴" : s === "war
 
 // Group alerts by brand — a worst-severity header per brand, then its issues bulleted.
 // Keeps the channel a clean, scannable summary instead of a wall of per-ad lines.
-function groupAlerts(alerts: Alert[]): string {
+export function groupAlerts(alerts: Alert[]): string {
   const order: string[] = [];
   const byBrand = new Map<string, Alert[]>();
   for (const a of alerts) {

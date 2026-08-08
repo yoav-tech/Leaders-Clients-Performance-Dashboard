@@ -40,7 +40,13 @@ export interface BrandConfig {
   // General campaign-performance report across shared accounts, filtered by campaignFilter
   // (e.g. Leaders / Bestie inside the LEADERS Meta + LDRS Google accounts).
   perfSources?: PerfSourceConfig[];
+  // Which daily-digest table a client belongs to. Derived from the flags above by default
+  // (reportGroupOf) — set explicitly only to override for a new client.
+  reportGroup?: ReportGroup;
 }
+
+// Daily-digest client categories.
+export type ReportGroup = "ecommerce" | "views" | "leads" | "impshare";
 
 export interface AppSectionConfig {
   key: string;
@@ -265,4 +271,14 @@ export const BRANDS: BrandConfig[] = [
 
 export function getBrand(id: string): BrandConfig | undefined {
   return BRANDS.find((b) => b.id === id);
+}
+
+// The daily-digest table a client belongs to. Explicit reportGroup wins; otherwise derived from
+// the brand's report flags — so a new client auto-classifies from its config.
+export function reportGroupOf(b: BrandConfig): ReportGroup {
+  if (b.reportGroup) return b.reportGroup;
+  if (b.googleSnapshot) return "impshare"; // Colgate
+  if (b.appInstall || b.perfSources) return "leads"; // Haat, Leaders, Bestie
+  if (b.awarenessSources || b.mediaPlan) return "views"; // SCJ, Style
+  return "ecommerce"; // Argania, La Beaute, Studio Pasha, Seacret
 }
