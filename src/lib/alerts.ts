@@ -129,7 +129,8 @@ const HEALTH: Record<"meta" | "google" | "tiktok", HealthCfg> = {
     statusField: "ad_status",
     nameField: "ad_name",
     active: ["AD_STATUS_DELIVERY_OK"],
-    disapproved: ["AD_STATUS_REJECT", "AD_STATUS_AUDIT_DENY", "AD_STATUS_DISABLE"],
+    // Only genuine rejections — NOT AD_STATUS_DISABLE (that's just a paused/off ad, which is normal).
+    disapproved: ["AD_STATUS_REJECT", "AD_STATUS_AUDIT_DENY"],
     billing: [],
   },
 };
@@ -173,15 +174,31 @@ export async function adHealthAlerts(): Promise<Alert[]> {
         if (status) e.status = status;
         byName.set(name, e);
       }
+      // Summarize at the CHANNEL level — one alert per problem type, not one per ad.
       const tag = `${day}:${brand.id}:${ch}`;
+      const rejected: string[] = [];
+      const billing: string[] = [];
+      let activeCount = 0;
+      let channelSpend = 0;
       for (const [name, e] of byName) {
-        if (cfg.disapproved.includes(e.status)) {
-          out.push(mk(brand, ch, "policy", "critical", `${label(ch)}: "${name}" — ${statusText(e.status)}`, `${tag}:policy:${name}`));
-        } else if (cfg.billing.includes(e.status)) {
-          out.push(mk(brand, ch, "billing", "critical", `${label(ch)}: "${name}" — billing/payment issue (${e.status})`, `${tag}:billing:${name}`));
-        } else if (cfg.active.includes(e.status) && e.spend === 0) {
-          out.push(mk(brand, ch, "active_no_spend", "warning", `${label(ch)}: "${name}" active but spent ₪0 yesterday`, `${tag}:nospend:${name}`));
-        }
+        channelSpend += e.spend;
+        if (cfg.disapproved.includes(e.status)) rejected.push(name);
+        else if (cfg.billing.includes(e.status)) billing.push(name);
+        else if (cfg.active.includes(e.status)) activeCount++;
+      }
+      if (rejected.length) {
+        out.push(mk(brand, ch, "policy", "critical",
+          `${label(ch)}: ${rejected.length} ad${rejected.length > 1 ? "s" : ""} rejected (policy) — ${sampleNames(rejected)}`, `${tag}:policy`));
+      }
+      if (billing.length) {
+        out.push(mk(brand, ch, "billing", "critical",
+          `${label(ch)}: ${billing.length} ad${billing.length > 1 ? "s" : ""} with billing/payment issues — ${sampleNames(billing)}`, `${tag}:billing`));
+      }
+      // Delivery stalled: the channel HAS active ads but spent nothing yesterday (real problem;
+      // an all-paused channel spends 0 too, but then activeCount is 0 → no false alarm).
+      if (activeCount > 0 && channelSpend === 0) {
+        out.push(mk(brand, ch, "no_delivery", "warning",
+          `${label(ch)}: ${activeCount} active ad${activeCount > 1 ? "s" : ""} but ₪0 spend yesterday — delivery may be stalled`, `${tag}:nodelivery`));
       }
       // Account-level status (Meta exposes account_status).
       if (ch === "meta") {
@@ -246,16 +263,9 @@ function fmt(v: number | null): string {
 function ilsN(v: number): string {
   return `₪${Math.round(v).toLocaleString("en-US")}`;
 }
-function statusText(status: string): string {
-  const map: Record<string, string> = {
-    DISAPPROVED: "disapproved (policy)",
-    WITH_ISSUES: "has delivery issues",
-    AD_PAUSED_WITH_ISSUES: "paused with issues",
-    AD_STATUS_DISABLE: "disabled",
-    AD_STATUS_REJECT: "rejected",
-    AD_STATUS_AUDIT_DENY: "rejected in review",
-  };
-  return map[status] ?? status.replace(/^AD_STATUS_/, "").replace(/_/g, " ").toLowerCase();
+function sampleNames(names: string[], max = 3): string {
+  const shown = names.slice(0, max).map((n) => `"${n}"`).join(", ");
+  return names.length > max ? `${shown} +${names.length - max}` : shown;
 }
 function pct(v: number | null): string {
   return v === null ? "—" : `${(v * 100).toFixed(1)}%`;

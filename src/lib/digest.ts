@@ -10,7 +10,27 @@ import { collectAlerts, type Alert } from "./alerts";
 
 const ils = (v: number | null) => (v === null ? "—" : `₪${Math.round(v).toLocaleString("en-US")}`);
 const roas = (v: number | null) => (v === null ? "—" : v.toFixed(1));
-const sev = (s: Alert["severity"]) => (s === "critical" ? "🔴" : s === "warning" ? "🟠" : "🔵");
+
+const SEV_RANK: Record<Alert["severity"], number> = { critical: 0, warning: 1, info: 2 };
+const sevDot = (s: Alert["severity"]) => (s === "critical" ? "🔴" : s === "warning" ? "🟡" : "🔵");
+
+// Group alerts by brand — a worst-severity header per brand, then its issues bulleted.
+// Keeps the channel a clean, scannable summary instead of a wall of per-ad lines.
+function groupAlerts(alerts: Alert[]): string {
+  const order: string[] = [];
+  const byBrand = new Map<string, Alert[]>();
+  for (const a of alerts) {
+    if (!byBrand.has(a.brandName)) { byBrand.set(a.brandName, []); order.push(a.brandName); }
+    byBrand.get(a.brandName)!.push(a);
+  }
+  const blocks: string[] = [];
+  for (const brand of order) {
+    const list = byBrand.get(brand)!.sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity]);
+    blocks.push(`${sevDot(list[0].severity)} **${brand}**`);
+    for (const a of list) blocks.push(`   • ${a.detail}`);
+  }
+  return blocks.join("\n");
+}
 
 // Signed delta arrow like "▲18%" / "▼5%" (blank when incomparable).
 function deltaArrow(cur: number | null, prev: number | null): string {
@@ -76,9 +96,8 @@ export async function buildDigest(alerts?: Alert[]): Promise<string> {
 
   if (openAlerts.length) {
     lines.push("");
-    lines.push(`⚠️ **Needs attention (${openAlerts.length})**`);
-    for (const a of openAlerts.slice(0, 20)) lines.push(`${sev(a.severity)} ${a.brandName} · ${a.detail}`);
-    if (openAlerts.length > 20) lines.push(`…and ${openAlerts.length - 20} more`);
+    lines.push(`⚠️ **Needs attention**`);
+    lines.push(groupAlerts(openAlerts));
   } else {
     lines.push("");
     lines.push("✅ No open alerts.");
@@ -89,7 +108,5 @@ export async function buildDigest(alerts?: Alert[]): Promise<string> {
 
 // One compact message from a batch of freshly-fired alerts (used by the alerts cron).
 export function formatAlertBatch(alerts: Alert[]): string {
-  const lines = [`🚨 **New alerts** (${alerts.length})`];
-  for (const a of alerts) lines.push(`${sev(a.severity)} [${a.brandName}] ${a.detail}`);
-  return lines.join("\n");
+  return [`🚨 **New alerts** · ${shiftDate(today(), -1)}`, groupAlerts(alerts)].join("\n");
 }
