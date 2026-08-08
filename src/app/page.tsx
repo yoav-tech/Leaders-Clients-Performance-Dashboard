@@ -1,4 +1,5 @@
-import { getBrand } from "@/lib/brands";
+import { Suspense } from "react";
+import { getBrand, type BrandConfig } from "@/lib/brands";
 import {
   getBrandMetrics,
   getBrandMonthSpend,
@@ -9,7 +10,7 @@ import {
   type SourceDaily,
 } from "@/lib/queries";
 import { fetchQuickShopAnalytics } from "@/lib/storeAnalytics";
-import { resolveRange, today } from "@/lib/dates";
+import { resolveRange, today, type RangeKey } from "@/lib/dates";
 import { hasDb } from "@/lib/db";
 import BrandView from "@/components/BrandView";
 import LiveRefresher from "@/components/LiveRefresher";
@@ -23,10 +24,65 @@ import CampaignPerfView from "@/components/CampaignPerfView";
 import ClientSummaryView from "@/components/ClientSummaryView";
 import AppShell from "@/components/AppShell";
 import DateRangeCalendar from "@/components/DateRangeCalendar";
+import ViewSkeleton from "@/components/ViewSkeleton";
 import { getServerSession, allowedBrands } from "@/lib/serverSession";
 import { getUserById } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
+
+interface Range { key: RangeKey; from: string; to: string }
+
+// The heavy, per-brand report — rendered inside a Suspense boundary so the shell shows instantly
+// and only this streams in. SSR-heavy brands (conversion/app/media-plan) get a skeleton on switch;
+// client-fetch brands (awareness/snapshot/perf) return immediately and spin internally.
+async function BrandContent({ brand, range, isClient }: { brand: BrandConfig; range: Range; isClient: boolean }) {
+  const brandId = brand.id;
+  const isMediaPlan = !!brand.mediaPlan;
+  const isAppInstall = !!brand.appInstall;
+  const isAwareness = !!brand.awarenessSources;
+  const isSnapshot = !!brand.googleSnapshot;
+  const isPerf = !!brand.perfSources;
+
+  if (isMediaPlan) {
+    const exec = await getMediaPlanExecution(brand);
+    return exec ? <MediaPlanView brand={brand} exec={exec} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No plan data.</div>;
+  }
+  if (isAppInstall) {
+    const appReport = await getAppReport(brand, range.from, range.to);
+    return appReport ? <AppReportView brand={brand} report={appReport} from={range.from} to={range.to} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No app data for this range.</div>;
+  }
+  if (isAwareness) return <AwarenessView brandId={brandId} brandName={brand.name} campaignFilter={brand.campaignFilter ?? ""} from={range.from} to={range.to} />;
+  if (isSnapshot) return <SearchSnapshotView brandId={brandId} brandName={brand.name} from={range.from} to={range.to} />;
+  if (isPerf) return <CampaignPerfView brandId={brandId} brandName={brand.name} campaignFilter={brand.campaignFilter ?? ""} from={range.from} to={range.to} />;
+
+  // Conversion brand.
+  const [allMetrics, monthSpend, breakdownMap, sourceMap, forecast, store] = await Promise.all([
+    getBrandMetrics(range.from, range.to),
+    getBrandMonthSpend(brandId),
+    getDailyBreakdown(range.from, range.to),
+    getDailySourceBreakdown(range.from, range.to),
+    getMonthForecast(brandId),
+    fetchQuickShopAnalytics(brand),
+  ]);
+  const metrics = allMetrics.find((m) => m.brandId === brandId)!;
+  const emptySource: SourceDaily = { sources: [], rows: {} };
+  return isClient ? (
+    <ClientSummaryView brand={brand} metrics={metrics} breakdown={breakdownMap[brandId] ?? []} forecast={forecast} monthSpend={monthSpend} />
+  ) : (
+    <BrandView
+      brand={brand}
+      metrics={metrics}
+      breakdown={breakdownMap[brandId] ?? []}
+      sourceDaily={sourceMap[brandId] ?? emptySource}
+      forecast={forecast}
+      store={store}
+      monthSpend={monthSpend}
+      from={range.from}
+      to={range.to}
+      isClient={isClient}
+    />
+  );
+}
 
 export default async function Home({
   searchParams,
@@ -48,41 +104,14 @@ export default async function Home({
   }
   const brandId = allowed.some((b) => b.id === sp.brand) ? sp.brand! : allowed[0].id;
   const brand = getBrand(brandId)!;
+  const isSpecial = !!(brand.mediaPlan || brand.appInstall || brand.awarenessSources || brand.googleSnapshot || brand.perfSources);
 
-  const isMediaPlan = !!brand.mediaPlan;
-  const isAppInstall = !!brand.appInstall;
-  const isAwareness = !!brand.awarenessSources;
-  const isSnapshot = !!brand.googleSnapshot;
-  const isPerf = !!brand.perfSources;
-  const isSpecial = isMediaPlan || isAppInstall || isAwareness || isSnapshot || isPerf;
-
-  const exec = isMediaPlan ? await getMediaPlanExecution(brand) : null;
-  const appReport = isAppInstall ? await getAppReport(brand, range.from, range.to) : null;
-  const conv = isSpecial
-    ? null
-    : await (async () => {
-        const [allMetrics, monthSpend, breakdownMap, sourceMap, forecast, store] = await Promise.all([
-          getBrandMetrics(range.from, range.to),
-          getBrandMonthSpend(brandId),
-          getDailyBreakdown(range.from, range.to),
-          getDailySourceBreakdown(range.from, range.to),
-          getMonthForecast(brandId),
-          fetchQuickShopAnalytics(brand),
-        ]);
-        return { metrics: allMetrics.find((m) => m.brandId === brandId)!, monthSpend, breakdownMap, sourceMap, forecast, store };
-      })();
-  const lastUpdated = await getLastUpdated();
-  const emptySource: SourceDaily = { sources: [], rows: {} };
-
-  // Preserve the current range across brand navigation.
-  const rangeQuery =
-    range.key === "custom" ? `&range=custom&from=${range.from}&to=${range.to}` : `&range=${range.key}`;
-
-  // Account chip label.
   const isAdmin = session.role === "admin";
   const me = isAdmin ? null : await getUserById(session.sub);
   const accountLabel = isAdmin ? "מנהל מדיה" : me?.fullName || me?.username || "לקוח";
   const accountSub = isAdmin ? "Admin" : me?.username ?? "";
+  const lastUpdated = await getLastUpdated();
+  const rangeQuery = range.key === "custom" ? `&range=custom&from=${range.from}&to=${range.to}` : `&range=${range.key}`;
 
   const topBar = (
     <>
@@ -98,7 +127,7 @@ export default async function Home({
         ) : (
           <LiveRefresher brand={brandId} active={range.to >= today()} warmPath="/api/live-warm" />
         )}
-        {!isMediaPlan && <DateRangeCalendar activeKey={range.key} from={range.from} to={range.to} brand={brandId} />}
+        {!brand.mediaPlan && <DateRangeCalendar activeKey={range.key} from={range.from} to={range.to} brand={brandId} />}
       </div>
     </>
   );
@@ -119,45 +148,9 @@ export default async function Home({
           Database not configured yet.
         </div>
       )}
-
-      {isMediaPlan && exec ? (
-        <MediaPlanView brand={brand} exec={exec} />
-      ) : isAppInstall ? (
-        appReport ? (
-          <AppReportView brand={brand} report={appReport} from={range.from} to={range.to} />
-        ) : (
-          <div className="panel p-4 text-sm text-[var(--muted)]">No app data for this range.</div>
-        )
-      ) : isAwareness ? (
-        <AwarenessView brandId={brandId} brandName={brand.name} campaignFilter={brand.campaignFilter ?? ""} from={range.from} to={range.to} />
-      ) : isSnapshot ? (
-        <SearchSnapshotView brandId={brandId} brandName={brand.name} from={range.from} to={range.to} />
-      ) : isPerf ? (
-        <CampaignPerfView brandId={brandId} brandName={brand.name} campaignFilter={brand.campaignFilter ?? ""} from={range.from} to={range.to} />
-      ) : conv ? (
-        isClient ? (
-          <ClientSummaryView
-            brand={brand}
-            metrics={conv.metrics}
-            breakdown={conv.breakdownMap[brandId] ?? []}
-            forecast={conv.forecast}
-            monthSpend={conv.monthSpend}
-          />
-        ) : (
-          <BrandView
-            brand={brand}
-            metrics={conv.metrics}
-            breakdown={conv.breakdownMap[brandId] ?? []}
-            sourceDaily={conv.sourceMap[brandId] ?? emptySource}
-            forecast={conv.forecast}
-            store={conv.store}
-            monthSpend={conv.monthSpend}
-            from={range.from}
-            to={range.to}
-            isClient={isClient}
-          />
-        )
-      ) : null}
+      <Suspense key={`${brandId}:${range.from}:${range.to}`} fallback={<ViewSkeleton />}>
+        <BrandContent brand={brand} range={range} isClient={isClient} />
+      </Suspense>
     </AppShell>
   );
 }
