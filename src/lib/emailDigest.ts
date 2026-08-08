@@ -7,8 +7,9 @@ import { canCreateTasks } from "./clickup";
 import { signTask, appBaseUrl } from "./taskLink";
 
 const C = {
-  text: "#1a1d26", muted: "#6b7280", border: "#e8e8f0", violet: "#7c3aed", violetSoft: "#f3f0ff",
-  good: "#15803d", bad: "#dc2626", warn: "#b45309", bg: "#f5f5fb", card: "#ffffff",
+  text: "#1a1d26", muted: "#6b7280", border: "#ececf3", violet: "#7c3aed", violetSoft: "#f4f1ff",
+  violetBorder: "rgba(124,58,237,.18)", good: "#15803d", bad: "#dc2626", warn: "#b45309",
+  bg: "#f5f4fb", card: "#ffffff",
 };
 
 const ils = (v: number | null) => (v == null ? "—" : `₪${Math.round(v).toLocaleString("en-US")}`);
@@ -45,12 +46,23 @@ function table(headers: [string, "left" | "right"][], rows: [string, "left" | "r
   return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse">
     <thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
-function section(icon: string, title: string, tableHtml: string): string {
+// A group as a panel card — violet accent bar + title + count, no emoji (platform language).
+function card(title: string, count: number, tableHtml: string): string {
   if (!tableHtml) return "";
-  return `<tr><td style="padding:14px 20px 2px">
-    <div style="font:600 12px/1 ${FONT};color:${C.text};margin:0 4px 8px">${icon} ${title}</div>
-    ${tableHtml}
+  return `<tr><td style="padding:8px 18px">
+    <div style="border:1px solid ${C.violetBorder};border-radius:14px;overflow:hidden;background:${C.card};box-shadow:0 1px 2px rgba(16,18,26,.04),0 10px 30px rgba(124,58,237,.05)">
+      <div style="padding:11px 14px;background:${C.violetSoft};border-bottom:1px solid ${C.border}">
+        <span style="display:inline-block;width:4px;height:13px;background:${C.violet};border-radius:2px;vertical-align:-2px;margin-inline-end:8px"></span>
+        <span style="font:700 13px/1 ${FONT};color:${C.text}">${title}</span>
+        <span style="font:500 11px/1 ${FONT};color:${C.muted};margin-inline-start:6px">${count}</span>
+      </div>
+      <div style="padding:4px 12px 8px">${tableHtml}</div>
+    </div>
   </td></tr>`;
+}
+
+function pill(label: string, value: string, color = C.text): string {
+  return `<span style="display:inline-block;margin-inline-end:8px;padding:6px 12px;border:1px solid ${C.border};border-radius:999px;background:#fff;font:400 12px/1 ${FONT};color:${C.muted}">${label} <b style="color:${color}">${value}</b></span>`;
 }
 
 function ecomTable(rows: EcomRow[]): string {
@@ -98,30 +110,42 @@ function shell(inner: string): string {
 }
 
 export function renderGroupedHtml(d: GroupedDigest, taskLinks: Record<string, string> = {}): string {
-  const header = `<tr><td style="padding:22px 24px 16px;border-bottom:1px solid ${C.border};background:linear-gradient(135deg,${C.violetSoft},#ffffff)">
-    <div style="font:800 20px/1 ${FONT};letter-spacing:.14em;color:${C.text}">LEADERS</div>
-    <div style="margin-top:4px;font:400 13px/1 ${FONT};color:${C.muted}">דוח יומי לקוחות · ${d.day}</div>
+  const clients = d.ecom.length + d.views.length + d.leads.length + d.impshare.length;
+  const totalSpend = [...d.ecom, ...d.views, ...d.leads, ...d.impshare].reduce((s, r) => s + (r.spend || 0), 0);
+  const critical = d.alerts.filter((a) => a.severity === "critical").length;
+  const alertColor = critical ? C.bad : d.alerts.length ? C.warn : C.good;
+
+  const header = `<tr><td style="padding:0">
+    <div style="padding:26px 24px 20px;background:linear-gradient(135deg,#efeaff 0%,#ffffff 72%);border-bottom:1px solid ${C.border}">
+      <div style="font:800 22px/1 ${FONT};letter-spacing:.16em;color:${C.text}">LEADERS</div>
+      <div style="margin-top:6px;font:400 13px/1 ${FONT};color:${C.muted}">דוח ביצועים יומי · ${d.day}</div>
+      <div style="margin-top:16px">
+        ${pill("הוצאה כוללת", ils(totalSpend), C.text)}
+        ${pill("לקוחות", String(clients), C.text)}
+        ${pill("התראות", String(d.alerts.length), alertColor)}
+      </div>
+    </div>
   </td></tr>`;
 
-  const ecom = section("🛒", "איקומרס", ecomTable(d.ecom));
-  const views = section("👁️", "צפיות", table(
+  const ecom = card("איקומרס", d.ecom.length, ecomTable(d.ecom));
+  const views = card("צפיות", d.views.length, table(
     [["Brand", "left"], ["Spend", "right"], ["Impr", "right"], ["Views", "right"], ["CPV", "right"]],
     d.views.map((r) => [[`<b>${esc(r.name)}</b>`, "left"], [ils(r.spend), "right"], [n0(r.impressions), "right"], [n0(r.views), "right"], [cpvv(r.cpv), "right"]]),
   ));
-  const leads = section("📇", "לידים", table(
+  const leads = card("לידים", d.leads.length, table(
     [["Brand", "left"], ["Spend", "right"], ["Leads", "right"], ["CPL", "right"]],
     d.leads.map((r) => [[`<b>${esc(r.name)}</b>`, "left"], [ils(r.spend), "right"], [n0(r.leads), "right"], [ils(r.cpl), "right"]]),
   ));
-  const impshare = section("📊", "Impression Share", table(
+  const impshare = card("Impression Share", d.impshare.length, table(
     [["Account", "left"], ["Imp Share", "right"], ["Spend", "right"], ["Clicks", "right"]],
     d.impshare.map((r) => [[`<b>${esc(r.name)}</b>`, "left"], [pctv(r.impShare), "right"], [ils(r.spend), "right"], [n0(r.clicks), "right"]]),
   ));
 
-  const attention = `<tr><td style="padding:16px 20px 20px">
-    <div style="font:600 12px/1 ${FONT};color:${C.text};margin:6px 4px 8px">⚠️ צריך תשומת לב</div>
+  const attention = `<tr><td style="padding:14px 18px 20px">
+    <div style="font:700 13px/1 ${FONT};color:${C.text};margin:6px 6px 8px"><span style="display:inline-block;width:4px;height:13px;background:${alertColor};border-radius:2px;vertical-align:-2px;margin-inline-end:8px"></span>צריך תשומת לב</div>
     ${alertsBlock(d.alerts, taskLinks)}
   </td></tr>`;
-  const footer = `<tr><td style="padding:14px 24px 20px;border-top:1px solid ${C.border}">
+  const footer = `<tr><td style="padding:16px 24px 22px;border-top:1px solid ${C.border}">
     <div style="font:400 11px/1.5 ${FONT};color:${C.muted}">Leaders · Powered by People</div></td></tr>`;
 
   return shell(`<div dir="rtl">${header}${ecom}${views}${leads}${impshare}${attention}${footer}</div>`);
