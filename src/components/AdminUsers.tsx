@@ -97,7 +97,7 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
             <div className="mb-1 text-xs text-[var(--muted)]">שם משתמש ללקוח (הוא יקבל אותו וישלים פרטים בהזמנה):</div>
             <input
               type="text" placeholder="לדוגמה: colgate" value={username} onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-md border border-[var(--card-border)] bg-[var(--background)] px-3 py-2 text-sm" dir="ltr"
+              className="w-full rounded-md border border-[var(--card-border)] bg-[var(--background)] px-3 py-2 text-sm" dir="rtl"
             />
           </div>
           <div>
