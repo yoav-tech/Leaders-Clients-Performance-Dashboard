@@ -111,7 +111,7 @@ export default function AccountPanel({
               {team.map((m) => (
                 <div key={m.id} className="flex items-center justify-between rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm">
                   <div><span className="font-medium" dir="ltr">{m.username}</span>{m.fullName && <span className="mr-2 text-xs text-[var(--muted)]">· {m.fullName}</span>}{m.pending && <span className="mr-2 rounded bg-[var(--warn)]/20 px-1.5 py-0.5 text-[10px] text-[var(--warn)]">ממתין</span>}</div>
-                  <button onClick={() => removeMember(m)} className="text-xs text-[var(--bad)] hover:underline">הסר</button>
+                  <button onClick={() => removeMember(m)} className="rounded-md border border-[var(--bad)]/40 px-2.5 py-1 text-xs text-[var(--bad)] transition-colors hover:bg-[var(--bad)]/10">הסר</button>
                 </div>
               ))}
               {team.length === 0 && <div className="text-sm text-[var(--muted)]">עדיין לא הזמנת אנשי צוות.</div>}
