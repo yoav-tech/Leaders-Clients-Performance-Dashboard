@@ -72,12 +72,14 @@ export async function getGroupedDigest(alerts?: Alert[]): Promise<GroupedDigest>
           if (spend > 0 || ld > 0) leads.push({ name: brand.name, spend, leads: Math.round(ld), cpl: ld ? spend / ld : null });
         }).catch(() => {}));
       } else if (brand.appInstall) {
-        // Spend = the client's TOTAL ad spend across all sections/platforms (from the daily
-        // pipeline); leads = the lead-generating sections. CPL is therefore blended.
+        // Spend = the client's TOTAL ad spend (all sections). CPL, however, is the real cost-per-
+        // lead of the LEAD sections only (each section keeps its own CPA), not the blended total.
         const totalSpend = m ? m.total.spend : 0;
         jobs.push(getAppReport(brand, day, day).then((r) => {
-          const ld = r ? r.sections.filter((s) => s.kind === "leads").reduce((s, x) => s + x.totals.leads, 0) : 0;
-          if (totalSpend > 0 || ld > 0) leads.push({ name: brand.name, spend: totalSpend, leads: Math.round(ld), cpl: ld ? totalSpend / ld : null });
+          const secs = r ? r.sections.filter((s) => s.kind === "leads") : [];
+          const leadSpend = secs.reduce((s, x) => s + x.totals.spend, 0);
+          const ld = secs.reduce((s, x) => s + x.totals.leads, 0);
+          if (totalSpend > 0 || ld > 0) leads.push({ name: brand.name, spend: totalSpend, leads: Math.round(ld), cpl: ld ? leadSpend / ld : null });
         }).catch(() => {}));
       }
     } else if (group === "impshare") {
