@@ -1,21 +1,23 @@
 // Per-brand period report for the account (client) manager — weekly / monthly. Assembles the
 // period's KPIs (with prior-period deltas), top creatives (Meta), and promo/discount performance;
 // the narrative conclusions are generated separately (conclusions.ts) from this data.
-import type { BrandConfig } from "./brands";
+import { reportGroupOf, type BrandConfig } from "./brands";
 import type { BrandMetrics } from "./types";
 import { getBrandMetrics } from "./queries";
 import { fetchWindsor, num } from "./windsor";
+import { toIls } from "./fx";
 import { fetchQuickShopPaidOrders } from "./quickshop";
 import { fetchShopifyPaidOrders } from "./shopify";
 
 const normId = (v: unknown) => String(v ?? "").replace(/^act_/i, "").trim();
 
-export interface TopAd { name: string; spend: number; ctr: number | null }
+export interface TopAd { name: string; spend: number; ctr: number | null; purchases: number; revenue: number; roas: number | null; aov: number | null }
 export interface Promo { code: string; orders: number; revenue: number; discount: number }
 
 export interface ManagerReport {
   brandId: string;
   brandName: string;
+  isEcom: boolean;
   from: string;
   to: string;
   period: "week" | "month";
@@ -24,21 +26,42 @@ export interface ManagerReport {
   promos: Promo[];
 }
 
+// Top Meta creatives with per-ad spend + Meta-reported conversions (non-omni pixel fields, ILS).
 async function topMetaAds(brand: BrandConfig, from: string, to: string): Promise<TopAd[]> {
   if (!brand.metaAccountId) return [];
   try {
-    const rows = await fetchWindsor({ connector: "facebook", fields: ["account_id", "ad_name", "spend", "impressions", "clicks"], dateFrom: from, dateTo: to, accounts: [brand.metaAccountId], cacheSeconds: 1800 });
+    const rows = await fetchWindsor({
+      connector: "facebook",
+      fields: ["account_id", "currency", "ad_name", "spend", "impressions", "clicks", "actions_purchase", "action_values_purchase"],
+      dateFrom: from, dateTo: to, accounts: [brand.metaAccountId], cacheSeconds: 1800,
+    });
     const acc = normId(brand.metaAccountId);
-    const map = new Map<string, { spend: number; impr: number; clicks: number }>();
+    const map = new Map<string, { spend: number; impr: number; clicks: number; purch: number; rev: number }>();
     for (const r of rows) {
       if (normId(r.account_id) !== acc) continue;
       const name = String(r.ad_name ?? "").trim();
       if (!name) continue;
-      const e = map.get(name) ?? { spend: 0, impr: 0, clicks: 0 };
-      e.spend += num(r.spend); e.impr += num(r.impressions); e.clicks += num(r.clicks);
+      const cur = String(r.currency ?? "ILS").toUpperCase();
+      const e = map.get(name) ?? { spend: 0, impr: 0, clicks: 0, purch: 0, rev: 0 };
+      e.spend += toIls(num(r.spend), cur, 3);
+      e.impr += num(r.impressions);
+      e.clicks += num(r.clicks);
+      e.purch += num(r.actions_purchase);
+      e.rev += toIls(num(r.action_values_purchase), cur, 3);
       map.set(name, e);
     }
-    return [...map].map(([name, e]) => ({ name, spend: Math.round(e.spend), ctr: e.impr ? e.clicks / e.impr : null })).sort((a, b) => b.spend - a.spend).slice(0, 5);
+    return [...map]
+      .map(([name, e]) => ({
+        name,
+        spend: Math.round(e.spend),
+        ctr: e.impr ? e.clicks / e.impr : null,
+        purchases: Math.round(e.purch),
+        revenue: Math.round(e.rev),
+        roas: e.spend ? e.rev / e.spend : null,
+        aov: e.purch ? e.rev / e.purch : null,
+      }))
+      .sort((a, b) => b.spend - a.spend)
+      .slice(0, 5);
   } catch {
     return [];
   }
@@ -68,5 +91,5 @@ export async function getManagerReport(brand: BrandConfig, from: string, to: str
     topMetaAds(brand, from, to),
     promos(brand, from, to),
   ]);
-  return { brandId: brand.id, brandName: brand.name, from, to, period, metrics: all.find((m) => m.brandId === brand.id) ?? null, topAds, promos: pr };
+  return { brandId: brand.id, brandName: brand.name, isEcom: reportGroupOf(brand) === "ecommerce", from, to, period, metrics: all.find((m) => m.brandId === brand.id) ?? null, topAds, promos: pr };
 }
