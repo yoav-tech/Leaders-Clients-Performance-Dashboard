@@ -162,12 +162,12 @@ export default function BrandView({
         const behind = pacing.pacePct !== null && pacing.pacePct < 100;
         const signal =
           blendedRoas === null || pacing.pacePct === null
-            ? { emoji: "⚪", label: "—", tone: "none", hint: "" }
+            ? { label: "—", tone: "none", hint: "" }
             : efficient && behind
-              ? { emoji: "🟢", label: "Room to scale", tone: "good", hint: "ROAS beats target and you're under pace — push budget." }
+              ? { label: "Room to scale", tone: "good", hint: "ROAS beats target and you're under pace — push budget." }
               : !efficient && !behind
-                ? { emoji: "🔴", label: "Pull back", tone: "bad", hint: "ROAS below target and ahead of pace — ease spend." }
-                : { emoji: "🟡", label: "On track", tone: "warn", hint: "" };
+                ? { label: "Pull back", tone: "bad", hint: "ROAS below target and ahead of pace — ease spend." }
+                : { label: "On track", tone: "warn", hint: "" };
         return (
           <Panel title="Budget pacing · this month">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -181,7 +181,7 @@ export default function BrandView({
               <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, (pacing.spend / (pacing.budget || 1)) * 100)}%` }} />
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-              <span className={`font-semibold ${TONE[signal.tone]}`}>{signal.emoji} {signal.label}</span>
+              <span className={`inline-flex items-center gap-1.5 font-semibold ${TONE[signal.tone]}`}><span aria-hidden className="text-[9px]">●</span>{signal.label}</span>
               <span className="text-[var(--muted)]">
                 · Blended ROAS {formatRoas(blendedRoas)} vs target {target.toFixed(1)} · pace {pacing.pacePct === null ? "—" : Math.round(pacing.pacePct) + "%"}
                 {signal.hint ? ` — ${signal.hint}` : ""}

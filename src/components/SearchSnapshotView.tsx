@@ -43,8 +43,8 @@ function ImpShareCell({ value, pass, target, bold }: { value: number | null; pas
 function LostCell({ lostRank, lostBudget, bold }: { lostRank: number | null; lostBudget: number | null; bold?: boolean }) {
   if (lostRank == null && lostBudget == null) return <td className="px-2 py-1.5 text-right">—</td>;
   const parts: React.ReactNode[] = [];
-  if (lostBudget != null && lostBudget > 0.001) parts.push(<span key="b" title="Lost to budget — raise budget">💰 {pct(lostBudget)}</span>);
-  if (lostRank != null && lostRank > 0.001) parts.push(<span key="r" title="Lost to rank — raise bids / improve quality & relevance">📉 {pct(lostRank)}</span>);
+  if (lostBudget != null && lostBudget > 0.001) parts.push(<span key="b" className="inline-flex items-center gap-1" title="Lost to budget — raise budget"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--warn)" }} />{pct(lostBudget)}</span>);
+  if (lostRank != null && lostRank > 0.001) parts.push(<span key="r" className="inline-flex items-center gap-1" title="Lost to rank — raise bids / improve quality & relevance"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--bad)" }} />{pct(lostRank)}</span>);
   return (
     <td className={`px-2 py-1.5 text-right text-[11px] ${bold ? "font-semibold" : ""}`}>
       {parts.length ? <span className="inline-flex gap-2">{parts}</span> : "—"}
@@ -154,8 +154,8 @@ function CampaignDetailBlock({ c, cur }: { c: CampaignDetail; cur: string }) {
         {c.pass === false && <span className="text-[11px]" style={{ color }}>✕ מתחת ליעד</span>}
         {reason && <span className="text-[11px] text-[var(--muted)]">· {reason}</span>}
         <span className="ml-auto text-[11px] text-[var(--muted)]">
-          {c.lostBudget != null && c.lostBudget > 0.001 && <span title="Lost to budget">💰 {pct(c.lostBudget)}</span>}
-          {c.lostRank != null && c.lostRank > 0.001 && <span className="ml-2" title="Lost to rank">📉 {pct(c.lostRank)}</span>}
+          {c.lostBudget != null && c.lostBudget > 0.001 && <span className="inline-flex items-center gap-1" title="Lost to budget"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--warn)" }} />{pct(c.lostBudget)}</span>}
+          {c.lostRank != null && c.lostRank > 0.001 && <span className="ml-2 inline-flex items-center gap-1" title="Lost to rank"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--bad)" }} />{pct(c.lostRank)}</span>}
         </span>
       </summary>
       <div className="space-y-3 border-t border-[var(--card-border)] px-3 py-3">
@@ -254,7 +254,7 @@ export default function SearchSnapshotView({
           קמפיינים מקובצים לפי סוג (Compete / Lead / Participate / Compete Site) · חי מ־Windsor.
           <br />
           יעדי Impression Share: <b>Lead ≥70%</b> · <b>Compete ≥50%</b> · <b>Participate ≤50%</b>.
-          ירוק = עומד ביעד, אדום = מתחת. <b>Lost IS</b>: 💰 אובדן לתקציב (להגדיל תקציב) · 📉 אובדן לדירוג (הצעות מחיר / איכות).
+          ירוק = עומד ביעד, אדום = מתחת. <b>Lost IS</b>: <span className="inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: "var(--warn)" }} /> אובדן לתקציב (להגדיל תקציב) · <span className="inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: "var(--bad)" }} /> אובדן לדירוג (הצעות מחיר / איכות).
           לחיצה על קמפיין פותחת ניתוח מילות מפתח ומונחי חיפוש. Google לא חושף IS ברמת מילת־מפתח.
         </div>
       </Panel>
