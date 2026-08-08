@@ -10,6 +10,7 @@ import { getAwarenessReport } from "./awarenessReport";
 import { getCampaignPerf } from "./campaignPerf";
 import { getAppReport } from "./appReport";
 import { getSearchSnapshot } from "./searchSnapshot";
+import { eurIlsRate } from "./fx";
 import { groupAlerts } from "./digest";
 
 export interface EcomRow { name: string; spend: number; revenue: number; blended: number | null; blendedPrev: number | null; orders: number; pacePct: number | null; target: number }
@@ -80,10 +81,13 @@ export async function getGroupedDigest(alerts?: Alert[]): Promise<GroupedDigest>
         }).catch(() => {}));
       }
     } else if (group === "impshare") {
+      const eur = eurIlsRate();
       jobs.push(getSearchSnapshot(brand, day, day).then((r) => {
         if (!r) return;
         for (const sec of r.sections) {
-          if (sec.totals.cost > 0 || sec.totals.impressions > 0) impshare.push({ name: `${brand.name} · ${sec.title}`, impShare: sec.totals.impShare, spend: sec.totals.cost, clicks: sec.totals.clicks, cpc: sec.totals.cpc });
+          // Colgate bills in EUR → convert spend to ILS at the representative rate.
+          const spend = sec.currency === "EUR" ? sec.totals.cost * eur : sec.totals.cost;
+          if (spend > 0 || sec.totals.impressions > 0) impshare.push({ name: `${brand.name} · ${sec.title}`, impShare: sec.totals.impShare, spend, clicks: sec.totals.clicks, cpc: sec.totals.cpc });
         }
       }).catch(() => {}));
     }
