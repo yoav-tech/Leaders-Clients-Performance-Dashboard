@@ -24,6 +24,8 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
   const [err, setErr] = useState("");
   const [inviteUrl, setInviteUrl] = useState("");
   const [copied, setCopied] = useState(false);
+  const [resetInfo, setResetInfo] = useState<{ username: string; password: string } | null>(null);
+  const [copiedPw, setCopiedPw] = useState(false);
 
   const nameOf = (id: string) => brands.find((b) => b.id === id)?.name ?? id;
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -64,6 +66,15 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
     if (!confirm(`למחוק את ${u.username}?`)) return;
     await fetch(`/api/admin/users?id=${encodeURIComponent(u.id)}`, { method: "DELETE" });
     setUsers((us) => us.filter((x) => x.id !== u.id));
+  };
+
+  const resetPw = async (u: UserSummary) => {
+    if (!confirm(`לאפס סיסמה ל-${u.username}? תיווצר סיסמה זמנית חדשה.`)) return;
+    setResetInfo(null); setCopiedPw(false);
+    const res = await fetch("/api/admin/users/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: u.id }) });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok && j.ok) setResetInfo({ username: j.username, password: j.password });
+    else alert(j.error ?? "שגיאה");
   };
 
   const copy = async () => {
@@ -120,6 +131,16 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
       {/* Existing users */}
       <div className="panel p-4">
         <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">משתמשים ({users.length})</div>
+        {resetInfo && (
+          <div className="mb-3 rounded-lg border border-[var(--panel-border)] bg-[var(--background)]/50 p-3">
+            <div className="mb-1 text-xs text-[var(--muted)]">סיסמה זמנית חדשה ל-<span className="font-semibold" dir="ltr">{resetInfo.username}</span> (העבר למשתמש; הוא יוכל לשנות ב&quot;החשבון שלי&quot;):</div>
+            <div className="flex items-center gap-2">
+              <input readOnly value={resetInfo.password} onFocus={(e) => e.currentTarget.select()} className="flex-1 rounded-md border border-[var(--card-border)] bg-[var(--background)] px-2 py-1 text-sm" dir="ltr" />
+              <button onClick={async () => { await navigator.clipboard.writeText(resetInfo.password).catch(() => {}); setCopiedPw(true); setTimeout(() => setCopiedPw(false), 1500); }} className="shrink-0 rounded-md bg-blue-600 px-3 py-1 text-xs text-white">{copiedPw ? "הועתק ✓" : "העתק"}</button>
+              <button onClick={() => setResetInfo(null)} className="shrink-0 text-xs text-[var(--muted)] hover:text-[var(--foreground)]">✕</button>
+            </div>
+          </div>
+        )}
         <div className="space-y-2">
           {users.map((u) => (
             <div key={u.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm">
@@ -136,6 +157,9 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
               <div className="flex items-center gap-2">
                 {u.role !== "admin" && (
                   <button onClick={() => reinvite(u)} className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]">קישור הזמנה</button>
+                )}
+                {!u.pending && (
+                  <button onClick={() => resetPw(u)} className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]">אפס סיסמה</button>
                 )}
                 <button onClick={() => remove(u)} className="text-xs text-[var(--bad)] hover:underline">מחק</button>
               </div>
