@@ -7,19 +7,26 @@
 const BASE = "https://api.clickup.com/api/v3";
 const V2 = "https://api.clickup.com/api/v2";
 
-export function taskListId(): string {
-  return process.env.CLICKUP_TASK_LIST_ID ?? "";
+// Task destinations offered on the "+ ClickUp" button (list IDs overridable via env).
+export interface TaskList { key: string; label: string; id: string }
+export function taskLists(): TaskList[] {
+  return [
+    { key: "yoav", label: "Yoav", id: process.env.CLICKUP_LIST_YOAV || "901508509090" },
+    { key: "galz", label: "Gal Z", id: process.env.CLICKUP_LIST_GALZ || "901524250089" },
+  ];
+}
+export function taskListById(key: string): TaskList | undefined {
+  return taskLists().find((l) => l.key === key);
 }
 export function canCreateTasks(): boolean {
-  return Boolean(process.env.CLICKUP_API_TOKEN && taskListId());
+  return Boolean(process.env.CLICKUP_API_TOKEN);
 }
 
-// Create a task in the configured list (ClickUp API v2). Returns { id, url }.
-export async function createTask(name: string, description?: string): Promise<{ id: string; url: string }> {
+// Create a task in the given list (ClickUp API v2). Returns { id, url }.
+export async function createTask(listId: string, name: string, description?: string): Promise<{ id: string; url: string }> {
   const token = process.env.CLICKUP_API_TOKEN;
-  const list = taskListId();
-  if (!token || !list) throw new Error("ClickUp tasks not configured (CLICKUP_API_TOKEN / CLICKUP_TASK_LIST_ID)");
-  const res = await fetch(`${V2}/list/${list}/task`, {
+  if (!token || !listId) throw new Error("ClickUp tasks not configured (CLICKUP_API_TOKEN)");
+  const res = await fetch(`${V2}/list/${listId}/task`, {
     method: "POST",
     headers: { Authorization: token, "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ name, description: description ?? "" }),
