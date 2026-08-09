@@ -15,6 +15,7 @@ import { hasDb } from "@/lib/db";
 import BrandView from "@/components/BrandView";
 import LiveRefresher from "@/components/LiveRefresher";
 import MediaPlanView from "@/components/MediaPlanView";
+import MediaPlanBudgetOverview from "@/components/MediaPlanBudgetOverview";
 import { getMediaPlanExecution } from "@/lib/mediaPlan";
 import AppReportView from "@/components/AppReportView";
 import { getAppReport } from "@/lib/appReport";
@@ -44,16 +45,19 @@ async function BrandContent({ brand, range, isClient }: { brand: BrandConfig; ra
   const isPerf = !!brand.perfSources;
 
   if (isMediaPlan) {
-    const exec = await getMediaPlanExecution(brand);
-    return (
-      <div className="space-y-4">
-        {exec ? <MediaPlanView brand={brand} exec={exec} summaryOnly={!!brand.awarenessSources?.length} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No plan data.</div>}
-        {/* Same full awareness tables as the other views clients, below the plan layout. */}
-        {brand.awarenessSources?.length ? (
+    // Awareness media-plan brands (Style): calendar-driven budget overview (monthly budget, pace
+    // over the picked range) + the full awareness tables. No fixed-flight layout.
+    if (brand.awarenessSources?.length) {
+      return (
+        <div className="space-y-4">
+          <MediaPlanBudgetOverview brandId={brandId} brandName={brand.name} from={range.from} to={range.to} today={today()} monthlyBudget={brand.monthlyBudget} />
           <AwarenessView brandId={brandId} brandName={brand.name} campaignFilter={brand.campaignFilter ?? ""} from={range.from} to={range.to} />
-        ) : null}
-      </div>
-    );
+        </div>
+      );
+    }
+    // Other media-plan brands keep the fixed-flight plan layout.
+    const exec = await getMediaPlanExecution(brand);
+    return exec ? <MediaPlanView brand={brand} exec={exec} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No plan data.</div>;
   }
   if (isAppInstall) {
     const appReport = await getAppReport(brand, range.from, range.to);
