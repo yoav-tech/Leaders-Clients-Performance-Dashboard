@@ -66,7 +66,7 @@ function LineRow({ le, asOf }: { le: LineExecution; asOf: string }) {
   );
 }
 
-export default function MediaPlanView({ brand, exec, summaryOnly = false }: { brand: BrandConfig; exec: MediaPlanExecution; summaryOnly?: boolean }) {
+export default function MediaPlanView({ brand, exec }: { brand: BrandConfig; exec: MediaPlanExecution }) {
   const timePct = exec.totalDays ? exec.elapsedDays / exec.totalDays : 0;
   const totalBudget = exec.lines.reduce((s, l) => s + l.line.budget, 0);
   const totalSpend = exec.lines.reduce((s, l) => s + l.actual.spend, 0);
@@ -99,25 +99,8 @@ export default function MediaPlanView({ brand, exec, summaryOnly = false }: { br
             <div className={`text-lg font-bold ${TONE[paceTone(spendPct, timePct)]}`}>{formatPct(spendPct)} / {formatPct(timePct)}</div>
           </div>
         </div>
-
-        {/* Budget utilisation pace — spend fill vs the elapsed-time marker. */}
-        <div className="mt-4">
-          <div className="mb-1 flex items-center justify-between text-[11px] text-[var(--muted)]">
-            <span>ניצול תקציב · {formatPct(spendPct)}</span>
-            <span>זמן שחלף · {formatPct(timePct)}</span>
-          </div>
-          <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-[var(--card-border)]/40">
-            <div
-              className={`h-full rounded-full ${spendPct >= 1 ? "bg-[var(--bad)]" : paceTone(spendPct, timePct) === "good" ? "bg-[var(--good)]" : paceTone(spendPct, timePct) === "warn" ? "bg-[var(--warn)]" : "bg-[var(--muted)]"}`}
-              style={{ width: `${Math.min(100, Math.round(spendPct * 100))}%` }}
-            />
-            {/* Elapsed-time marker: on pace when the fill reaches this line. */}
-            <div className="absolute top-[-2px] h-[calc(100%+4px)] w-px bg-[var(--foreground)]" style={{ left: `${Math.min(100, Math.round(timePct * 100))}%` }} />
-          </div>
-        </div>
       </Panel>
 
-      {!summaryOnly && (
       <Panel title="By campaign type · remaining budget & daily pace">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] border-collapse text-sm">
@@ -150,7 +133,6 @@ export default function MediaPlanView({ brand, exec, summaryOnly = false }: { br
           Daily needed = remaining ÷ days left (to hit the plan on pace). Classified by ad-set/ad name (Influencer / UGC / Reach). Actuals live from Windsor · as of {exec.asOf}. Delivery = thruplay (video) or reach.
         </div>
       </Panel>
-      )}
     </div>
   );
 }

@@ -164,7 +164,7 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 0,
-    monthlyBudget: 0,
+    monthlyBudget: 12000, // fixed monthly awareness budget; pace is computed over the picked range
     // Awareness media plan (video), split by platform + campaign type (from the breakdown).
     mediaPlan: {
       flightStart: "2026-07-09",
