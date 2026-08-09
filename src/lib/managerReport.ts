@@ -18,6 +18,7 @@ export interface ManagerReport {
   brandId: string;
   brandName: string;
   isEcom: boolean;
+  target: number; // target ROAS
   from: string;
   to: string;
   period: "week" | "month";
@@ -91,5 +92,5 @@ export async function getManagerReport(brand: BrandConfig, from: string, to: str
     topMetaAds(brand, from, to),
     promos(brand, from, to),
   ]);
-  return { brandId: brand.id, brandName: brand.name, isEcom: reportGroupOf(brand) === "ecommerce", from, to, period, metrics: all.find((m) => m.brandId === brand.id) ?? null, topAds, promos: pr };
+  return { brandId: brand.id, brandName: brand.name, isEcom: reportGroupOf(brand) === "ecommerce", target: brand.targetRoas, from, to, period, metrics: all.find((m) => m.brandId === brand.id) ?? null, topAds, promos: pr };
 }

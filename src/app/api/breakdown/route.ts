@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getBrand, type BrandConfig } from "@/lib/brands";
 import { CHANNEL_FIELDS } from "@/lib/channelFields";
-import { DIMENSION_FIELDS, type Dimension } from "@/lib/breakdowns";
+import { DIMENSION_FIELDS, UTM_DIMENSIONS, type Dimension } from "@/lib/breakdowns";
 import { fetchWindsor, num } from "@/lib/windsor";
-import { fetchQuickShopPaidOrders } from "@/lib/quickshop";
+import { fetchQuickShopPaidOrders, type PaidOrder } from "@/lib/quickshop";
 import { fetchShopifyPaidOrders } from "@/lib/shopify";
 import { getSupabase, hasDb } from "@/lib/db";
 import { getServerSession, canAccessBrand } from "@/lib/serverSession";
@@ -94,6 +94,33 @@ export async function GET(request: Request) {
         .sort((a, b) => b.revenue - a.revenue)
         .slice(0, 100);
       return NextResponse.json({ kind: "store", channel, dimension, rows });
+    }
+
+    // Store: first-party UTM breakdown (source/medium/campaign/content/keyword) with a source filter.
+    if (channel === "site" && UTM_DIMENSIONS[dimension]) {
+      const field = UTM_DIMENSIONS[dimension];
+      const sourceFilter = (url.searchParams.get("source") ?? "").trim().toLowerCase();
+      let orders: PaidOrder[] = [];
+      if (brand.storePlatform === "shopify") orders = (await fetchShopifyPaidOrders(brand, from, to)).orders;
+      else orders = await fetchQuickShopPaidOrders(brand, from, to);
+
+      const sources = new Set<string>();
+      const byKey = new Map<string, { orders: number; revenue: number }>();
+      for (const o of orders) {
+        const src = (o.utmSource ?? "").trim();
+        if (src) sources.add(src);
+        if (sourceFilter && src.toLowerCase() !== sourceFilter) continue;
+        const key = (o[field] ?? "").trim() || "(none)";
+        const e = byKey.get(key) ?? { orders: 0, revenue: 0 };
+        e.orders += 1;
+        e.revenue += o.total;
+        byKey.set(key, e);
+      }
+      const rows = [...byKey]
+        .map(([key, v]) => ({ key, orders: v.orders, revenue: Math.round(v.revenue), discount: 0, aov: v.orders ? Math.round(v.revenue / v.orders) : 0 }))
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 200);
+      return NextResponse.json({ kind: "store", channel, dimension, rows, sources: [...sources].sort() });
     }
 
     // Ad channels: dimensional breakdown from Windsor.
