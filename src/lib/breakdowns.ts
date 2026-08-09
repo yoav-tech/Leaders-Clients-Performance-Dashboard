@@ -63,8 +63,12 @@ export const UTM_DIMENSIONS: Record<string, "utmSource" | "utmMedium" | "utmCamp
   utm_term: "utmTerm",
 };
 
-// Dimensions available for a channel. Store: first-party UTM dimensions + discount codes.
+// First-party UTM breakdown dimensions (available on every channel — scoped to that channel's
+// sources on the ad tabs; unscoped on Store).
+export const UTM_DIMENSION_LIST: Dimension[] = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
+
+// Dimensions available for a channel. Ad channels: platform dimensions + UTM; Store: UTM + discounts.
 export function dimensionsFor(channel: Channel): Dimension[] {
-  if (channel === "site") return ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "discount_code"];
-  return Object.keys(DIMENSION_FIELDS[channel as "google" | "meta" | "tiktok"]) as Dimension[];
+  if (channel === "site") return [...UTM_DIMENSION_LIST, "discount_code"];
+  return [...(Object.keys(DIMENSION_FIELDS[channel as "google" | "meta" | "tiktok"]) as Dimension[]), ...UTM_DIMENSION_LIST];
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { dimensionsFor, DIMENSION_LABELS, type Dimension } from "@/lib/breakdowns";
+import { dimensionsFor, DIMENSION_LABELS, UTM_DIMENSION_LIST, type Dimension } from "@/lib/breakdowns";
 import type { Channel } from "@/lib/types";
 import type { AdCreative, CreativeMap } from "@/lib/creatives";
 import { formatIls, formatNumber, formatPct, formatRoas, roasTone } from "@/lib/metrics";
@@ -108,6 +108,7 @@ export default function BreakdownExplorer({
   // Creatives (ad visuals) are only fetched for the per-ad view on Meta/TikTok.
   const showThumb = dimension === "ad" && (channel === "meta" || channel === "tiktok");
   const isDiscount = dimension === "discount_code"; // store table shows the Discount column only here
+  const isUtm = (UTM_DIMENSION_LIST as string[]).includes(dimension); // UTM breakdown (any channel) → source filter
 
   useEffect(() => {
     const d = dims.includes(dimension) ? dimension : dims[0];
@@ -119,7 +120,7 @@ export default function BreakdownExplorer({
     setLoading(true);
     setErr("");
     setNote("");
-    const srcQ = channel === "site" && sourceFilter ? `&source=${encodeURIComponent(sourceFilter)}` : "";
+    const srcQ = isUtm && sourceFilter ? `&source=${encodeURIComponent(sourceFilter)}` : "";
     fetch(`/api/breakdown?brand=${brandId}&channel=${channel}&dimension=${d}&from=${from}&to=${to}${srcQ}`)
       .then((r) => r.json())
       .then((j) => {
@@ -198,7 +199,7 @@ export default function BreakdownExplorer({
       <div className="flex flex-wrap gap-3">
         <div className="inline-flex flex-wrap gap-1 rounded-lg border border-[var(--card-border)] p-1">
           {channels.map((c) => (
-            <button key={c.id} onClick={() => setChannel(c.id)} className={pill(channel === c.id)}>
+            <button key={c.id} onClick={() => { setChannel(c.id); setSourceFilter(""); setSources([]); }} className={pill(channel === c.id)}>
               {c.label}
             </button>
           ))}
@@ -210,7 +211,7 @@ export default function BreakdownExplorer({
             </button>
           ))}
         </div>
-        {channel === "site" && !isDiscount && sources.length > 0 && (
+        {isUtm && sources.length > 0 && (
           <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
             מקור
             <select
