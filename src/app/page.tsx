@@ -95,14 +95,13 @@ async function BrandContent({ brand, range, isClient }: { brand: BrandConfig; ra
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ brand?: string; range?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ brand?: string; range?: string; from?: string; to?: string; as?: string }>;
 }) {
   const sp = await searchParams;
   const range = resolveRange(sp);
 
   const session = await getServerSession();
   const allowed = allowedBrands(session);
-  const isClient = session?.role === "client";
   if (!session || allowed.length === 0) {
     return (
       <main className="mx-auto max-w-7xl px-4 py-6">
@@ -115,11 +114,16 @@ export default async function Home({
   const isSpecial = !!(brand.mediaPlan || brand.appInstall || brand.awarenessSources || brand.googleSnapshot || brand.perfSources);
 
   const isAdmin = session.role === "admin";
+  // Admin can preview the client-side interface via ?as=client (trimmed depth + client shell).
+  const previewClient = isAdmin && sp.as === "client";
+  const isClient = session.role === "client" || previewClient;
+
   const me = isAdmin ? null : await getUserById(session.sub);
-  const accountLabel = isAdmin ? "מנהל מדיה" : me?.fullName || me?.username || "לקוח";
-  const accountSub = isAdmin ? "Admin" : me?.username ?? "";
+  const accountLabel = previewClient ? "תצוגת לקוח" : isAdmin ? "מנהל מדיה" : me?.fullName || me?.username || "לקוח";
+  const accountSub = previewClient ? "Preview" : isAdmin ? "Admin" : me?.username ?? "";
   const lastUpdated = await getLastUpdated();
-  const rangeQuery = range.key === "custom" ? `&range=custom&from=${range.from}&to=${range.to}` : `&range=${range.key}`;
+  const rangeParam = range.key === "custom" ? `&range=custom&from=${range.from}&to=${range.to}` : `&range=${range.key}`;
+  const rangeQuery = rangeParam + (previewClient ? "&as=client" : ""); // keep preview across brand switches
 
   const topBar = (
     <>
@@ -130,6 +134,15 @@ export default async function Home({
         </p>
       </div>
       <div className="flex items-center gap-2">
+        {isAdmin && !previewClient && (
+          <a
+            href={`/?brand=${brandId}${rangeParam}&as=client`}
+            className="rounded-md border border-[var(--card-border)] bg-[var(--card)] px-3 py-1.5 text-sm font-medium text-[var(--foreground)] hover:border-[var(--muted)]"
+            title="ראה את הדשבורד כפי שהלקוח רואה אותו"
+          >
+            צפה כלקוח
+          </a>
+        )}
         {isSpecial ? (
           <LiveRefresher brand={brandId} active />
         ) : (
@@ -145,18 +158,26 @@ export default async function Home({
       allowed={allowed}
       activeBrand={brandId}
       activeSection="brands"
-      isAdmin={isAdmin}
+      isAdmin={isAdmin && !previewClient}
       rangeQuery={rangeQuery}
       accountLabel={accountLabel}
       accountSub={accountSub}
       topBar={topBar}
     >
+      {previewClient && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--panel-border)] bg-[var(--panel)] px-4 py-3 text-sm">
+          <span className="text-[var(--foreground)]">מצב תצוגה · כך הלקוח רואה את הדשבורד (ללא ניהול, CAC וקודי הנחה).</span>
+          <a href={`/?brand=${brandId}${rangeParam}`} className="shrink-0 rounded-md border border-[var(--card-border)] bg-[var(--card)] px-3 py-1.5 font-medium text-[var(--foreground)] hover:border-[var(--muted)]">
+            חזור לתצוגת אדמין
+          </a>
+        </div>
+      )}
       {!hasDb() && (
         <div className="mb-4 rounded-lg border border-[var(--warn)]/40 bg-[var(--warn)]/10 px-4 py-3 text-sm text-[var(--warn)]">
           Database not configured yet.
         </div>
       )}
-      <Suspense key={`${brandId}:${range.from}:${range.to}`} fallback={<ViewSkeleton />}>
+      <Suspense key={`${brandId}:${range.from}:${range.to}:${isClient ? "c" : "a"}`} fallback={<ViewSkeleton />}>
         <BrandContent brand={brand} range={range} isClient={isClient} />
       </Suspense>
     </AppShell>
