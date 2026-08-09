@@ -45,7 +45,15 @@ async function BrandContent({ brand, range, isClient }: { brand: BrandConfig; ra
 
   if (isMediaPlan) {
     const exec = await getMediaPlanExecution(brand);
-    return exec ? <MediaPlanView brand={brand} exec={exec} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No plan data.</div>;
+    return (
+      <div className="space-y-4">
+        {exec ? <MediaPlanView brand={brand} exec={exec} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No plan data.</div>}
+        {/* Same full awareness tables as the other views clients, below the plan layout. */}
+        {brand.awarenessSources?.length ? (
+          <AwarenessView brandId={brandId} brandName={brand.name} campaignFilter={brand.campaignFilter ?? ""} from={range.from} to={range.to} />
+        ) : null}
+      </div>
+    );
   }
   if (isAppInstall) {
     const appReport = await getAppReport(brand, range.from, range.to);

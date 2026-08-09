@@ -59,7 +59,7 @@ export interface AppSectionConfig {
 // Awareness report (e.g. SCJ) — reach/views campaigns inside SHARED accounts, matched by a
 // campaign-name filter (campaignFilter).
 export interface AwarenessSourceConfig {
-  platform: "meta" | "google";
+  platform: "meta" | "google" | "tiktok";
   account: string;
   title: string;
 }
@@ -177,6 +177,12 @@ export const BRANDS: BrandConfig[] = [
         { platform: "tiktok", type: "ugc", budget: 1800, views: 82721, thruplay: 26471, flightStart: "2026-07-09", flightEnd: "2026-07-31" },
       ],
     },
+    // Full awareness tables (spend/impressions/reach/views per source + campaign), same as the
+    // other views clients. Dedicated accounts → no campaign-name filter (all campaigns count).
+    awarenessSources: [
+      { platform: "meta", account: "1347113570125922", title: "Meta · סטייל" },
+      { platform: "tiktok", account: "7660542426796277777", title: "TikTok · Style Hair Care" },
+    ],
   },
   {
     id: "haat",

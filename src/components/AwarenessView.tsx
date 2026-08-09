@@ -123,7 +123,7 @@ export default function AwarenessView({
   const t = report.totals;
   return (
     <div className="space-y-4">
-      <Panel title={`${brandName} · awareness · ${from} → ${to} · campaigns matching “${campaignFilter}”`}>
+      <Panel title={`${brandName} · awareness · ${from} → ${to}${campaignFilter ? ` · campaigns matching “${campaignFilter}”` : ""}`}>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <Stat label="Spend" value={formatIls(t.spend)} />
           <Stat label="Impressions" value={formatNumber(t.impressions)} />
@@ -132,7 +132,7 @@ export default function AwarenessView({
           <Stat label="CPM" value={cpm(t.cpm)} />
           <Stat label="CPV" value={cpv(t.cpv)} />
         </div>
-        <div className="mt-2 text-[11px] text-[var(--muted)]">Reach/views campaigns · live from Windsor. Meta Views = ThruPlay. Reach is Meta-only.</div>
+        <div className="mt-2 text-[11px] text-[var(--muted)]">Reach/views campaigns · live from Windsor. Meta Views = ThruPlay · TikTok Views = 2s+ (100% col = 6s+).</div>
       </Panel>
 
       {report.sources.map((s) => (

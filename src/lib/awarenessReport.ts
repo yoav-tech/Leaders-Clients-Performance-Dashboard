@@ -13,7 +13,7 @@ function sumAction(v: unknown): number {
 }
 
 export interface AwCampaign {
-  platform: "meta" | "google";
+  platform: "meta" | "google" | "tiktok";
   name: string;
   spend: number;
   impressions: number;
@@ -27,7 +27,7 @@ export interface AwCampaign {
 export interface AwSource {
   key: string;
   title: string;
-  platform: "meta" | "google";
+  platform: "meta" | "google" | "tiktok";
   spend: number;
   impressions: number;
   reach: number;
@@ -53,10 +53,12 @@ async function fetchSource(cfg: AwarenessSourceConfig, brand: BrandConfig, from:
   const fields =
     cfg.platform === "meta"
       ? ["account_id", "currency", "campaign", "spend", "impressions", "reach", "video_thruplay_watched_actions", "video_p100_watched_actions"]
-      : ["account_id", "campaign", "spend", "impressions", "video_views"];
+      : cfg.platform === "tiktok"
+        ? ["account_id", "currency", "campaign_name", "spend", "impressions", "reach", "video_watched_2s", "video_watched_6s"]
+        : ["account_id", "campaign", "spend", "impressions", "video_views"];
 
   const rows = await fetchWindsor({
-    connector: cfg.platform === "meta" ? "facebook" : "google_ads",
+    connector: cfg.platform === "meta" ? "facebook" : cfg.platform === "tiktok" ? "tiktok" : "google_ads",
     fields,
     dateFrom: from,
     dateTo: to,
@@ -67,7 +69,7 @@ async function fetchSource(cfg: AwarenessSourceConfig, brand: BrandConfig, from:
 
   for (const r of rows) {
     if (normId(r.account_id) !== acc) continue;
-    const name = String(r.campaign ?? "");
+    const name = String((cfg.platform === "tiktok" ? r.campaign_name : r.campaign) ?? "");
     if (!name.toLowerCase().includes(filter)) continue;
     if (r.currency) cur = String(r.currency).toUpperCase();
     const c = byCamp.get(name) ?? zero();
@@ -77,6 +79,10 @@ async function fetchSource(cfg: AwarenessSourceConfig, brand: BrandConfig, from:
       c.reach += num(r.reach);
       c.views += sumAction(r.video_thruplay_watched_actions);
       c.completedViews += sumAction(r.video_p100_watched_actions);
+    } else if (cfg.platform === "tiktok") {
+      c.reach += num(r.reach);
+      c.views += num(r.video_watched_2s); // matches the media plan's TikTok "views" definition
+      c.completedViews += num(r.video_watched_6s); // 6s+ views (TikTok's qualified-view metric)
     } else {
       c.views += num(r.video_views);
     }
@@ -124,17 +130,20 @@ async function fetchTrend(cfg: AwarenessSourceConfig, from: string, to: string, 
   const acc = normId(cfg.account);
   const fields = cfg.platform === "meta"
     ? ["date", "account_id", "campaign", "spend", "video_thruplay_watched_actions"]
-    : ["date", "account_id", "campaign", "spend", "video_views"];
-  const rows = await fetchWindsor({ connector: cfg.platform === "meta" ? "facebook" : "google_ads", fields, dateFrom: from, dateTo: to, accounts: [cfg.account], cacheSeconds: 60 }).catch(() => []);
+    : cfg.platform === "tiktok"
+      ? ["date", "account_id", "campaign_name", "spend", "video_watched_2s"]
+      : ["date", "account_id", "campaign", "spend", "video_views"];
+  const rows = await fetchWindsor({ connector: cfg.platform === "meta" ? "facebook" : cfg.platform === "tiktok" ? "tiktok" : "google_ads", fields, dateFrom: from, dateTo: to, accounts: [cfg.account], cacheSeconds: 60 }).catch(() => []);
   const m = new Map<string, { spend: number; views: number }>();
   for (const r of rows) {
     if (normId(r.account_id) !== acc) continue;
-    if (!String(r.campaign ?? "").toLowerCase().includes(filter)) continue;
+    const name = String((cfg.platform === "tiktok" ? r.campaign_name : r.campaign) ?? "");
+    if (!name.toLowerCase().includes(filter)) continue;
     const d = String(r.date ?? "").slice(0, 10);
     if (!d) continue;
     const e = m.get(d) ?? { spend: 0, views: 0 };
     e.spend += num(r.spend);
-    e.views += cfg.platform === "meta" ? sumAction(r.video_thruplay_watched_actions) : num(r.video_views);
+    e.views += cfg.platform === "meta" ? sumAction(r.video_thruplay_watched_actions) : cfg.platform === "tiktok" ? num(r.video_watched_2s) : num(r.video_views);
     m.set(d, e);
   }
   return m;
