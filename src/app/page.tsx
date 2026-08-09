@@ -32,6 +32,13 @@ export const dynamic = "force-dynamic";
 
 interface Range { key: RangeKey; from: string; to: string }
 
+// "2026-07-09" + "2026-07-31" → "9.7 – 31.7.2026" (read-only flight-window label).
+function flightLabel(start: string, end: string): string {
+  const [, sm, sd] = start.split("-");
+  const [ey, em, ed] = end.split("-");
+  return `${Number(sd)}.${Number(sm)} – ${Number(ed)}.${Number(em)}.${ey}`;
+}
+
 // The heavy, per-brand report — rendered inside a Suspense boundary so the shell shows instantly
 // and only this streams in. SSR-heavy brands (conversion/app/media-plan) get a skeleton on switch;
 // client-fetch brands (awareness/snapshot/perf) return immediately and spin internally.
@@ -127,7 +134,18 @@ export default async function Home({
         ) : (
           <LiveRefresher brand={brandId} active={range.to >= today()} warmPath="/api/live-warm" />
         )}
-        {!brand.mediaPlan && <DateRangeCalendar activeKey={range.key} from={range.from} to={range.to} brand={brandId} />}
+        {brand.mediaPlan ? (
+          // Media-plan brands run on a fixed campaign flight, not an arbitrary range — show the
+          // flight window as a read-only chip so the top bar stays consistent (no dead control).
+          <span
+            className="rounded-md border border-dashed border-[var(--card-border)] bg-[var(--card)] px-3 py-1.5 text-sm font-medium text-[var(--muted)]"
+            title="תקופת הקמפיין (טווח קבוע)"
+          >
+            תקופת הקמפיין · {flightLabel(brand.mediaPlan.flightStart, brand.mediaPlan.flightEnd)}
+          </span>
+        ) : (
+          <DateRangeCalendar activeKey={range.key} from={range.from} to={range.to} brand={brandId} />
+        )}
       </div>
     </>
   );
