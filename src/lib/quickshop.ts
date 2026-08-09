@@ -18,6 +18,8 @@ export interface PaidOrder {
   utmSource?: string; // first-party attribution — for store-attributed channel funnels
   utmMedium?: string;
   utmCampaign?: string; // for per-campaign store attribution (matches ad campaign id/name)
+  utmContent?: string;
+  utmTerm?: string; // keyword
   referrer?: string; // Shopify referring_site host (fallback attribution)
 }
 
@@ -86,6 +88,8 @@ export async function fetchQuickShopPaidOrders(
         utm_source?: string | null;
         utm_medium?: string | null;
         utm_campaign?: string | null;
+        utm_content?: string | null;
+        utm_term?: string | null;
       }>;
       meta?: { pagination?: { has_next?: boolean } };
     };
@@ -102,6 +106,8 @@ export async function fetchQuickShopPaidOrders(
         utmSource: o.utm_source ?? undefined,
         utmMedium: o.utm_medium ?? undefined,
         utmCampaign: o.utm_campaign ?? undefined,
+        utmContent: o.utm_content ?? undefined,
+        utmTerm: o.utm_term ?? undefined,
       });
       onOrder?.({
         date: d,

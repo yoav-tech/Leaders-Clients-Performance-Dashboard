@@ -101,10 +101,13 @@ export default function BreakdownExplorer({
   const [creatives, setCreatives] = useState<CreativeMap>({});
   const [creLoading, setCreLoading] = useState(false);
   const [lightbox, setLightbox] = useState<{ title: string; creative: AdCreative } | null>(null);
+  const [sources, setSources] = useState<string[]>([]); // distinct utm_source for the store filter
+  const [sourceFilter, setSourceFilter] = useState("");
 
   const dims = dimensionsFor(channel);
   // Creatives (ad visuals) are only fetched for the per-ad view on Meta/TikTok.
   const showThumb = dimension === "ad" && (channel === "meta" || channel === "tiktok");
+  const isDiscount = dimension === "discount_code"; // store table shows the Discount column only here
 
   useEffect(() => {
     const d = dims.includes(dimension) ? dimension : dims[0];
@@ -116,7 +119,8 @@ export default function BreakdownExplorer({
     setLoading(true);
     setErr("");
     setNote("");
-    fetch(`/api/breakdown?brand=${brandId}&channel=${channel}&dimension=${d}&from=${from}&to=${to}`)
+    const srcQ = channel === "site" && sourceFilter ? `&source=${encodeURIComponent(sourceFilter)}` : "";
+    fetch(`/api/breakdown?brand=${brandId}&channel=${channel}&dimension=${d}&from=${from}&to=${to}${srcQ}`)
       .then((r) => r.json())
       .then((j) => {
         if (cancelled) return;
@@ -125,6 +129,7 @@ export default function BreakdownExplorer({
         setNote(j.note ?? "");
         setStoreSummary(j.storeSummary ?? null);
         setStoreAttributed(!!j.storeAttributed);
+        if (Array.isArray(j.sources)) setSources(j.sources);
         setSortCol(j.kind === "store" ? "revenue" : "spend");
         setSortDir("desc");
         if (j.error && (!j.rows || !j.rows.length)) setErr(j.error);
@@ -135,7 +140,7 @@ export default function BreakdownExplorer({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [brandId, channel, dimension, from, to]);
+  }, [brandId, channel, dimension, from, to, sourceFilter]);
 
   // Lazily load ad creatives for the per-ad view (slow ~110s first time, then Windsor-cached).
   // Kept separate from the breakdown fetch so the table renders immediately and thumbs fill in.
@@ -205,6 +210,21 @@ export default function BreakdownExplorer({
             </button>
           ))}
         </div>
+        {channel === "site" && !isDiscount && sources.length > 0 && (
+          <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
+            מקור
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className="rounded-md border border-[var(--card-border)] bg-[var(--background)] px-2 py-1 text-sm text-[var(--foreground)]"
+            >
+              <option value="">כל המקורות</option>
+              {sources.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
 
       <div className="mt-3 overflow-x-auto">
@@ -220,20 +240,20 @@ export default function BreakdownExplorer({
           <table className="w-full min-w-[560px] border-collapse text-sm">
             <thead>
               <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
-                {Th("Discount code", "key", "left")}
+                {Th(DIMENSION_LABELS[dimension], "key", "left")}
                 {Th("Orders", "orders")}
                 {Th("Revenue", "revenue")}
-                {Th("Discount", "discount")}
+                {isDiscount && Th("Discount", "discount")}
                 {Th("AOV", "aov")}
               </tr>
             </thead>
             <tbody className="tabular-nums">
               {(sortedRows as StoreRow[]).map((r) => (
                 <tr key={r.key} className="border-t border-[var(--card-border)]">
-                  <td className="px-2 py-1.5 text-left font-medium">{r.key}</td>
+                  <td className="max-w-[280px] truncate px-2 py-1.5 text-left font-medium" title={r.key}>{r.key}</td>
                   <td className="px-2 py-1.5 text-right">{formatNumber(r.orders)}</td>
                   <td className="px-2 py-1.5 text-right">{formatIls(r.revenue)}</td>
-                  <td className="px-2 py-1.5 text-right text-[var(--muted)]">{formatIls(r.discount)}</td>
+                  {isDiscount && <td className="px-2 py-1.5 text-right text-[var(--muted)]">{formatIls(r.discount)}</td>}
                   <td className="px-2 py-1.5 text-right">{formatIls(r.aov)}</td>
                 </tr>
               ))}
@@ -247,7 +267,7 @@ export default function BreakdownExplorer({
                     <td className="px-2 py-1.5 text-left">Total</td>
                     <td className="px-2 py-1.5 text-right">{formatNumber(orders)}</td>
                     <td className="px-2 py-1.5 text-right">{formatIls(revenue)}</td>
-                    <td className="px-2 py-1.5 text-right text-[var(--muted)]">{formatIls(discount)}</td>
+                    {isDiscount && <td className="px-2 py-1.5 text-right text-[var(--muted)]">{formatIls(discount)}</td>}
                     <td className="px-2 py-1.5 text-right">{formatIls(orders ? revenue / orders : null)}</td>
                   </tr>
                 );
