@@ -50,6 +50,17 @@ function adAccount(brand: BrandConfig, channel: Channel): string | null {
   return null;
 }
 
+// Does a store order's utm_source belong to this ad channel? Used to scope the UTM breakdown
+// per-channel (Meta tab shows only orders from facebook/instagram/meta sources, etc.).
+function channelOwnsSource(channel: Channel, source: string): boolean {
+  const s = source.toLowerCase();
+  if (!s) return false; // orders with no source aren't attributable to a specific channel
+  if (channel === "meta") return s.includes("facebook") || s.includes("instagram") || s.includes("meta") || s === "fb" || s === "ig";
+  if (channel === "google") return s.includes("google") || s.includes("adwords") || s === "gads" || s === "gdn";
+  if (channel === "tiktok") return s.includes("tiktok") || s === "tt";
+  return false;
+}
+
 // GET /api/breakdown?brand=&channel=&dimension=&from=&to=  (auth-gated by middleware)
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -96,9 +107,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ kind: "store", channel, dimension, rows });
     }
 
-    // Store: first-party UTM breakdown (source/medium/campaign/content/keyword) with a source filter.
-    if (channel === "site" && UTM_DIMENSIONS[dimension]) {
+    // First-party UTM breakdown (source/medium/campaign/content/keyword) from store orders.
+    // Available on EVERY channel: on Store it's unscoped; on an ad channel (Meta/Google/TikTok)
+    // it's scoped to that channel's own sources, so each tab shows only the orders it drove.
+    if (UTM_DIMENSIONS[dimension]) {
       const field = UTM_DIMENSIONS[dimension];
+      const isAdChannel = channel === "meta" || channel === "google" || channel === "tiktok";
       const sourceFilter = (url.searchParams.get("source") ?? "").trim().toLowerCase();
       let orders: PaidOrder[] = [];
       if (brand.storePlatform === "shopify") orders = (await fetchShopifyPaidOrders(brand, from, to)).orders;
@@ -108,6 +122,8 @@ export async function GET(request: Request) {
       const byKey = new Map<string, { orders: number; revenue: number }>();
       for (const o of orders) {
         const src = (o.utmSource ?? "").trim();
+        // On an ad channel, keep only orders whose source belongs to this channel.
+        if (isAdChannel && !channelOwnsSource(channel, src)) continue;
         if (src) sources.add(src);
         if (sourceFilter && src.toLowerCase() !== sourceFilter) continue;
         const key = (o[field] ?? "").trim() || "(none)";
