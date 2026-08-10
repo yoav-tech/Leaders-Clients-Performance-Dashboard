@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getBrand } from "@/lib/brands";
-import { getCampaignPerf } from "@/lib/campaignPerf";
+import { getCampaignPerf, getPerfSourceAt } from "@/lib/campaignPerf";
 import { parseAdLevel } from "@/lib/adLevel";
 import { getServerSession, canAccessBrand } from "@/lib/serverSession";
 
@@ -18,6 +18,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   try {
+    const sourceParam = url.searchParams.get("source");
+    if (sourceParam !== null) {
+      const source = await getPerfSourceAt(brand, Number(sourceParam), from, to, parseAdLevel(url.searchParams.get("level")));
+      return NextResponse.json({ source });
+    }
     const report = await getCampaignPerf(brand, from, to, parseAdLevel(url.searchParams.get("level")));
     return NextResponse.json({ report });
   } catch (e) {

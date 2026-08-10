@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getBrand } from "@/lib/brands";
-import { getAwarenessReport } from "@/lib/awarenessReport";
+import { getAwarenessReport, getAwarenessSourceAt } from "@/lib/awarenessReport";
 import { parseAdLevel } from "@/lib/adLevel";
 import { getServerSession, canAccessBrand } from "@/lib/serverSession";
 
@@ -19,6 +19,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   try {
+    // Single-source mode (per-table drill): ?source=<index>&level=<lvl> → just that source.
+    const sourceParam = url.searchParams.get("source");
+    if (sourceParam !== null) {
+      const source = await getAwarenessSourceAt(brand, Number(sourceParam), from, to, parseAdLevel(url.searchParams.get("level")));
+      return NextResponse.json({ source });
+    }
     const report = await getAwarenessReport(brand, from, to, parseAdLevel(url.searchParams.get("level")));
     return NextResponse.json({ report });
   } catch (e) {

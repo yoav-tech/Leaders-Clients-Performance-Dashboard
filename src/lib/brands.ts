@@ -23,6 +23,11 @@ export interface BrandConfig {
   // different currency than the rest (e.g. Seacret: Meta/Google USD, TikTok ILS).
   channelCurrency?: Partial<Record<ChannelKey, Currency>>;
   targetRoas: number; // for green/red coloring
+  // Per-KPI targets for the campaign explorer's goal-based coloring (lower-is-better metrics).
+  // Only the one matching the brand's profile is used. Tune per client; omit to skip coloring.
+  targetCpv?: number; // views brands — cost per view (ILS)
+  targetCpl?: number; // leads brands — cost per lead (ILS)
+  targetCpi?: number; // app brands — cost per install (ILS)
   monthlyBudget: number; // total monthly ad budget (ILS) for pacing; 0 = pacing hidden
   // Awareness/media-plan brands (no store, no ROAS) — get the plan-vs-execution view instead
   // of the conversion dashboard, and are excluded from digest/alerts.
@@ -164,6 +169,7 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 0,
+    targetCpv: 0.03, // default CPV goal (ILS) — tune per client
     monthlyBudget: 12000, // fixed monthly awareness budget; pace is computed over the picked range
     // Awareness media plan (video), split by platform + campaign type (from the breakdown).
     mediaPlan: {
@@ -213,6 +219,7 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 0,
+    targetCpv: 0.03, // default CPV goal (ILS) — tune per client
     monthlyBudget: 0,
     campaignFilter: "scj",
     awarenessSources: [
@@ -248,6 +255,7 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 0,
+    targetCpl: 85, // default CPL goal (ILS) — tune per client
     monthlyBudget: 0,
     campaignFilter: "leaders",
     perfSources: [
@@ -266,6 +274,7 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 0,
+    targetCpl: 85, // default CPL goal (ILS) — tune per client
     monthlyBudget: 0,
     campaignFilter: "bestie",
     perfSources: [
@@ -287,4 +296,43 @@ export function reportGroupOf(b: BrandConfig): ReportGroup {
   if (b.appInstall || b.perfSources) return "leads"; // Haat, Leaders, Bestie
   if (b.awarenessSources || b.mediaPlan) return "views"; // SCJ, Style
   return "ecommerce"; // Argania, La Beaute, Studio Pasha, Seacret
+}
+
+// The campaign-explorer KPI profile — which metric columns + goal the brand's campaign tables use.
+export type CampaignProfile = "ecommerce" | "views" | "leads" | "app" | "impshare";
+export function campaignProfileOf(b: BrandConfig): CampaignProfile {
+  if (b.googleSnapshot) return "impshare"; // Colgate
+  if (b.appInstall) return "app"; // Haat
+  if (b.awarenessSources || b.mediaPlan) return "views"; // SCJ, Style
+  if (b.perfSources) return "leads"; // Leaders, Bestie
+  return "ecommerce"; // Argania, La Beaute, Studio Pasha, Seacret
+}
+
+// The lower-is-better target for a brand's profile (for the explorer's goal coloring), or null.
+export function campaignTargetOf(b: BrandConfig): number | null {
+  const p = campaignProfileOf(b);
+  return p === "views" ? b.targetCpv ?? null : p === "leads" ? b.targetCpl ?? null : p === "app" ? b.targetCpi ?? null : null;
+}
+
+// Ad channels available to the campaign explorer for a brand, each resolved to a Windsor account
+// and a campaign-name filter. Dedicated-account brands (ecommerce/app) → empty filter; shared-
+// account brands (awareness/perf) → the brand's campaignFilter.
+export interface ExplorerChannel { id: "meta" | "google" | "tiktok"; label: string; account: string; filter: string }
+const CH_LABEL: Record<"meta" | "google" | "tiktok", string> = { meta: "Meta", google: "Google", tiktok: "TikTok" };
+export function explorerChannels(b: BrandConfig): ExplorerChannel[] {
+  const out: ExplorerChannel[] = [];
+  const add = (id: "meta" | "google" | "tiktok", account: string | null, filter: string) => {
+    if (account) out.push({ id, label: CH_LABEL[id], account, filter });
+  };
+  const filter = (b.campaignFilter ?? "").toLowerCase();
+  if (b.awarenessSources?.length) {
+    for (const s of b.awarenessSources) add(s.platform, s.account, filter);
+  } else if (b.perfSources?.length) {
+    for (const s of b.perfSources) add(s.platform, s.account, filter);
+  } else {
+    add("meta", b.metaAccountId, "");
+    add("google", b.googleAccountId, "");
+    add("tiktok", b.tiktokAccountId, "");
+  }
+  return out;
 }

@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { getBrand, type BrandConfig } from "@/lib/brands";
+import { getBrand, campaignProfileOf, explorerChannels, campaignTargetOf, type BrandConfig } from "@/lib/brands";
 import {
   getBrandMetrics,
   getBrandMonthSpend,
@@ -19,9 +19,8 @@ import MediaPlanBudgetOverview from "@/components/MediaPlanBudgetOverview";
 import { getMediaPlanExecution } from "@/lib/mediaPlan";
 import AppReportView from "@/components/AppReportView";
 import { getAppReport } from "@/lib/appReport";
-import AwarenessView from "@/components/AwarenessView";
 import SearchSnapshotView from "@/components/SearchSnapshotView";
-import CampaignPerfView from "@/components/CampaignPerfView";
+import CampaignExplorer from "@/components/CampaignExplorer";
 import ClientSummaryView from "@/components/ClientSummaryView";
 import AppShell from "@/components/AppShell";
 import DateRangeCalendar from "@/components/DateRangeCalendar";
@@ -44,14 +43,27 @@ async function BrandContent({ brand, range, isClient }: { brand: BrandConfig; ra
   const isSnapshot = !!brand.googleSnapshot;
   const isPerf = !!brand.perfSources;
 
+  // Unified campaign explorer (channel + dimension tabs, KPI columns per profile) for the
+  // views/leads brands — the same table structure as the ecommerce Breakdown Explorer.
+  const explorer = (
+    <CampaignExplorer
+      brandId={brandId}
+      from={range.from}
+      to={range.to}
+      profile={campaignProfileOf(brand) === "leads" ? "leads" : "views"}
+      channels={explorerChannels(brand).map((c) => ({ id: c.id, label: c.label }))}
+      target={campaignTargetOf(brand)}
+    />
+  );
+
   if (isMediaPlan) {
     // Awareness media-plan brands (Style): calendar-driven budget overview (monthly budget, pace
-    // over the picked range) + the full awareness tables. No fixed-flight layout.
+    // over the picked range) + the unified campaign explorer.
     if (brand.awarenessSources?.length) {
       return (
         <div className="space-y-4">
           <MediaPlanBudgetOverview brandId={brandId} brandName={brand.name} from={range.from} to={range.to} today={today()} monthlyBudget={brand.monthlyBudget} />
-          <AwarenessView brandId={brandId} brandName={brand.name} campaignFilter={brand.campaignFilter ?? ""} from={range.from} to={range.to} />
+          {explorer}
         </div>
       );
     }
@@ -63,9 +75,9 @@ async function BrandContent({ brand, range, isClient }: { brand: BrandConfig; ra
     const appReport = await getAppReport(brand, range.from, range.to);
     return appReport ? <AppReportView brand={brand} report={appReport} from={range.from} to={range.to} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No app data for this range.</div>;
   }
-  if (isAwareness) return <AwarenessView brandId={brandId} brandName={brand.name} campaignFilter={brand.campaignFilter ?? ""} from={range.from} to={range.to} />;
+  if (isAwareness) return explorer;
   if (isSnapshot) return <SearchSnapshotView brandId={brandId} brandName={brand.name} from={range.from} to={range.to} />;
-  if (isPerf) return <CampaignPerfView brandId={brandId} brandName={brand.name} campaignFilter={brand.campaignFilter ?? ""} from={range.from} to={range.to} />;
+  if (isPerf) return explorer;
 
   // Conversion brand.
   const [allMetrics, monthSpend, breakdownMap, sourceMap, forecast, store] = await Promise.all([

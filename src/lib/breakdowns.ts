@@ -18,7 +18,7 @@ export type Dimension =
 
 // Windsor field id for each (ad channel, dimension). Missing = unsupported for that channel.
 export const DIMENSION_FIELDS: Record<"google" | "meta" | "tiktok", Partial<Record<Dimension, string>>> = {
-  google: { campaign: "campaign", audience: "ad_group", location: "country" },
+  google: { campaign: "campaign", audience: "ad_group", ad: "ad_name", location: "country" },
   meta: {
     campaign: "campaign",
     audience: "adset_name",

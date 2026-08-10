@@ -154,6 +154,14 @@ async function fetchTrend(cfg: AwarenessSourceConfig, from: string, to: string, 
   return m;
 }
 
+// A single awareness source at a given drill level — lets each table in the view regroup on its
+// own (Campaign / Ad group / Ad) without refetching the others.
+export async function getAwarenessSourceAt(brand: BrandConfig, index: number, from: string, to: string, level: AdLevel): Promise<AwSource | null> {
+  const cfg = brand.awarenessSources?.[index];
+  if (!cfg) return null;
+  return fetchSource(cfg, brand, from, to, (brand.campaignFilter ?? "").toLowerCase(), level);
+}
+
 export async function getAwarenessReport(brand: BrandConfig, from: string, to: string, level: AdLevel = "campaign"): Promise<AwarenessReport | null> {
   if (!brand.awarenessSources?.length) return null;
   const filter = (brand.campaignFilter ?? "").toLowerCase();
