@@ -30,7 +30,7 @@ export const DIMENSION_FIELDS: Record<"google" | "meta" | "tiktok", Partial<Reco
   },
   tiktok: {
     campaign: "campaign_name",
-    audience: "adgroup_name",
+    audience: "ad_group_name", // Windsor TikTok ad-group field (adgroup_name 400s)
     ad: "ad_name",
     age: "age",
     gender: "gender",

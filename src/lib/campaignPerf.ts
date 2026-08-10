@@ -6,6 +6,7 @@
 
 import type { BrandConfig, PerfSourceConfig } from "./brands";
 import { fetchWindsor, num, type WindsorRow } from "./windsor";
+import { type AdLevel, groupFieldFor, campaignFieldFor } from "./adLevel";
 
 const normId = (v: unknown) => String(v ?? "").replace(/^act_/i, "").trim();
 
@@ -39,11 +40,13 @@ export interface CampaignPerf {
 
 type Agg = { spend: number; impr: number; clicks: number; conv: number };
 
-async function fetchSource(cfg: PerfSourceConfig, filter: string, from: string, to: string): Promise<PerfSource> {
+async function fetchSource(cfg: PerfSourceConfig, filter: string, from: string, to: string, level: AdLevel): Promise<PerfSource> {
   const acc = normId(cfg.account);
   const isMeta = cfg.platform === "meta";
   const convField = isMeta ? "actions_lead" : "conversions";
-  const fields = ["account_id", "currency", "campaign", "spend", "impressions", "clicks", convField];
+  const campField = campaignFieldFor(cfg.platform);
+  const groupField = groupFieldFor(cfg.platform, level);
+  const fields = [...new Set(["account_id", "currency", campField, groupField, "spend", "impressions", "clicks", convField])];
 
   const rows = await fetchWindsor({
     connector: isMeta ? "facebook" : "google_ads",
@@ -58,8 +61,8 @@ async function fetchSource(cfg: PerfSourceConfig, filter: string, from: string, 
   const byCampaign = new Map<string, Agg>();
   for (const r of rows) {
     if (normId(r.account_id) !== acc) continue;
-    const name = String(r.campaign ?? "");
-    if (!name.toLowerCase().includes(filter)) continue;
+    if (!String(r[campField] ?? "").toLowerCase().includes(filter)) continue; // filter by campaign name
+    const name = String(r[groupField] ?? "") || "(none)"; // group by the chosen level
     if (r.currency) currency = String(r.currency).toUpperCase();
     const e = byCampaign.get(name) ?? { spend: 0, impr: 0, clicks: 0, conv: 0 };
     e.spend += num(r.spend);
@@ -96,9 +99,9 @@ async function fetchSource(cfg: PerfSourceConfig, filter: string, from: string, 
   };
 }
 
-export async function getCampaignPerf(brand: BrandConfig, from: string, to: string): Promise<CampaignPerf | null> {
+export async function getCampaignPerf(brand: BrandConfig, from: string, to: string, level: AdLevel = "campaign"): Promise<CampaignPerf | null> {
   if (!brand.perfSources?.length) return null;
   const filter = (brand.campaignFilter ?? "").toLowerCase();
-  const sources = await Promise.all(brand.perfSources.map((c) => fetchSource(c, filter, from, to)));
+  const sources = await Promise.all(brand.perfSources.map((c) => fetchSource(c, filter, from, to, level)));
   return { sources };
 }
