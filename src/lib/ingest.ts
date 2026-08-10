@@ -1,6 +1,7 @@
 import { getSupabase, hasDb } from "./db";
-import { BRANDS, type BrandConfig } from "./brands";
+import { BRANDS, campaignProfileOf, explorerChannels, type BrandConfig } from "./brands";
 import { CHANNEL_FIELDS } from "./channelFields";
+import { campaignFieldFor } from "./adLevel";
 import { fetchUsdIlsRate, toIls } from "./fx";
 import { fetchWindsor, num } from "./windsor";
 import { fetchQuickShopPaidOrders, quickshopKeyFor, type PaidOrder } from "./quickshop";
@@ -53,6 +54,12 @@ function accountForChannel(brand: BrandConfig, channel: Channel): string | null 
 // (Meta may prefix with "act_"; ignore case/whitespace).
 function normId(v: unknown): string {
   return String(v ?? "").replace(/^act_/i, "").trim();
+}
+
+// Meta returns some fields as a nested [{action_type, value}] array; sum the values.
+function sumAction(v: unknown): number {
+  if (Array.isArray(v)) return v.reduce((s: number, a) => s + num((a as { value?: string | number | null })?.value), 0);
+  return num(v as string | number | null | undefined);
 }
 
 type WindsorRows = Awaited<ReturnType<typeof fetchWindsor>>;
@@ -292,6 +299,90 @@ async function writeSourceAttribution(
   }
 }
 
+// Views/leads accumulator (awareness reach/views, or leads), per day, per channel.
+type CampAgg = { spend: number; impr: number; clicks: number; reach: number; views: number; completed: number; leads: number };
+function emptyCamp(): CampAgg {
+  return { spend: 0, impr: 0, clicks: 0, reach: 0, views: 0, completed: 0, leads: 0 };
+}
+
+// Replace a views/leads brand-channel's daily_metrics rows over [from, to] with fresh aggregates.
+// purchases/revenue stay 0 (not a conversion brand); the KPI columns (reach/views/leads) carry it.
+async function replaceCampaignDaily(sb: Sb, brand: BrandConfig, channel: Channel, from: string, to: string, byDate: Map<string, CampAgg>, usdIls: number, currency: string): Promise<number> {
+  const del = await sb.from("daily_metrics").delete().eq("brand_id", brand.id).eq("channel", channel).gte("date", from).lte("date", to);
+  if (del.error) throw new Error(del.error.message);
+  const now = new Date().toISOString();
+  const rows = Array.from(byDate, ([date, a]) => ({
+    date, brand_id: brand.id, channel,
+    spend: a.spend, purchases: 0, revenue: 0, native_currency: currency,
+    spend_ils: toIls(a.spend, currency, usdIls), revenue_ils: 0,
+    impressions: a.impr, clicks: a.clicks,
+    reach: a.reach, views: a.views, completed_views: a.completed, leads: a.leads,
+    new_purchases: 0, new_revenue_ils: 0, fetched_at: now,
+  }));
+  if (rows.length === 0) return 0;
+  const { error } = await sb.from("daily_metrics").insert(rows);
+  if (error) throw new Error(error.message);
+  return rows.length;
+}
+
+// Ingest a views/leads brand: each explorer channel (a Windsor account + campaign-name filter),
+// per-day awareness/leads metrics → daily_metrics. Shared accounts are filtered by campaign name.
+async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to: string, usdIls: number, result: IngestResult): Promise<void> {
+  const profile = campaignProfileOf(brand); // "views" | "leads"
+  for (const ch of explorerChannels(brand)) {
+    const connector = ch.id === "meta" ? "facebook" : ch.id === "tiktok" ? "tiktok" : "google_ads";
+    const campField = campaignFieldFor(ch.id);
+    const metricFields =
+      profile === "views"
+        ? ch.id === "meta"
+          ? ["reach", "video_thruplay_watched_actions", "video_p100_watched_actions"]
+          : ch.id === "tiktok"
+            ? ["reach", "video_watched_2s", "video_watched_6s"]
+            : ["video_views"]
+        : ch.id === "meta"
+          ? ["actions_lead"]
+          : ["conversions"];
+    const fields = [...new Set(["date", "account_id", "currency", campField, "spend", "impressions", "clicks", ...metricFields])];
+    try {
+      const rows = await fetchWindsor({
+        connector,
+        fields,
+        dateFrom: from,
+        dateTo: to,
+        accounts: [ch.account],
+        ...(ch.id === "meta" ? { options: { attribution_window: "7d_click,1d_view" } } : {}),
+      });
+      const acc = normId(ch.account);
+      const byDate = new Map<string, CampAgg>();
+      let currency = brand.nativeCurrency as string;
+      for (const r of rows) {
+        if (normId(r.account_id) !== acc) continue;
+        if (ch.filter && !String(r[campField] ?? "").toLowerCase().includes(ch.filter)) continue;
+        const date = String(r.date ?? "").slice(0, 10);
+        if (!date) continue;
+        if (r.currency) currency = String(r.currency).toUpperCase();
+        let a = byDate.get(date);
+        if (!a) { a = emptyCamp(); byDate.set(date, a); }
+        a.spend += num(r.spend);
+        a.impr += num(r.impressions);
+        a.clicks += num(r.clicks);
+        if (profile === "views") {
+          a.reach += num(r.reach);
+          if (ch.id === "meta") { a.views += sumAction(r.video_thruplay_watched_actions); a.completed += sumAction(r.video_p100_watched_actions); }
+          else if (ch.id === "tiktok") { a.views += num(r.video_watched_2s); a.completed += num(r.video_watched_6s); }
+          else { a.views += num(r.video_views); }
+        } else {
+          a.leads += ch.id === "meta" ? sumAction(r.actions_lead) : num(r.conversions);
+        }
+      }
+      result.upserts += await replaceCampaignDaily(sb, brand, ch.id, from, to, byDate, usdIls, currency);
+    } catch (e) {
+      result.ok = false;
+      result.errors.push({ brand: brand.id, channel: ch.id, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+}
+
 export async function runIngest(opts?: { from?: string; to?: string; brandId?: string }): Promise<IngestResult> {
   const to = opts?.to ?? today();
   const from = opts?.from ?? to; // default: today only; pass a range to backfill
@@ -321,6 +412,15 @@ export async function runIngest(opts?: { from?: string; to?: string; brandId?: s
 
   for (const brand of BRANDS) {
     if (brandFilter && brand.id !== brandFilter) continue;
+
+    // Views/leads brands (SCJ, Style, Leaders, Bestie): shared accounts + campaign filter, KPI
+    // columns (reach/views/leads). Ingested via their own path so every client persists to the DB.
+    const profile = campaignProfileOf(brand);
+    if (profile === "views" || profile === "leads") {
+      await ingestCampaignBrand(sb, brand, from, to, usdIls, result);
+      continue;
+    }
+
     for (const channel of ["google", "meta", "tiktok", "site"] as Channel[]) {
       // Store channel for QuickShop brands comes from the QuickShop API, not Windsor.
       if (channel === "site" && brand.storePlatform === "quickshop") {

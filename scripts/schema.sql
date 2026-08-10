@@ -23,6 +23,13 @@ CREATE TABLE IF NOT EXISTS daily_metrics (
 CREATE INDEX IF NOT EXISTS idx_daily_metrics_date ON daily_metrics (date);
 CREATE INDEX IF NOT EXISTS idx_daily_metrics_brand ON daily_metrics (brand_id);
 
+-- Awareness/leads metrics (views/reach for views brands; leads for leads brands). Additive,
+-- default 0 so ecommerce rows are unaffected. Every client (ecommerce/views/leads) now persists.
+ALTER TABLE daily_metrics ADD COLUMN IF NOT EXISTS reach           NUMERIC NOT NULL DEFAULT 0;
+ALTER TABLE daily_metrics ADD COLUMN IF NOT EXISTS views           NUMERIC NOT NULL DEFAULT 0;
+ALTER TABLE daily_metrics ADD COLUMN IF NOT EXISTS completed_views NUMERIC NOT NULL DEFAULT 0;
+ALTER TABLE daily_metrics ADD COLUMN IF NOT EXISTS leads           NUMERIC NOT NULL DEFAULT 0;
+
 -- Store customer first-seen dates, to classify orders as new vs returning.
 CREATE TABLE IF NOT EXISTS store_customers (
   brand_id    TEXT NOT NULL,

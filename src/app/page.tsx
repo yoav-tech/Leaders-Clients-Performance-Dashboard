@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { getBrand, campaignProfileOf, explorerChannels, campaignTargetOf, type BrandConfig } from "@/lib/brands";
+import { getBrand, campaignProfileOf, explorerChannels, type BrandConfig } from "@/lib/brands";
 import {
   getBrandMetrics,
   getBrandMonthSpend,
@@ -15,12 +15,12 @@ import { hasDb } from "@/lib/db";
 import BrandView from "@/components/BrandView";
 import LiveRefresher from "@/components/LiveRefresher";
 import MediaPlanView from "@/components/MediaPlanView";
-import MediaPlanBudgetOverview from "@/components/MediaPlanBudgetOverview";
 import { getMediaPlanExecution } from "@/lib/mediaPlan";
 import AppReportView from "@/components/AppReportView";
 import { getAppReport } from "@/lib/appReport";
 import SearchSnapshotView from "@/components/SearchSnapshotView";
-import CampaignExplorer from "@/components/CampaignExplorer";
+import CampaignBrandView from "@/components/CampaignBrandView";
+import { getCampaignBrandMetrics } from "@/lib/campaignMetrics";
 import ClientSummaryView from "@/components/ClientSummaryView";
 import AppShell from "@/components/AppShell";
 import DateRangeCalendar from "@/components/DateRangeCalendar";
@@ -39,35 +39,30 @@ async function BrandContent({ brand, range, isClient }: { brand: BrandConfig; ra
   const brandId = brand.id;
   const isMediaPlan = !!brand.mediaPlan;
   const isAppInstall = !!brand.appInstall;
-  const isAwareness = !!brand.awarenessSources;
   const isSnapshot = !!brand.googleSnapshot;
-  const isPerf = !!brand.perfSources;
 
-  // Unified campaign explorer (channel + dimension tabs, KPI columns per profile) for the
-  // views/leads brands — the same table structure as the ecommerce Breakdown Explorer.
-  const explorer = (
-    <CampaignExplorer
-      brandId={brandId}
-      from={range.from}
-      to={range.to}
-      profile={campaignProfileOf(brand) === "leads" ? "leads" : "views"}
-      channels={explorerChannels(brand).map((c) => ({ id: c.id, label: c.label }))}
-      target={campaignTargetOf(brand)}
-    />
-  );
+  // Views/leads clients (SCJ, Style, Leaders, Bestie) — the unified DB-backed layout: overview +
+  // budget pacing + channel funnel + trend + breakdown explorer + daily, KPI-adapted per profile.
+  const profile = campaignProfileOf(brand);
+  if (profile === "views" || profile === "leads") {
+    const [cm, monthSpend] = await Promise.all([
+      getCampaignBrandMetrics(brand, range.from, range.to),
+      getBrandMonthSpend(brandId),
+    ]);
+    return (
+      <CampaignBrandView
+        brand={brand}
+        metrics={cm}
+        monthSpend={monthSpend}
+        from={range.from}
+        to={range.to}
+        channels={explorerChannels(brand).map((c) => ({ id: c.id, label: c.label }))}
+      />
+    );
+  }
 
   if (isMediaPlan) {
-    // Awareness media-plan brands (Style): calendar-driven budget overview (monthly budget, pace
-    // over the picked range) + the unified campaign explorer.
-    if (brand.awarenessSources?.length) {
-      return (
-        <div className="space-y-4">
-          <MediaPlanBudgetOverview brandId={brandId} brandName={brand.name} from={range.from} to={range.to} today={today()} monthlyBudget={brand.monthlyBudget} />
-          {explorer}
-        </div>
-      );
-    }
-    // Other media-plan brands keep the fixed-flight plan layout.
+    // Media-plan brands without a campaign profile keep the fixed-flight plan layout.
     const exec = await getMediaPlanExecution(brand);
     return exec ? <MediaPlanView brand={brand} exec={exec} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No plan data.</div>;
   }
@@ -75,9 +70,7 @@ async function BrandContent({ brand, range, isClient }: { brand: BrandConfig; ra
     const appReport = await getAppReport(brand, range.from, range.to);
     return appReport ? <AppReportView brand={brand} report={appReport} from={range.from} to={range.to} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No app data for this range.</div>;
   }
-  if (isAwareness) return explorer;
   if (isSnapshot) return <SearchSnapshotView brandId={brandId} brandName={brand.name} from={range.from} to={range.to} />;
-  if (isPerf) return explorer;
 
   // Conversion brand.
   const [allMetrics, monthSpend, breakdownMap, sourceMap, forecast, store] = await Promise.all([
@@ -127,7 +120,9 @@ export default async function Home({
   }
   const brandId = allowed.some((b) => b.id === sp.brand) ? sp.brand! : allowed[0].id;
   const brand = getBrand(brandId)!;
-  const isSpecial = !!(brand.mediaPlan || brand.appInstall || brand.awarenessSources || brand.googleSnapshot || brand.perfSources);
+  // DB-backed brands (ecommerce + views + leads) are ingested, so warm "today" on load. The
+  // still-live brands (Colgate snapshot, Haat app) refresh in place without a warm.
+  const liveWarm = !brand.googleSnapshot && !brand.appInstall;
 
   const isAdmin = session.role === "admin";
   // Admin can preview the client-side interface via ?as=client (trimmed depth + client shell).
@@ -159,10 +154,10 @@ export default async function Home({
             צפה כלקוח
           </a>
         )}
-        {isSpecial ? (
-          <LiveRefresher brand={brandId} active />
-        ) : (
+        {liveWarm ? (
           <LiveRefresher brand={brandId} active={range.to >= today()} warmPath="/api/live-warm" />
+        ) : (
+          <LiveRefresher brand={brandId} active />
         )}
         <DateRangeCalendar activeKey={range.key} from={range.from} to={range.to} brand={brandId} />
       </div>

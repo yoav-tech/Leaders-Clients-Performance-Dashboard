@@ -220,7 +220,7 @@ export const BRANDS: BrandConfig[] = [
     nativeCurrency: "ILS",
     targetRoas: 0,
     targetCpv: 0.03, // default CPV goal (ILS) — tune per client
-    monthlyBudget: 0,
+    monthlyBudget: 84000,
     campaignFilter: "scj",
     awarenessSources: [
       { platform: "meta", account: "638387658529372", title: "Meta · LEADERS" },
@@ -256,7 +256,7 @@ export const BRANDS: BrandConfig[] = [
     nativeCurrency: "ILS",
     targetRoas: 0,
     targetCpl: 85, // default CPL goal (ILS) — tune per client
-    monthlyBudget: 0,
+    monthlyBudget: 5000,
     campaignFilter: "leaders",
     perfSources: [
       { platform: "meta", account: "638387658529372", title: "Meta · LEADERS" },
@@ -275,7 +275,7 @@ export const BRANDS: BrandConfig[] = [
     nativeCurrency: "ILS",
     targetRoas: 0,
     targetCpl: 85, // default CPL goal (ILS) — tune per client
-    monthlyBudget: 0,
+    monthlyBudget: 2500,
     campaignFilter: "bestie",
     perfSources: [
       { platform: "meta", account: "638387658529372", title: "Meta · LEADERS" },
