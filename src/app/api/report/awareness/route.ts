@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBrand } from "@/lib/brands";
 import { getAwarenessReport } from "@/lib/awarenessReport";
+import { parseAdLevel } from "@/lib/adLevel";
 import { getServerSession, canAccessBrand } from "@/lib/serverSession";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   try {
-    const report = await getAwarenessReport(brand, from, to);
+    const report = await getAwarenessReport(brand, from, to, parseAdLevel(url.searchParams.get("level")));
     return NextResponse.json({ report });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });

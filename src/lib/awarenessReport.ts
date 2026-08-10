@@ -4,6 +4,7 @@
 
 import type { BrandConfig, AwarenessSourceConfig } from "./brands";
 import { fetchWindsor, num } from "./windsor";
+import { type AdLevel, groupFieldFor, campaignFieldFor } from "./adLevel";
 
 const toIls = (v: number, cur: string) => (cur === "USD" ? v * 3 : v);
 const normId = (v: unknown) => String(v ?? "").replace(/^act_/i, "").trim();
@@ -44,18 +45,22 @@ export interface AwarenessReport {
   trend: { date: string; spend: number; views: number }[];
 }
 
-async function fetchSource(cfg: AwarenessSourceConfig, brand: BrandConfig, from: string, to: string, filter: string): Promise<AwSource> {
+async function fetchSource(cfg: AwarenessSourceConfig, brand: BrandConfig, from: string, to: string, filter: string, level: AdLevel): Promise<AwSource> {
   const acc = normId(cfg.account);
   let cur = brand.nativeCurrency as string;
   const zero = () => ({ spend: 0, impressions: 0, reach: 0, views: 0, completedViews: 0 });
   const byCamp = new Map<string, ReturnType<typeof zero>>();
 
-  const fields =
+  // Always fetch the campaign field (for the name filter) plus the group-by field for the level.
+  const campField = campaignFieldFor(cfg.platform);
+  const groupField = groupFieldFor(cfg.platform, level);
+  const metricFields =
     cfg.platform === "meta"
-      ? ["account_id", "currency", "campaign", "spend", "impressions", "reach", "video_thruplay_watched_actions", "video_p100_watched_actions"]
+      ? ["currency", "reach", "video_thruplay_watched_actions", "video_p100_watched_actions"]
       : cfg.platform === "tiktok"
-        ? ["account_id", "currency", "campaign_name", "spend", "impressions", "reach", "video_watched_2s", "video_watched_6s"]
-        : ["account_id", "campaign", "spend", "impressions", "video_views"];
+        ? ["currency", "reach", "video_watched_2s", "video_watched_6s"]
+        : ["video_views"];
+  const fields = [...new Set(["account_id", "spend", "impressions", campField, groupField, ...metricFields])];
 
   const rows = await fetchWindsor({
     connector: cfg.platform === "meta" ? "facebook" : cfg.platform === "tiktok" ? "tiktok" : "google_ads",
@@ -69,8 +74,8 @@ async function fetchSource(cfg: AwarenessSourceConfig, brand: BrandConfig, from:
 
   for (const r of rows) {
     if (normId(r.account_id) !== acc) continue;
-    const name = String((cfg.platform === "tiktok" ? r.campaign_name : r.campaign) ?? "");
-    if (!name.toLowerCase().includes(filter)) continue;
+    if (!String(r[campField] ?? "").toLowerCase().includes(filter)) continue; // filter by campaign name
+    const name = String(r[groupField] ?? "") || "(none)"; // group by the chosen level
     if (r.currency) cur = String(r.currency).toUpperCase();
     const c = byCamp.get(name) ?? zero();
     c.spend += num(r.spend);
@@ -149,13 +154,14 @@ async function fetchTrend(cfg: AwarenessSourceConfig, from: string, to: string, 
   return m;
 }
 
-export async function getAwarenessReport(brand: BrandConfig, from: string, to: string): Promise<AwarenessReport | null> {
+export async function getAwarenessReport(brand: BrandConfig, from: string, to: string, level: AdLevel = "campaign"): Promise<AwarenessReport | null> {
   if (!brand.awarenessSources?.length) return null;
   const filter = (brand.campaignFilter ?? "").toLowerCase();
 
   // Fetch all source + trend queries concurrently (Windsor is slow, esp. Meta video fields).
+  // Trend stays campaign-scoped (a time series) regardless of the table's drill level.
   const [sources, trendMaps] = await Promise.all([
-    Promise.all(brand.awarenessSources.map((s) => fetchSource(s, brand, from, to, filter))),
+    Promise.all(brand.awarenessSources.map((s) => fetchSource(s, brand, from, to, filter, level))),
     Promise.all(brand.awarenessSources.map((s) => fetchTrend(s, from, to, filter))),
   ]);
 

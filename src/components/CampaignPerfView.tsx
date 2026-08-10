@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { CampaignPerf, PerfSource, PerfCampaign } from "@/lib/campaignPerf";
+import { AD_LEVELS, AD_LEVEL_LABELS, type AdLevel } from "@/lib/adLevel";
 import { formatNumber } from "@/lib/metrics";
 
 const money = (v: number | null, cur: string) =>
@@ -32,14 +33,14 @@ function Row({ c, cur, bold }: { c: PerfCampaign; cur: string; bold?: boolean })
   );
 }
 
-function SourceBlock({ s }: { s: PerfSource }) {
+function SourceBlock({ s, levelLabel }: { s: PerfSource; levelLabel: string }) {
   return (
     <Panel title={s.title}>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[680px] border-collapse text-sm">
           <thead>
             <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
-              <th className="px-2 py-1.5 text-left">Campaign</th>
+              <th className="px-2 py-1.5 text-left">{levelLabel}</th>
               <th className="px-2 py-1.5 text-right">Spend</th>
               <th className="px-2 py-1.5 text-right">Impr</th>
               <th className="px-2 py-1.5 text-right">Clicks</th>
@@ -79,13 +80,14 @@ export default function CampaignPerfView({
   const [report, setReport] = useState<CampaignPerf | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [level, setLevel] = useState<AdLevel>("campaign");
 
   useEffect(() => {
     let cancelled = false;
     const load = (showSpinner: boolean) => {
       if (showSpinner) setLoading(true);
       setErr("");
-      fetch(`/api/report/campaign-perf?brand=${encodeURIComponent(brandId)}&from=${from}&to=${to}`, { cache: "no-store" })
+      fetch(`/api/report/campaign-perf?brand=${encodeURIComponent(brandId)}&from=${from}&to=${to}&level=${level}`, { cache: "no-store" })
         .then((r) => r.json())
         .then((j) => {
           if (cancelled) return;
@@ -101,21 +103,51 @@ export default function CampaignPerfView({
       cancelled = true;
       clearInterval(iv);
     };
-  }, [brandId, from, to]);
+  }, [brandId, from, to, level]);
 
-  if (loading && !report) return <div className="panel p-10 text-center text-sm text-[var(--muted)]">Loading {brandName}…</div>;
+  const pill = (active: boolean) =>
+    `rounded-md px-3 py-1 text-sm transition-colors ${active ? "bg-blue-600 text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`;
+  const toggle = (
+    <div className="inline-flex flex-wrap gap-1 rounded-lg border border-[var(--card-border)] p-1">
+      {AD_LEVELS.map((lv) => (
+        <button key={lv} onClick={() => setLevel(lv)} className={pill(level === lv)}>{AD_LEVEL_LABELS[lv]}</button>
+      ))}
+    </div>
+  );
+
+  if (loading && !report) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-[11px] uppercase tracking-wide text-[var(--muted)]">{brandName} · campaign performance</div>
+          {toggle}
+        </div>
+        <div className="panel p-10 text-center text-sm text-[var(--muted)]">Loading {brandName}…</div>
+      </div>
+    );
+  }
   if (err && !report) return <div className="panel p-4 text-sm text-[var(--muted)]">Couldn&apos;t load: {err}</div>;
-  if (!report || report.sources.length === 0) return <div className="panel p-4 text-sm text-[var(--muted)]">No campaign data for this range.</div>;
+  if (!report || report.sources.length === 0) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3"><div className="text-[11px] uppercase tracking-wide text-[var(--muted)]">{brandName} · campaign performance</div>{toggle}</div>
+        <div className="panel p-4 text-sm text-[var(--muted)]">No campaign data for this range.</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
       <Panel title={`${brandName} · campaign performance · ${from} → ${to} · campaigns matching “${campaignFilter}”`}>
-        <div className="text-[11px] text-[var(--muted)]">
-          כל הקמפיינים ששמם מכיל “{campaignFilter}” בחשבונות Meta (LEADERS) ו-Google (LDRS) · חי מ-Windsor. Meta conversions = לידים.
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-[11px] text-[var(--muted)]">
+            כל הקמפיינים ששמם מכיל “{campaignFilter}” בחשבונות Meta (LEADERS) ו-Google (LDRS) · חי מ-Windsor. Meta conversions = לידים.
+          </div>
+          {toggle}
         </div>
       </Panel>
       {report.sources.map((s) => (
-        <SourceBlock key={s.key} s={s} />
+        <SourceBlock key={s.key} s={s} levelLabel={AD_LEVEL_LABELS[level]} />
       ))}
     </div>
   );
