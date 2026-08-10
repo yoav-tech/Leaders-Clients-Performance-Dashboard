@@ -299,24 +299,25 @@ async function writeSourceAttribution(
   }
 }
 
-// Views/leads accumulator (awareness reach/views, or leads), per day, per channel.
-type CampAgg = { spend: number; impr: number; clicks: number; reach: number; views: number; completed: number; leads: number };
+// Non-ecommerce accumulator (awareness reach/views, leads, app installs, or search conversions),
+// per day, per channel.
+type CampAgg = { spend: number; impr: number; clicks: number; reach: number; views: number; completed: number; leads: number; installs: number; purchases: number };
 function emptyCamp(): CampAgg {
-  return { spend: 0, impr: 0, clicks: 0, reach: 0, views: 0, completed: 0, leads: 0 };
+  return { spend: 0, impr: 0, clicks: 0, reach: 0, views: 0, completed: 0, leads: 0, installs: 0, purchases: 0 };
 }
 
-// Replace a views/leads brand-channel's daily_metrics rows over [from, to] with fresh aggregates.
-// purchases/revenue stay 0 (not a conversion brand); the KPI columns (reach/views/leads) carry it.
+// Replace a non-ecommerce brand-channel's daily_metrics rows over [from, to] with fresh
+// aggregates. revenue stays 0; the KPI columns (reach/views/leads/installs/purchases) carry it.
 async function replaceCampaignDaily(sb: Sb, brand: BrandConfig, channel: Channel, from: string, to: string, byDate: Map<string, CampAgg>, usdIls: number, currency: string): Promise<number> {
   const del = await sb.from("daily_metrics").delete().eq("brand_id", brand.id).eq("channel", channel).gte("date", from).lte("date", to);
   if (del.error) throw new Error(del.error.message);
   const now = new Date().toISOString();
   const rows = Array.from(byDate, ([date, a]) => ({
     date, brand_id: brand.id, channel,
-    spend: a.spend, purchases: 0, revenue: 0, native_currency: currency,
+    spend: a.spend, purchases: a.purchases, revenue: 0, native_currency: currency,
     spend_ils: toIls(a.spend, currency, usdIls), revenue_ils: 0,
     impressions: a.impr, clicks: a.clicks,
-    reach: a.reach, views: a.views, completed_views: a.completed, leads: a.leads,
+    reach: a.reach, views: a.views, completed_views: a.completed, leads: a.leads, installs: a.installs,
     new_purchases: 0, new_revenue_ils: 0, fetched_at: now,
   }));
   if (rows.length === 0) return 0;
@@ -383,6 +384,78 @@ async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to:
   }
 }
 
+// Ingest an app brand (Haat): each appSection is a Meta account (delivery installs + HR leads).
+// Both sections merge into one daily meta row (spend/impr/clicks summed; installs from the app
+// section, leads from the leads section). The detailed section view stays live — this is the DB copy.
+async function ingestAppBrand(sb: Sb, brand: BrandConfig, from: string, to: string, usdIls: number, result: IngestResult): Promise<void> {
+  const sections = brand.appSections ?? [];
+  const byDate = new Map<string, CampAgg>();
+  let currency = brand.nativeCurrency as string;
+  try {
+    for (const sec of sections) {
+      const convField = sec.kind === "app" ? "actions_mobile_app_install" : "actions_lead";
+      const rows = await fetchWindsor({
+        connector: "facebook",
+        fields: ["date", "account_id", "currency", "spend", "impressions", "clicks", convField],
+        dateFrom: from, dateTo: to, accounts: [sec.account], options: { attribution_window: "7d_click,1d_view" },
+      });
+      const acc = normId(sec.account);
+      for (const r of rows) {
+        if (normId(r.account_id) !== acc) continue;
+        const date = String(r.date ?? "").slice(0, 10);
+        if (!date) continue;
+        if (r.currency) currency = String(r.currency).toUpperCase();
+        let a = byDate.get(date);
+        if (!a) { a = emptyCamp(); byDate.set(date, a); }
+        a.spend += num(r.spend);
+        a.impr += num(r.impressions);
+        a.clicks += num(r.clicks);
+        if (sec.kind === "app") a.installs += sumAction(r.actions_mobile_app_install);
+        else a.leads += sumAction(r.actions_lead);
+      }
+    }
+    result.upserts += await replaceCampaignDaily(sb, brand, "meta", from, to, byDate, usdIls, currency);
+  } catch (e) {
+    result.ok = false;
+    result.errors.push({ brand: brand.id, channel: "meta", error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+// Ingest an impression-share brand (Colgate): sum the Google snapshot accounts into one daily
+// google row (spend/impr/clicks + search conversions → purchases). The competitive impression-
+// share view stays live (IS is a rate, computed there) — this is the DB copy of the additive data.
+async function ingestImpshareBrand(sb: Sb, brand: BrandConfig, from: string, to: string, usdIls: number, result: IngestResult): Promise<void> {
+  const accounts = brand.googleSnapshot ?? [];
+  const byDate = new Map<string, CampAgg>();
+  let currency = "EUR"; // Colgate's Google accounts bill in EUR; overridden by the row's currency
+  try {
+    for (const g of accounts) {
+      const rows = await fetchWindsor({
+        connector: "google_ads",
+        fields: ["date", "account_id", "currency", "spend", "impressions", "clicks", "conversions"],
+        dateFrom: from, dateTo: to, accounts: [g.account],
+      });
+      const acc = normId(g.account);
+      for (const r of rows) {
+        if (normId(r.account_id) !== acc) continue;
+        const date = String(r.date ?? "").slice(0, 10);
+        if (!date) continue;
+        if (r.currency) currency = String(r.currency).toUpperCase();
+        let a = byDate.get(date);
+        if (!a) { a = emptyCamp(); byDate.set(date, a); }
+        a.spend += num(r.spend);
+        a.impr += num(r.impressions);
+        a.clicks += num(r.clicks);
+        a.purchases += num(r.conversions);
+      }
+    }
+    result.upserts += await replaceCampaignDaily(sb, brand, "google", from, to, byDate, usdIls, currency);
+  } catch (e) {
+    result.ok = false;
+    result.errors.push({ brand: brand.id, channel: "google", error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
 export async function runIngest(opts?: { from?: string; to?: string; brandId?: string }): Promise<IngestResult> {
   const to = opts?.to ?? today();
   const from = opts?.from ?? to; // default: today only; pass a range to backfill
@@ -418,6 +491,14 @@ export async function runIngest(opts?: { from?: string; to?: string; brandId?: s
     const profile = campaignProfileOf(brand);
     if (profile === "views" || profile === "leads") {
       await ingestCampaignBrand(sb, brand, from, to, usdIls, result);
+      continue;
+    }
+    if (profile === "app") {
+      await ingestAppBrand(sb, brand, from, to, usdIls, result);
+      continue;
+    }
+    if (profile === "impshare") {
+      await ingestImpshareBrand(sb, brand, from, to, usdIls, result);
       continue;
     }
 

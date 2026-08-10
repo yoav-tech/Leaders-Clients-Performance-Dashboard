@@ -29,6 +29,7 @@ ALTER TABLE daily_metrics ADD COLUMN IF NOT EXISTS reach           NUMERIC NOT N
 ALTER TABLE daily_metrics ADD COLUMN IF NOT EXISTS views           NUMERIC NOT NULL DEFAULT 0;
 ALTER TABLE daily_metrics ADD COLUMN IF NOT EXISTS completed_views NUMERIC NOT NULL DEFAULT 0;
 ALTER TABLE daily_metrics ADD COLUMN IF NOT EXISTS leads           NUMERIC NOT NULL DEFAULT 0;
+ALTER TABLE daily_metrics ADD COLUMN IF NOT EXISTS installs        NUMERIC NOT NULL DEFAULT 0;  -- app brands (Haat)
 
 -- Store customer first-seen dates, to classify orders as new vs returning.
 CREATE TABLE IF NOT EXISTS store_customers (
