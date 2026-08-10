@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { getBrand, type BrandConfig } from "@/lib/brands";
+import { getBrand, campaignProfileOf, explorerChannels, campaignTargetOf, type BrandConfig } from "@/lib/brands";
 import { CHANNEL_FIELDS } from "@/lib/channelFields";
 import { DIMENSION_FIELDS, UTM_DIMENSIONS, type Dimension } from "@/lib/breakdowns";
+import { campaignFieldFor } from "@/lib/adLevel";
 import { fetchWindsor, num } from "@/lib/windsor";
 import { fetchQuickShopPaidOrders, type PaidOrder } from "@/lib/quickshop";
 import { fetchShopifyPaidOrders } from "@/lib/shopify";
@@ -15,6 +16,11 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const normId = (v: unknown) => String(v ?? "").replace(/^act_/i, "").trim();
 const toIls = (v: number, cur: string) => (cur === "USD" ? v * 3 : v);
+// Meta returns some fields as a nested [{action_type, value}] array; sum the values.
+function sumAction(v: unknown): number {
+  if (Array.isArray(v)) return v.reduce((s: number, a) => s + num((a as { value?: string | number | null })?.value), 0);
+  return num(v as string | number | null | undefined);
+}
 
 // Group paid store orders by utm_campaign (lowercased) → { orders, revenue (ILS) }. Used to
 // attribute store revenue to each ad campaign (store utm_campaign == ad campaign id or name).
@@ -137,6 +143,116 @@ export async function GET(request: Request) {
         .sort((a, b) => b.revenue - a.revenue)
         .slice(0, 200);
       return NextResponse.json({ kind: "store", channel, dimension, rows, sources: [...sources].sort() });
+    }
+
+    // Views / leads brands (SCJ, Style, Leaders, Bestie): the SAME explorer as ecommerce, but
+    // with KPI columns per profile. Accounts may be shared (filtered by campaign name).
+    const profile = campaignProfileOf(brand);
+    if (profile === "views" || profile === "leads") {
+      const ch = explorerChannels(brand).find((c) => c.id === channel);
+      const dimField = DIMENSION_FIELDS[channel as "google" | "meta" | "tiktok"]?.[dimension];
+      if (!ch) return NextResponse.json({ error: "unsupported", rows: [] });
+      if (!dimField) return NextResponse.json({ error: "unsupported", rows: [] });
+      const campField = campaignFieldFor(channel as "google" | "meta" | "tiktok");
+
+      const metricFields =
+        profile === "views"
+          ? channel === "meta"
+            ? ["reach", "video_thruplay_watched_actions", "video_p100_watched_actions"]
+            : channel === "tiktok"
+              ? ["reach", "video_watched_2s", "video_watched_6s"]
+              : ["video_views"]
+          : channel === "meta"
+            ? ["clicks", "actions_lead"]
+            : ["clicks", "conversions"]; // google (+ tiktok fallback)
+      const baseFields = [...new Set(["account_id", "currency", "spend", "impressions", campField, dimField])];
+      const connector = channel === "meta" ? "facebook" : channel === "tiktok" ? "tiktok" : "google_ads";
+      const fetchOpts = {
+        connector,
+        dateFrom: from,
+        dateTo: to,
+        accounts: [ch.account],
+        ...(channel === "meta" ? { options: { attribution_window: "7d_click,1d_view" } } : {}),
+        cacheSeconds: 900,
+      };
+      let raw;
+      let metricsAvailable = true;
+      try {
+        raw = await fetchWindsor({ ...fetchOpts, fields: [...baseFields, ...metricFields] });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/incompatible|\bomni\b|ranking|invalid/i.test(msg)) {
+          raw = await fetchWindsor({ ...fetchOpts, fields: baseFields });
+          metricsAvailable = false;
+        } else {
+          throw e;
+        }
+      }
+
+      const acc = normId(ch.account);
+      type Acc = { spend: number; impr: number; reach: number; clicks: number; views: number; completed: number; leads: number; cur: string };
+      const agg = new Map<string, Acc>();
+      for (const r of raw) {
+        if (normId(r.account_id) !== acc) continue;
+        if (ch.filter && !String(r[campField] ?? "").toLowerCase().includes(ch.filter)) continue;
+        const key = String(r[dimField] ?? "(none)") || "(none)";
+        const cur = String(r.currency ?? brand.nativeCurrency).toUpperCase();
+        const a = agg.get(key) ?? { spend: 0, impr: 0, reach: 0, clicks: 0, views: 0, completed: 0, leads: 0, cur };
+        a.spend += num(r.spend);
+        a.impr += num(r.impressions);
+        if (profile === "views") {
+          a.reach += num(r.reach);
+          if (channel === "meta") { a.views += sumAction(r.video_thruplay_watched_actions); a.completed += sumAction(r.video_p100_watched_actions); }
+          else if (channel === "tiktok") { a.views += num(r.video_watched_2s); a.completed += num(r.video_watched_6s); }
+          else { a.views += num(r.video_views); }
+        } else {
+          a.clicks += num(r.clicks);
+          a.leads += channel === "meta" ? sumAction(r.actions_lead) : num(r.conversions);
+        }
+        a.cur = cur;
+        agg.set(key, a);
+      }
+
+      const rows =
+        profile === "views"
+          ? [...agg].map(([key, a]) => {
+              const spend = toIls(a.spend, a.cur);
+              return {
+                key,
+                spend: Math.round(spend),
+                impressions: Math.round(a.impr),
+                reach: Math.round(a.reach),
+                frequency: a.reach ? a.impr / a.reach : null,
+                cpm: a.impr ? (spend / a.impr) * 1000 : null,
+                views: metricsAvailable ? Math.round(a.views) : null,
+                completedViews: metricsAvailable ? Math.round(a.completed) : null,
+                cpv: metricsAvailable && a.views ? spend / a.views : null,
+              };
+            }).sort((x, y) => y.spend - x.spend).slice(0, 200)
+          : [...agg].map(([key, a]) => {
+              const spend = toIls(a.spend, a.cur);
+              return {
+                key,
+                spend: Math.round(spend),
+                impressions: Math.round(a.impr),
+                clicks: Math.round(a.clicks),
+                ctr: a.impr ? a.clicks / a.impr : null,
+                cpc: a.clicks ? spend / a.clicks : null,
+                leads: metricsAvailable ? Math.round(a.leads * 10) / 10 : null,
+                cpl: metricsAvailable && a.leads ? spend / a.leads : null,
+              };
+            }).sort((x, y) => y.spend - x.spend).slice(0, 200);
+
+      return NextResponse.json({
+        kind: "explorer",
+        profile,
+        channel,
+        dimension,
+        target: campaignTargetOf(brand),
+        metricsAvailable,
+        rows,
+        ...(metricsAvailable ? {} : { note: "המדד לא זמין לפילוח הזה — מוצג spend ו-impressions בלבד." }),
+      });
     }
 
     // Ad channels: dimensional breakdown from Windsor.

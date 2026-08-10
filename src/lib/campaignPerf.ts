@@ -99,6 +99,13 @@ async function fetchSource(cfg: PerfSourceConfig, filter: string, from: string, 
   };
 }
 
+// A single perf source at a given drill level — per-table regrouping (Campaign / Ad group / Ad).
+export async function getPerfSourceAt(brand: BrandConfig, index: number, from: string, to: string, level: AdLevel): Promise<PerfSource | null> {
+  const cfg = brand.perfSources?.[index];
+  if (!cfg) return null;
+  return fetchSource(cfg, (brand.campaignFilter ?? "").toLowerCase(), from, to, level);
+}
+
 export async function getCampaignPerf(brand: BrandConfig, from: string, to: string, level: AdLevel = "campaign"): Promise<CampaignPerf | null> {
   if (!brand.perfSources?.length) return null;
   const filter = (brand.campaignFilter ?? "").toLowerCase();
