@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { runIngest } from "@/lib/ingest";
 import { shiftDate, today } from "@/lib/dates";
 import { safeEqual } from "@/lib/auth";
@@ -38,6 +39,7 @@ export async function GET(request: Request) {
 
   try {
     const result = await runIngest({ from, to });
+    revalidateTag("metrics"); // surface freshly-ingested rows immediately
     if (!result.ok) console.error(`[cron] ingest completed with errors:`, JSON.stringify(result.errors));
     return NextResponse.json(result, { status: result.ok ? 200 : 207 });
   } catch (e) {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { runIngest } from "@/lib/ingest";
 import { getBrand } from "@/lib/brands";
 import { today } from "@/lib/dates";
@@ -21,6 +22,7 @@ export async function GET(request: Request) {
   try {
     const t = today();
     const result = await runIngest({ from: t, to: t, brandId: brand });
+    revalidateTag("metrics"); // surface the fresh rows immediately (don't wait for the TTL)
     return NextResponse.json({ ok: result.ok, upserts: result.upserts });
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
