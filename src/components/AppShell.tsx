@@ -16,7 +16,7 @@ export default function AppShell({
 }: {
   allowed: BrandConfig[];
   activeBrand: string;
-  activeSection: "brands" | "admin" | "account";
+  activeSection: "brands" | "admin" | "media-plan" | "account";
   isAdmin: boolean;
   rangeQuery: string;
   accountLabel: string;

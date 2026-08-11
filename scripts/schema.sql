@@ -135,3 +135,39 @@ CREATE TABLE IF NOT EXISTS dashboard_users (
 ALTER TABLE dashboard_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE dashboard_users FORCE  ROW LEVEL SECURITY;
 REVOKE ALL ON dashboard_users FROM anon, authenticated;
+
+-- ---- Monthly media plans ----
+-- Built automatically on the 24th for the NEXT calendar month, reviewed by a media manager,
+-- and only emailed to the client's account manager once approved. One row per (brand, month).
+--   lines     — the plan itself: one entry per channel × funnel stage (budget + forecast).
+--   basis     — the lookback window and per-cell history the allocation was derived from, so an
+--               approved plan stays explainable after the underlying data moves on.
+--   status    — draft (built, awaiting review) → approved (manager signed off) → sent (emailed).
+CREATE TABLE IF NOT EXISTS media_plans (
+  brand_id           text NOT NULL,
+  month              text NOT NULL,                     -- YYYY-MM the plan covers
+  status             text NOT NULL DEFAULT 'draft',     -- draft | approved | sent
+  profile            text NOT NULL DEFAULT 'ecommerce', -- ecommerce | views | leads | app | impshare
+  budget_source      text NOT NULL DEFAULT 'fixed',     -- fixed (client-set) | proposed (performance-derived)
+  total_budget       numeric NOT NULL DEFAULT 0,        -- the plan's budget (ILS); editable until approval
+  baseline_budget    numeric NOT NULL DEFAULT 0,        -- previous month's actual spend (ILS)
+  recommended_budget numeric NOT NULL DEFAULT 0,        -- what the scale model suggests (ILS)
+  lines              jsonb NOT NULL DEFAULT '[]'::jsonb,
+  rationale          jsonb NOT NULL DEFAULT '[]'::jsonb,
+  basis              jsonb NOT NULL DEFAULT '{}'::jsonb,
+  approved_by        text,
+  approved_at        timestamptz,
+  sent_to            text[] NOT NULL DEFAULT '{}',
+  sent_at            timestamptz,
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  updated_at         timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (brand_id, month)
+);
+DO $$ BEGIN
+  ALTER TABLE media_plans
+    ADD CONSTRAINT media_plans_status_chk CHECK (status IN ('draft','approved','sent'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_media_plans_month ON media_plans (month);
+ALTER TABLE media_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE media_plans FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON media_plans FROM anon, authenticated;
