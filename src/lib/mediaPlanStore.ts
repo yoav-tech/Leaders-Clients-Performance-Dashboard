@@ -37,7 +37,7 @@ function toPlan(r: Row): StoredPlan {
     totalBudget: Number(r.total_budget),
     baselineBudget: Number(r.baseline_budget),
     recommendedBudget: Number(r.recommended_budget),
-    scale: basis?.scale ?? { factor: 1, kpi: "roas", kpiValue: null, kpiTarget: null, index: null, reason: "" },
+    scale: basis?.scale ?? { factor: 1, scaleFactor: 1, seasonalFactor: 1, kpi: "roas", kpiValue: null, kpiTarget: null, index: null, reason: "" },
     lines,
     rationale: (r.rationale as string[] | null) ?? [],
     basis: {
@@ -45,6 +45,7 @@ function toPlan(r: Row): StoredPlan {
       to: basis?.to ?? "",
       lookbackDays: basis?.lookbackDays ?? 0,
       stageSource: basis?.stageSource ?? "channel-only",
+      rulesVersion: basis?.rulesVersion ?? "",
       channels: basis?.channels ?? [],
     },
     status: (String(r.status) as PlanStatus) ?? "draft",

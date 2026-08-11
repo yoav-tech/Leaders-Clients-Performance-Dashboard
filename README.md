@@ -24,6 +24,13 @@ Dashboard (Next.js App Router) ◄────────── reads the cache
 On the **24th of each month** (`/api/cron/media-plan`) the app builds next month's media plan
 for every client and stores it as a **draft** — it never mails a client on its own.
 
+> **The scheduled build is off by default.** The planning rules that decide budgets and splits
+> live in [`src/lib/mediaPlanRules.ts`](src/lib/mediaPlanRules.ts) and are documented, with the
+> reasoning and the still-open decisions, in
+> [`docs/media-plan-playbook.md`](docs/media-plan-playbook.md). Until the media team signs those
+> off, the cron does nothing; set `MEDIA_PLAN_AUTOMATION=on` to enable it. Building and sending
+> plans by hand from `/media-plan` works either way.
+
 ```
 24th 05:00 UTC ──► build a draft per client ──► media_plans (status=draft)
                                                      │
@@ -34,18 +41,26 @@ for every client and stores it as a **draft** — it never mails a client on its
                           the client's account manager gets the final plan
 ```
 
+- **Rules, not code:** every planning decision — the funnel stages per client type, the share
+  band each stage may occupy, how campaign names map to stages, the scale ladder, the data
+  thresholds — is data in `mediaPlanRules.ts`. The builder applies them and holds no judgement of
+  its own, so changing how Leaders plans means editing the rules, never the engine.
 - **Structure:** each plan is a set of lines — **channel × funnel stage**, with a budget, a share
   of the total, the change vs last month, and a forecast. The stages adapt to the client type
   (`campaignProfileOf`): ecommerce → prospecting / retargeting / shopping / search; views →
   reach / views / influencers / UGC; leads, app installs and impression-share get their own sets.
+  A stage the client isn't running today is opened at its floor, so the plan is a recommendation
+  rather than a copy of last month.
 - **Budget:** a client with `monthlyBudget` set in `brands.ts` gets that as a **fixed** budget;
   a client without one gets a **proposed** budget. Either way the plan carries a performance-based
   recommendation (`recommendedBudget`) so scaling is a visible decision — the scale factor comes
   from the brand's KPI vs its target over the last 90 days, capped at +20% / −15% per month.
-- **Allocation:** share of recent spend per channel × funnel stage, tilted by how each cell
-  performed against the brand's KPI target, then bounded (no cell under 3% or over 60%) and
-  rounded to ₪50. The per-channel rates come from `daily_metrics`; Windsor campaign names supply
-  only the funnel split, so a Windsor outage degrades the plan to channel level instead of failing.
+- **Allocation:** two levels, in that order — how much each **funnel stage** gets (recent spend
+  tilted by performance, inside the stage's band), then how that splits across the **channels**
+  running it. A cell only moves money on its own performance once it clears the data-sufficiency
+  bar; lines under the minimum monthly budget are folded away; everything rounds to ₪50. The
+  per-channel rates come from `daily_metrics`; Windsor campaign names supply only the funnel
+  split, so a Windsor outage degrades the plan to channel level instead of failing.
 - **Rationale:** written by Claude from the plan's own numbers when `ANTHROPIC_API_KEY` is set;
   otherwise deterministic bullets generated from the same data.
 
@@ -61,7 +76,9 @@ GET /api/cron/media-plan?secret=<CRON_SECRET>&month=2026-09      # build a speci
 GET /api/cron/media-plan?secret=<CRON_SECRET>&brand=argania      # one client
 ```
 
-`npm run check:media-plan` verifies the builder and the email renderers against every brand.
+`npm run check:media-plan` validates the rules themselves (share bands, the scale ladder, the
+name→stage patterns), then asserts the guardrails hold on a plan built for every brand. Run it
+after any edit to the rules.
 
 ## Setup
 

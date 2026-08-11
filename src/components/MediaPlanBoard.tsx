@@ -175,7 +175,12 @@ function PlanCard({
                   {plan.lines.map((l) => (
                     <tr key={`${l.channel}-${l.stage}`} className="border-t border-[var(--card-border)] tabular-nums">
                       <td className="px-2 py-2 text-right font-medium">{l.channelLabel}</td>
-                      <td className="px-2 py-2 text-right">{l.stageLabel}</td>
+                      <td className="px-2 py-2 text-right">
+                        {l.stageLabel}
+                        {l.seeded && <span className="mr-1 rounded border border-[var(--card-border)] px-1 text-[10px] text-[var(--muted)]">חדש</span>}
+                        {!l.seeded && !l.trusted && <span className="mr-1 rounded border border-[var(--card-border)] px-1 text-[10px] text-[var(--muted)]">דאטה חלקי</span>}
+                        <div className="text-[11px] text-[var(--muted)]">{l.note}</div>
+                      </td>
                       <td className="px-2 py-2 text-right font-semibold">{formatIls(l.budget)}</td>
                       <td className="px-2 py-2 text-right text-[var(--muted)]">{l.sharePct}%</td>
                       <td className={`px-2 py-2 text-right ${l.deltaPct == null ? "text-[var(--muted)]" : l.deltaPct >= 0 ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>
@@ -188,7 +193,7 @@ function PlanCard({
                 </tbody>
               </table>
               <p className="mt-2 text-[11px] text-[var(--muted)]">
-                מבוסס על {plan.basis.from} → {plan.basis.to} ({plan.basis.lookbackDays} ימים)
+                מבוסס על {plan.basis.from} → {plan.basis.to} ({plan.basis.lookbackDays} ימים) · חוקים {plan.basis.rulesVersion || "—"}
                 {plan.basis.stageSource === "channel-only" ? " · פילוח פאנל לא זמין, ברמת ערוץ בלבד" : ""}
                 {plan.sentAt ? ` · נשלח ${new Date(plan.sentAt).toLocaleString("he-IL")} אל ${plan.sentTo.join(", ")}` : ""}
               </p>

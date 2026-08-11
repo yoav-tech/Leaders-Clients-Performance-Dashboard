@@ -1,84 +1,46 @@
-// Builds next month's media plan for a brand: channel × funnel stage, budget + forecast.
+// Applies the planning rules (mediaPlanRules.ts) to a brand's data and returns next month's
+// plan: channel × funnel stage, budget + forecast.
+//
+// This module holds NO planning judgement. Every threshold, band, ladder and pattern comes from
+// the rules file; what happens here is only the mechanics of applying them:
+//
+//   1. lookback   — 90 days of the brand's own data
+//   2. budget     — fixed (from brands.ts) or proposed (baseline × scale × seasonality)
+//   3. allocation — funnel stage bands first, then the channel split inside each stage
+//   4. forecast   — each line's own historical rates, applied to its new budget
 //
 // Two data sources, each used for what it is good at:
 //   • daily_metrics (DB)  — per-channel spend/KPIs, already ILS-normalised by the ingester.
-//     Drives the baseline budget, the channel split, and every rate used in the forecast.
-//   • Windsor (campaigns) — campaign names over the same window, used ONLY to split each
-//     channel's spend into funnel stages (and, for ecommerce, to tilt a stage by its ROAS).
-//     If Windsor is unavailable the plan still builds, with one default stage per channel.
-//
-// The allocation is deterministic: share of recent spend, tilted by how each cell performed
-// against the brand's own KPI target, then bounded by per-cell floors/caps. The narrative
-// (mediaPlanNarrative.ts) explains the numbers; it never produces them.
-import { campaignProfileOf, explorerChannels, type BrandConfig, type CampaignProfile } from "./brands";
+//     Drives the baseline budget, every rate in the forecast, and the channel-level performance.
+//   • Windsor (campaigns) — campaign names over the same window, used ONLY to split a channel's
+//     spend into funnel stages (and, for ecommerce, to tell how each stage performed).
+//     If Windsor is unavailable the plan still builds, at channel level.
+import { explorerChannels, campaignProfileOf, type BrandConfig, type CampaignProfile } from "./brands";
 import { CHANNEL_FIELDS } from "./channelFields";
 import { DIMENSION_FIELDS } from "./breakdowns";
 import { fetchWindsor, num } from "./windsor";
 import { fetchUsdIlsRate, toIls } from "./fx";
 import { getSupabase, hasDb } from "./db";
 import { shiftDate } from "./dates";
+import {
+  CHANNEL_LABEL,
+  GUARDRAILS,
+  RULES_VERSION,
+  STAGE_LABEL,
+  classifyStage,
+  defaultStageFor,
+  performanceIndex,
+  profileRules,
+  profileStages,
+  scaleStepFor,
+  seasonalityFor,
+  stageRule,
+  type AdChannel,
+  type FunnelStage,
+  type PlanKpi,
+} from "./mediaPlanRules";
 
-export type AdChannel = "meta" | "google" | "tiktok";
-
-// Funnel stages, per client profile. A stage is a planning bucket, not a platform object —
-// campaigns are matched into it by name (see classifyStage).
-export type FunnelStage =
-  | "awareness"
-  | "prospecting"
-  | "retargeting"
-  | "brand_search"
-  | "generic_search"
-  | "shopping"
-  | "video_views"
-  | "influencers"
-  | "ugc"
-  | "installs"
-  | "leads";
-
-export const STAGE_LABEL: Record<FunnelStage, string> = {
-  awareness: "חשיפה · Reach",
-  prospecting: "גיוס קהל חדש · Prospecting",
-  retargeting: "רימרקטינג · Retargeting",
-  brand_search: "חיפוש מותגי · Brand search",
-  generic_search: "חיפוש גנרי · Generic search",
-  shopping: "Shopping / PMax",
-  video_views: "צפיות בווידאו · Views",
-  influencers: "משפיענים · Influencers",
-  ugc: "UGC",
-  installs: "התקנות · Installs",
-  leads: "לידים · Leads",
-};
-
-const CHANNEL_LABEL: Record<AdChannel, string> = { meta: "Meta", google: "Google", tiktok: "TikTok" };
-
-// Which stages a profile plans against, in presentation order (upper funnel → lower funnel).
-const PROFILE_STAGES: Record<CampaignProfile, FunnelStage[]> = {
-  ecommerce: ["prospecting", "retargeting", "shopping", "generic_search", "brand_search"],
-  views: ["awareness", "video_views", "influencers", "ugc"],
-  leads: ["prospecting", "retargeting", "generic_search", "brand_search"],
-  app: ["installs", "prospecting", "retargeting", "leads"],
-  impshare: ["generic_search", "brand_search"],
-};
-
-// Where a campaign lands when its name says nothing useful.
-const DEFAULT_STAGE: Record<CampaignProfile, Record<AdChannel, FunnelStage>> = {
-  ecommerce: { meta: "prospecting", tiktok: "prospecting", google: "generic_search" },
-  views: { meta: "video_views", tiktok: "video_views", google: "video_views" },
-  leads: { meta: "prospecting", tiktok: "prospecting", google: "generic_search" },
-  app: { meta: "installs", tiktok: "installs", google: "installs" },
-  impshare: { meta: "generic_search", tiktok: "generic_search", google: "generic_search" },
-};
-
-// The one KPI a profile is planned against — lower-is-better except ecommerce (ROAS).
-export type PlanKpi = "roas" | "cpv" | "cpl" | "cpi" | "cpm";
-const PROFILE_KPI: Record<CampaignProfile, PlanKpi> = {
-  ecommerce: "roas",
-  views: "cpv",
-  leads: "cpl",
-  app: "cpi",
-  impshare: "cpm",
-};
-export const KPI_LABEL: Record<PlanKpi, string> = { roas: "ROAS", cpv: "CPV", cpl: "CPL", cpi: "CPI", cpm: "CPM" };
+export type { AdChannel, FunnelStage, PlanKpi };
 
 export interface PlanForecast {
   impressions: number | null;
@@ -104,8 +66,10 @@ export interface PlanLine {
   stageLabel: string;
   budget: number; // ILS for the month
   sharePct: number; // 0..100 of the plan
-  prevSpend: number; // same cell's spend in the lookback, normalised to one month (ILS)
+  prevSpend: number; // the same cell's spend last month (ILS), from the lookback run-rate
   deltaPct: number | null; // budget vs prevSpend
+  trusted: boolean; // was there enough data to let this cell's performance move money?
+  seeded: boolean; // a stage the client isn't running, opened by the rules
   forecast: PlanForecast;
   note: string; // why this line moved up or down
 }
@@ -115,11 +79,14 @@ export interface PlanBasis {
   to: string;
   lookbackDays: number;
   stageSource: "windsor" | "channel-only"; // did the funnel split come from campaign names?
+  rulesVersion: string;
   channels: { channel: AdChannel; spend: number; kpi: number | null }[];
 }
 
 export interface ScaleDecision {
-  factor: number; // applied to the baseline to get the recommendation
+  factor: number; // scale ladder × seasonality, applied to the baseline
+  scaleFactor: number; // the ladder step on its own
+  seasonalFactor: number;
   kpi: PlanKpi;
   kpiValue: number | null;
   kpiTarget: number | null;
@@ -145,15 +112,11 @@ export interface MediaPlanDraft {
   basis: PlanBasis;
 }
 
-const LOOKBACK_DAYS = 90;
-const MIN_CELL_SHARE = 0.03; // no cell below 3% of the plan
-const MAX_CELL_SHARE = 0.6; // no single cell above 60%
-const ROUND_TO = 50; // ILS
-
 const normId = (v: unknown) => String(v ?? "").replace(/^act_/i, "").trim();
 const ratio = (a: number, b: number): number | null => (b > 0 ? a / b : null);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-const round = (v: number, step = ROUND_TO) => Math.round(v / step) * step;
+const round = (v: number, step = GUARDRAILS.roundTo) => Math.round(v / step) * step;
+const sumOf = <T,>(a: T[], f: (t: T) => number) => a.reduce((s, t) => s + f(t), 0);
 
 // ---------------------------------------------------------------- month helpers
 
@@ -175,38 +138,6 @@ export function prevMonthOf(month: string): string {
   const y = Number(month.slice(0, 4));
   const m = Number(month.slice(5, 7));
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
-}
-
-// ---------------------------------------------------------------- stage classification
-
-function classifyStage(profile: CampaignProfile, channel: AdChannel, name: string): FunnelStage {
-  const s = name.toLowerCase();
-  const fallback = DEFAULT_STAGE[profile][channel];
-  const allowed = PROFILE_STAGES[profile];
-  const pick = (stage: FunnelStage) => (allowed.includes(stage) ? stage : fallback);
-
-  if (profile === "views") {
-    if (/influencer|משפיע|משפענ/.test(s)) return pick("influencers");
-    if (/\bugc\b/.test(s)) return pick("ugc");
-    if (/reach|ריץ|awareness|חשיפ/.test(s)) return pick("awareness");
-    return pick("video_views");
-  }
-  if (profile === "app") {
-    if (/lead|ליד|form|טופס|hr|גיוס עובד/.test(s)) return pick("leads");
-    if (/retarget|remarket|rmkt|ריטרגט|רימרקט/.test(s)) return pick("retargeting");
-    if (/prospect|cold|acquisition|קר/.test(s)) return pick("prospecting");
-    return pick("installs");
-  }
-  if (channel === "google") {
-    if (/pmax|performance ?max|shopping|קניות/.test(s)) return pick("shopping");
-    if (/remarket|retarget|rmkt|display|discovery|demand ?gen/.test(s)) return pick("retargeting");
-    if (/brand|מותג/.test(s)) return pick("brand_search");
-    return pick("generic_search");
-  }
-  // Meta / TikTok: warm vs cold.
-  if (/retarget|remarket|rmkt|\brtg?\b|warm|ריטרגט|רימרקט|חם/.test(s)) return pick("retargeting");
-  if (/catalog|dpa|advantage\+? ?shop|קטלוג/.test(s)) return pick("shopping");
-  return pick("prospecting");
 }
 
 // ---------------------------------------------------------------- channels to plan for
@@ -293,6 +224,38 @@ async function spendBetween(brandId: string, from: string, to: string): Promise<
   return (data ?? []).reduce((s, r) => s + Number(r.spend_ils), 0);
 }
 
+// The KPI a client type is judged on, computed off a stats bundle.
+function kpiOf(profile: CampaignProfile, s: ChannelStats): number | null {
+  switch (profileRules(profile).kpi) {
+    case "roas": return ratio(s.revenue, s.spend);
+    case "cpv": return ratio(s.spend, s.views);
+    case "cpl": return ratio(s.spend, s.leads);
+    case "cpi": return ratio(s.spend, s.installs);
+    case "cpm": return s.impressions > 0 ? (s.spend / s.impressions) * 1000 : null;
+  }
+}
+
+function kpiTarget(profile: CampaignProfile, brand: BrandConfig): number | null {
+  switch (profileRules(profile).kpi) {
+    case "roas": return brand.targetRoas > 0 ? brand.targetRoas : null;
+    case "cpv": return brand.targetCpv ?? null;
+    case "cpl": return brand.targetCpl ?? null;
+    case "cpi": return brand.targetCpi ?? null;
+    case "cpm": return null;
+  }
+}
+
+// The conversion count behind a KPI — the data-sufficiency test needs the denominator, not the ratio.
+function conversionsOf(profile: CampaignProfile, s: ChannelStats): number {
+  switch (profileRules(profile).kpi) {
+    case "roas": return s.purchases;
+    case "cpv": return s.views;
+    case "cpl": return s.leads;
+    case "cpi": return s.installs;
+    case "cpm": return s.impressions;
+  }
+}
+
 // ---------------------------------------------------------------- stage split (Windsor)
 
 interface StageSplit {
@@ -368,6 +331,7 @@ async function stageSplit(
       }
 
       const stage = classifyStage(profile, ch.id, name);
+      if (!stage) continue; // this channel has no place in the client type's funnel
       const e = byStage.get(stage) ?? { spend: 0, revenue: 0 };
       e.spend += spend;
       e.revenue += revenue;
@@ -390,71 +354,114 @@ async function stageSplit(
   return out;
 }
 
-// ---------------------------------------------------------------- budget scaling
-
-function brandKpi(profile: CampaignProfile, s: ChannelStats): number | null {
-  switch (PROFILE_KPI[profile]) {
-    case "roas": return ratio(s.revenue, s.spend);
-    case "cpv": return ratio(s.spend, s.views);
-    case "cpl": return ratio(s.spend, s.leads);
-    case "cpi": return ratio(s.spend, s.installs);
-    case "cpm": return s.impressions > 0 ? (s.spend / s.impressions) * 1000 : null;
-  }
-}
-
-function kpiTarget(profile: CampaignProfile, brand: BrandConfig): number | null {
-  switch (PROFILE_KPI[profile]) {
-    case "roas": return brand.targetRoas > 0 ? brand.targetRoas : null;
-    case "cpv": return brand.targetCpv ?? null;
-    case "cpl": return brand.targetCpl ?? null;
-    case "cpi": return brand.targetCpi ?? null;
-    case "cpm": return null;
-  }
-}
-
-// Performance vs target, normalised so >1 always means "ahead of goal".
-function performanceIndex(profile: CampaignProfile, value: number | null, target: number | null): number | null {
-  if (value == null || target == null || value <= 0 || target <= 0) return null;
-  return PROFILE_KPI[profile] === "roas" ? value / target : target / value;
-}
-
-// Scale the baseline by how far performance sits from goal. Deliberately conservative:
-// at most +20% a month, at most −15%, so a plan never whipsaws a client's spend.
-function scaleFor(index: number | null): { factor: number; reason: string } {
-  if (index == null) return { factor: 1, reason: "אין יעד KPI מוגדר — התקציב נשמר ברמת החודש הקודם." };
-  if (index >= 1.25) return { factor: 1.2, reason: `ביצועים ${Math.round((index - 1) * 100)}% מעל היעד — מומלץ סקייל של 20%.` };
-  if (index >= 1.1) return { factor: 1.1, reason: `ביצועים ${Math.round((index - 1) * 100)}% מעל היעד — מומלץ סקייל של 10%.` };
-  if (index >= 0.95) return { factor: 1, reason: "ביצועים בטווח היעד — שמירה על אותו תקציב." };
-  if (index >= 0.8) return { factor: 0.9, reason: `ביצועים ${Math.round((1 - index) * 100)}% מתחת ליעד — הפחתה של 10% עד לייצוב.` };
-  return { factor: 0.85, reason: `ביצועים ${Math.round((1 - index) * 100)}% מתחת ליעד — הפחתה של 15% והתמקדות בערוצים הרווחיים.` };
-}
-
 // ---------------------------------------------------------------- allocation
 
 interface Cell {
   channel: AdChannel;
   stage: FunnelStage;
   prevSpend: number; // over the lookback (ILS)
-  weight: number;
-  eff: number; // efficiency vs target (1 = on goal)
+  weight: number; // prevSpend × efficiency
+  eff: number; // performance vs target, clamped (1 = neutral)
+  trusted: boolean; // did the cell clear the data-sufficiency bar?
+  seeded: boolean; // opened by the rules rather than observed in the data
   stats: ChannelStats; // the channel's rates, used for the forecast
   roasIndex: number | null;
 }
 
-// Bounded normalisation: every cell gets at least MIN_CELL_SHARE and at most MAX_CELL_SHARE.
-function boundShares(weights: number[]): number[] {
-  const n = weights.length;
+// Normalise `raw` into shares that respect per-entry [min, max] bands. Bands that cannot all be
+// satisfied (floors summing past 1, caps summing under 1) are relaxed proportionally rather than
+// producing an unsolvable system.
+function boundedShares(raw: number[], bands: { min: number; max: number }[]): number[] {
+  const n = raw.length;
   if (!n) return [];
-  const total = weights.reduce((s, w) => s + w, 0);
-  let shares = total > 0 ? weights.map((w) => w / total) : weights.map(() => 1 / n);
-  const min = Math.min(MIN_CELL_SHARE, 1 / n);
-  const max = Math.max(MAX_CELL_SHARE, 1 / n);
-  for (let i = 0; i < 4; i++) {
-    const clamped = shares.map((s) => clamp(s, min, max));
-    const sum = clamped.reduce((s, v) => s + v, 0);
-    shares = clamped.map((s) => s / sum);
+  const floorSum = sumOf(bands, (b) => b.min);
+  const mins = floorSum > 0.9 ? bands.map((b) => (b.min / floorSum) * 0.9) : bands.map((b) => b.min);
+  const capSum = sumOf(bands, (b) => b.max);
+  const maxs = capSum < 1 ? bands.map(() => 1) : bands.map((b) => b.max);
+
+  const total = sumOf(raw, (w) => w);
+  let shares = total > 0 ? raw.map((w) => w / total) : raw.map(() => 1 / n);
+  for (let i = 0; i < 8; i++) {
+    const c = shares.map((s, j) => clamp(s, mins[j], maxs[j]));
+    const sum = sumOf(c, (v) => v);
+    shares = c.map((s) => s / sum);
   }
   return shares;
+}
+
+// Two-level allocation, in the order the doctrine states it:
+//   1. how much each funnel STAGE gets — recent spend tilted by performance, inside the stage's
+//      band from the rules;
+//   2. how that stage's money splits across the CHANNELS running it, bounded so a stage never
+//      collapses onto one platform.
+function allocateShares(cells: Cell[], profile: CampaignProfile): number[] {
+  if (!cells.length) return [];
+  const stages = [...new Set(cells.map((c) => c.stage))];
+
+  const rawStage = stages.map((st) => sumOf(cells.filter((c) => c.stage === st), (c) => c.weight));
+  const bands = stages.map((st) => {
+    const r = stageRule(profile, st);
+    return r ? { min: r.minShare, max: r.maxShare } : { min: 0, max: 1 };
+  });
+  // No usable history anywhere → plan from the rules' default shares instead of an even split.
+  const seed = rawStage.some((w) => w > 0)
+    ? rawStage
+    : stages.map((st) => stageRule(profile, st)?.defaultShare ?? 1);
+  const stageShare = boundedShares(seed, bands);
+
+  const within = GUARDRAILS.withinStageChannelShare;
+  const out = new Array<number>(cells.length).fill(0);
+  stages.forEach((st, si) => {
+    const idx = cells.map((c, i) => (c.stage === st ? i : -1)).filter((i) => i >= 0);
+    const w = idx.map((i) => cells[i].weight);
+    const inner = idx.length === 1
+      ? [1]
+      : boundedShares(w, idx.map(() => ({ min: within.min, max: within.max })));
+    idx.forEach((i, k) => {
+      out[i] = stageShare[si] * inner[k];
+    });
+  });
+  return out;
+}
+
+// Turn shares into budgets: drop lines that can't realistically run (redistributing inside their
+// stage first, then across the plan), round to the rules' step, and settle the rounding remainder
+// on the largest line so the lines always add up to exactly the plan total.
+function toBudgets(cells: Cell[], shares: number[], total: number): number[] {
+  if (!cells.length || total <= 0) return cells.map(() => 0);
+
+  let live = shares.slice();
+  // Iteratively drop the smallest under-minimum line; each drop can push another under.
+  for (let guard = 0; guard < cells.length; guard++) {
+    const candidates = live
+      .map((s, i) => ({ i, budget: s * total }))
+      .filter((x) => x.budget > 0 && x.budget < GUARDRAILS.minLineBudget);
+    if (!candidates.length) break;
+    const drop = candidates.sort((a, b) => a.budget - b.budget)[0].i;
+    const freed = live[drop];
+    live[drop] = 0;
+
+    const siblings = cells.map((c, i) => (i !== drop && c.stage === cells[drop].stage && live[i] > 0 ? i : -1)).filter((i) => i >= 0);
+    const targets = siblings.length ? siblings : live.map((s, i) => (s > 0 ? i : -1)).filter((i) => i >= 0);
+    const pool = sumOf(targets, (i) => live[i]);
+    if (!targets.length || pool <= 0) {
+      live[drop] = freed; // nowhere to move it — keep the line rather than lose the budget
+      break;
+    }
+    for (const i of targets) live[i] += freed * (live[i] / pool);
+  }
+
+  const norm = sumOf(live, (s) => s);
+  if (norm > 0) live = live.map((s) => s / norm);
+
+  const budgets = live.map((s) => Math.max(0, round(s * total)));
+  const diff = total - sumOf(budgets, (b) => b);
+  if (diff !== 0) {
+    let big = 0;
+    for (let i = 1; i < budgets.length; i++) if (budgets[i] > budgets[big]) big = i;
+    budgets[big] = Math.max(0, budgets[big] + diff);
+  }
+  return budgets;
 }
 
 function forecastFor(profile: CampaignProfile, budget: number, s: ChannelStats, roasIndex: number | null): PlanForecast {
@@ -467,12 +474,10 @@ function forecastFor(profile: CampaignProfile, budget: number, s: ChannelStats, 
   const baseRoas = ratio(s.revenue, s.spend);
   const roas = baseRoas == null ? null : baseRoas * (roasIndex ?? 1);
 
-  const impressions = cpm ? (budget / cpm) * 1000 : null;
-  const clicks = cpc ? budget / cpc : null;
   const isEcom = profile === "ecommerce";
   return {
-    impressions: impressions == null ? null : Math.round(impressions),
-    clicks: clicks == null ? null : Math.round(clicks),
+    impressions: cpm ? Math.round((budget / cpm) * 1000) : null,
+    clicks: cpc ? Math.round(budget / cpc) : null,
     purchases: isEcom && cpa ? Math.round(budget / cpa) : null,
     revenue: isEcom && roas ? Math.round(budget * roas) : null,
     roas: isEcom ? roas : null,
@@ -483,30 +488,19 @@ function forecastFor(profile: CampaignProfile, budget: number, s: ChannelStats, 
   };
 }
 
-// Round line budgets to ROUND_TO and push the rounding remainder onto the largest line, so the
-// lines always add up to exactly the plan total.
-function settleRounding(budgets: number[], total: number): number[] {
-  const rounded = budgets.map((b) => Math.max(0, round(b)));
-  const diff = total - rounded.reduce((s, b) => s + b, 0);
-  if (diff !== 0 && rounded.length) {
-    let big = 0;
-    for (let i = 1; i < rounded.length; i++) if (rounded[i] > rounded[big]) big = i;
-    rounded[big] = Math.max(0, rounded[big] + diff);
-  }
-  return rounded;
-}
-
 // ---------------------------------------------------------------- the builder
 
 export async function buildMediaPlan(
   brand: BrandConfig,
   month: string,
-  opts: { budgetOverride?: number; asOf?: string } = {},
+  opts: { budgetOverride?: number } = {},
 ): Promise<MediaPlanDraft> {
   const profile = campaignProfileOf(brand);
+  const rules = profileRules(profile);
   const { start: monthStart, end: monthEnd } = monthBounds(month);
   const to = shiftDate(monthStart, -1); // plan on data up to the day before the month starts
-  const from = shiftDate(to, -(LOOKBACK_DAYS - 1));
+  const from = shiftDate(to, -(GUARDRAILS.lookbackDays - 1));
+  const monthsInLookback = GUARDRAILS.lookbackDays / 30;
 
   const [stats, prevMonthSpend, usdIls] = await Promise.all([
     channelStats(brand.id, from, to),
@@ -518,26 +512,27 @@ export async function buildMediaPlan(
   ]);
 
   const channels = planChannels(brand);
-  const lookbackSpend = [...stats.values()].reduce((s, c) => s + c.spend, 0);
+  const lookbackSpend = sumOf([...stats.values()], (c) => c.spend);
 
+  // --- 1. budget -----------------------------------------------------------------------------
   // Baseline: last full month's spend; fall back to the lookback run-rate, then to the
   // configured monthly budget, so a brand with thin history still gets a sane plan.
-  const runRate = lookbackSpend / (LOOKBACK_DAYS / 30);
+  const runRate = lookbackSpend / monthsInLookback;
   const baselineBudget = round(prevMonthSpend > 0 ? prevMonthSpend : runRate > 0 ? runRate : brand.monthlyBudget);
 
-  // Brand-level KPI over the lookback → scale decision.
   const totals = [...stats.values()].reduce((acc, c) => {
     acc.spend += c.spend; acc.revenue += c.revenue; acc.purchases += c.purchases;
     acc.impressions += c.impressions; acc.clicks += c.clicks;
     acc.views += c.views; acc.leads += c.leads; acc.installs += c.installs;
     return acc;
   }, emptyStats("meta"));
-  const kpi = PROFILE_KPI[profile];
-  const kpiValue = brandKpi(profile, totals);
+  const kpiValue = kpiOf(profile, totals);
   const target = kpiTarget(profile, brand);
-  const index = performanceIndex(profile, kpiValue, target);
-  const { factor, reason } = scaleFor(index);
-  const recommendedBudget = round(Math.max(0, baselineBudget * factor));
+  const index = performanceIndex(rules.kpi, kpiValue, target);
+  const step = scaleStepFor(index);
+  const season = seasonalityFor(month);
+  const combinedFactor = step.factor * season.factor;
+  const recommendedBudget = round(Math.max(0, baselineBudget * combinedFactor));
 
   const budgetSource: "fixed" | "proposed" = brand.monthlyBudget > 0 ? "fixed" : "proposed";
   const totalBudget = round(
@@ -548,8 +543,7 @@ export async function buildMediaPlan(
         : recommendedBudget,
   );
 
-  // Funnel split per channel (campaign names). Any channel Windsor can't answer for is
-  // planned as a single default stage rather than dropped.
+  // --- 2. funnel split -----------------------------------------------------------------------
   const splits = await Promise.all(
     channels.map(async (c) => ({
       channel: c.id,
@@ -558,46 +552,86 @@ export async function buildMediaPlan(
   );
   const stageSource: PlanBasis["stageSource"] = splits.some((s) => s.split) ? "windsor" : "channel-only";
 
-  // Build the cell grid.
   const cells: Cell[] = [];
   for (const c of channels) {
     const s = stats.get(c.id);
     if (!s || s.spend <= 0) continue; // no history on this channel → nothing to base a line on
     const split = splits.find((x) => x.channel === c.id)?.split;
+    const fallbackStage = defaultStageFor(profile, c.id);
     const entries: [FunnelStage, StageSplit][] = split
       ? [...split.entries()]
-      : [[DEFAULT_STAGE[profile][c.id], { share: 1, roasIndex: null }]];
+      : fallbackStage
+        ? [[fallbackStage, { share: 1, roasIndex: null }]]
+        : [];
 
     for (const [stage, sp] of entries) {
       const prevSpend = s.spend * sp.share;
       if (prevSpend <= 0) continue;
-      // Efficiency: for ecommerce we know each stage's own ROAS; elsewhere the channel's KPI
-      // stands in for its stages. Bounded so one great month can't hoover up the budget.
+      // A cell's own performance only moves money once there is enough of it to mean anything;
+      // below the sufficiency bar the cell is planned at neutral efficiency.
+      const suff = GUARDRAILS.dataSufficiency;
+      const trusted = prevSpend >= suff.minSpend && conversionsOf(profile, s) * sp.share >= suff.minConversions;
       const cellKpi = profile === "ecommerce" && sp.roasIndex != null
         ? (ratio(s.revenue, s.spend) ?? 0) * sp.roasIndex
-        : brandKpi(profile, s);
-      const cellIndex = performanceIndex(profile, cellKpi, target);
-      const eff = clamp(cellIndex ?? 1, 0.6, 1.5);
-      cells.push({ channel: c.id, stage, prevSpend, weight: (prevSpend / (lookbackSpend || 1)) * eff, eff, stats: s, roasIndex: sp.roasIndex });
+        : kpiOf(profile, s);
+      const cellIndex = trusted ? performanceIndex(rules.kpi, cellKpi, target) : null;
+      const eff = clamp(cellIndex ?? 1, GUARDRAILS.efficiency.min, GUARDRAILS.efficiency.max);
+      cells.push({ channel: c.id, stage, prevSpend, weight: prevSpend * eff, eff, trusted, seeded: false, stats: s, roasIndex: sp.roasIndex });
     }
   }
 
-  // No history at all: split evenly across the brand's configured channels, one stage each.
+  // Open the funnel stages the client isn't running. A stage with no cell can't be held to its
+  // floor, which is what lets one stage legitimately take the whole plan — seeding it at weight
+  // zero lets the band clamp in allocateShares pull it up to its minimum. The stage opens on the
+  // configured channel best suited to run it (most spend among the channels the rules allow).
+  if (GUARDRAILS.openMissingStages && cells.length) {
+    for (const rule of rules.stages) {
+      if (cells.some((c) => c.stage === rule.stage)) continue;
+      const candidates = channels.filter((c) => rule.channels.includes(c.id));
+      if (!candidates.length) continue; // no configured channel can run this stage
+      const best = candidates.reduce((a, b) => ((stats.get(b.id)?.spend ?? 0) > (stats.get(a.id)?.spend ?? 0) ? b : a));
+      cells.push({
+        channel: best.id,
+        stage: rule.stage,
+        prevSpend: 0,
+        weight: 0,
+        eff: 1,
+        trusted: false,
+        seeded: true,
+        stats: stats.get(best.id) ?? emptyStats(best.id),
+        roasIndex: null,
+      });
+    }
+  }
+
+  // No history at all: one line per stage the brand's channels can run, split by the rules'
+  // default shares.
   if (!cells.length) {
-    for (const c of channels) {
-      const s = stats.get(c.id) ?? emptyStats(c.id);
-      cells.push({ channel: c.id, stage: DEFAULT_STAGE[profile][c.id], prevSpend: 0, weight: 1, eff: 1, stats: s, roasIndex: null });
+    for (const rule of rules.stages) {
+      const candidates = channels.filter((c) => rule.channels.includes(c.id));
+      if (!candidates.length) continue;
+      cells.push({
+        channel: candidates[0].id,
+        stage: rule.stage,
+        prevSpend: 0,
+        weight: 0,
+        eff: 1,
+        trusted: false,
+        seeded: true,
+        stats: stats.get(candidates[0].id) ?? emptyStats(candidates[0].id),
+        roasIndex: null,
+      });
     }
   }
 
-  const shares = boundShares(cells.map((c) => c.weight));
-  const budgets = settleRounding(shares.map((sh) => sh * totalBudget), totalBudget);
+  // --- 3. allocation -------------------------------------------------------------------------
+  const budgets = toBudgets(cells, allocateShares(cells, profile), totalBudget);
 
-  const stageOrder = PROFILE_STAGES[profile];
+  const order = profileStages(profile);
   const lines: PlanLine[] = cells
     .map((c, i) => {
       const budget = budgets[i];
-      const prevMonthly = c.prevSpend / (LOOKBACK_DAYS / 30); // lookback → one month
+      const prevMonthly = c.prevSpend / monthsInLookback; // lookback → one month
       const deltaPct = prevMonthly > 0 ? Math.round(((budget - prevMonthly) / prevMonthly) * 100) : null;
       return {
         channel: c.channel,
@@ -608,22 +642,18 @@ export async function buildMediaPlan(
         sharePct: totalBudget > 0 ? Math.round((budget / totalBudget) * 1000) / 10 : 0,
         prevSpend: Math.round(prevMonthly),
         deltaPct,
+        trusted: c.trusted,
+        seeded: c.seeded,
         forecast: forecastFor(profile, budget, c.stats, c.roasIndex),
-        note: lineNote(profile, c, deltaPct),
+        note: lineNote(c, deltaPct),
       };
     })
-    .sort((a, b) => stageOrder.indexOf(a.stage) - stageOrder.indexOf(b.stage) || b.budget - a.budget);
+    .filter((l) => l.budget > 0) // lines folded away by the minimum-budget rule
+    .sort((a, b) => order.indexOf(a.stage) - order.indexOf(b.stage) || b.budget - a.budget);
 
-  const basis: PlanBasis = {
-    from,
-    to,
-    lookbackDays: LOOKBACK_DAYS,
-    stageSource,
-    channels: channels.map((c) => {
-      const s = stats.get(c.id);
-      return { channel: c.id, spend: Math.round(s?.spend ?? 0), kpi: s ? brandKpi(profile, s) : null };
-    }),
-  };
+  const reason = season.factor === 1
+    ? step.label
+    : `${step.label} · התאמה עונתית ל${season.note}: ×${season.factor}`;
 
   const draft: MediaPlanDraft = {
     brandId: brand.id,
@@ -637,18 +667,30 @@ export async function buildMediaPlan(
     totalBudget,
     baselineBudget,
     recommendedBudget,
-    scale: { factor, kpi, kpiValue, kpiTarget: target, index, reason },
+    scale: { factor: combinedFactor, scaleFactor: step.factor, seasonalFactor: season.factor, kpi: rules.kpi, kpiValue, kpiTarget: target, index, reason },
     lines,
     rationale: [],
-    basis,
+    basis: {
+      from,
+      to,
+      lookbackDays: GUARDRAILS.lookbackDays,
+      stageSource,
+      rulesVersion: RULES_VERSION,
+      channels: channels.map((c) => {
+        const s = stats.get(c.id);
+        return { channel: c.id, spend: Math.round(s?.spend ?? 0), kpi: s ? kpiOf(profile, s) : null };
+      }),
+    },
   };
   draft.rationale = baseRationale(draft);
   return draft;
 }
 
-function lineNote(profile: CampaignProfile, c: Cell, deltaPct: number | null): string {
+function lineNote(c: Cell, deltaPct: number | null): string {
   const dir = deltaPct == null ? "" : deltaPct > 3 ? `+${deltaPct}% מול החודש האחרון` : deltaPct < -3 ? `${deltaPct}% מול החודש האחרון` : "ללא שינוי מהותי";
-  if (c.prevSpend <= 0) return "ערוץ ללא היסטוריה — תקציב בדיקה";
+  if (c.seeded) return "שלב שלא רץ החודש — נפתח לפי רצפת החוקים";
+  if (c.prevSpend <= 0) return "ערוץ ללא היסטוריה — הקצאה לפי ברירת המחדל בחוקים";
+  if (!c.trusted) return `אין מספיק דאטה להסקה — הקצאה לפי נפח בלבד · ${dir}`;
   if (c.eff >= 1.15) return `ביצועים מעל היעד · ${dir}`;
   if (c.eff <= 0.85) return `ביצועים מתחת ליעד · ${dir}`;
   return dir || "שמירה על הקצב הנוכחי";
@@ -667,10 +709,12 @@ function baseRationale(d: MediaPlanDraft): string[] {
   out.push(d.scale.reason);
   const top = d.lines[0];
   if (top) out.push(`הקצאה מובילה: ${top.channelLabel} · ${top.stageLabel} — ${ils(top.budget)} (${top.sharePct}%).`);
-  const grown = d.lines.filter((l) => (l.deltaPct ?? 0) >= 10).slice(0, 2);
-  for (const l of grown) out.push(`הגדלה ב-${l.channelLabel} · ${l.stageLabel}: ${ils(l.prevSpend)} → ${ils(l.budget)}.`);
-  const cut = d.lines.filter((l) => (l.deltaPct ?? 0) <= -10).slice(0, 2);
-  for (const l of cut) out.push(`הפחתה ב-${l.channelLabel} · ${l.stageLabel}: ${ils(l.prevSpend)} → ${ils(l.budget)}.`);
+  for (const l of d.lines.filter((l) => (l.deltaPct ?? 0) >= 10).slice(0, 2)) {
+    out.push(`הגדלה ב-${l.channelLabel} · ${l.stageLabel}: ${ils(l.prevSpend)} → ${ils(l.budget)}.`);
+  }
+  for (const l of d.lines.filter((l) => (l.deltaPct ?? 0) <= -10).slice(0, 2)) {
+    out.push(`הפחתה ב-${l.channelLabel} · ${l.stageLabel}: ${ils(l.prevSpend)} → ${ils(l.budget)}.`);
+  }
   if (d.basis.stageSource === "channel-only") out.push("פילוח הפאנל לא היה זמין מנתוני הקמפיינים — הפריסה ברמת ערוץ בלבד.");
   return out;
 }
