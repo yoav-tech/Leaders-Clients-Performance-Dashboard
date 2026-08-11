@@ -3,6 +3,7 @@ import { sameOrigin } from "@/lib/auth";
 import { getServerSession } from "@/lib/serverSession";
 import { getBrand } from "@/lib/brands";
 import { listUsers, createInvitedUser, updateUserBrands, deleteUser, getUserById, RESERVED_USERNAMES, normUsername } from "@/lib/users";
+import { asRole } from "@/lib/session";
 import { issueInviteToken } from "@/lib/invite";
 
 export const dynamic = "force-dynamic";
@@ -24,17 +25,19 @@ export async function GET() {
   return NextResponse.json({ users: await listUsers() });
 }
 
-// POST { username, brandIds, role? } → create/re-invite a client + return a shareable invite link.
+// POST { username, brandIds, role? } → create/re-invite a user + return a shareable invite link.
+// role: "manager" (Leaders-side brand manager — receives that brand's reports and media plans)
+// or "client" (the client themselves). Both are scoped to brandIds and need at least one brand.
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ error: "bad origin" }, { status: 403 });
   if (!(await requireAdmin())) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const body = (await request.json().catch(() => ({}))) as { username?: string; brandIds?: unknown; role?: string };
   const username = normUsername(String(body.username ?? ""));
-  const role = body.role === "admin" ? "admin" : "client";
+  const role = asRole(body.role);
   const brandIds = cleanBrands(body.brandIds);
   if (!usernameOk(username)) return NextResponse.json({ error: "שם משתמש לא תקין (3–30 תווים, אותיות/ספרות/._- ולא 'admin')" }, { status: 400 });
-  if (role === "client" && brandIds.length === 0) return NextResponse.json({ error: "בחר לפחות מותג אחד" }, { status: 400 });
+  if (role !== "admin" && brandIds.length === 0) return NextResponse.json({ error: "בחר לפחות מותג אחד" }, { status: 400 });
 
   const id = await createInvitedUser(username, role, brandIds);
   if (!id) return NextResponse.json({ error: "יצירה נכשלה" }, { status: 500 });
@@ -50,10 +53,10 @@ export async function PATCH(request: Request) {
 
   const body = (await request.json().catch(() => ({}))) as { id?: string; brandIds?: unknown; role?: string };
   const id = String(body.id ?? "");
-  const role = body.role === "admin" ? "admin" : "client";
+  const role = asRole(body.role);
   const brandIds = cleanBrands(body.brandIds);
   if (!id || !(await getUserById(id))) return NextResponse.json({ error: "Unknown user" }, { status: 404 });
-  if (role === "client" && brandIds.length === 0) return NextResponse.json({ error: "בחר לפחות מותג אחד" }, { status: 400 });
+  if (role !== "admin" && brandIds.length === 0) return NextResponse.json({ error: "בחר לפחות מותג אחד" }, { status: 400 });
 
   await updateUserBrands(id, role, brandIds);
   return NextResponse.json({ ok: true });

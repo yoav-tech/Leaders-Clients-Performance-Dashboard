@@ -57,8 +57,8 @@ export async function POST(request: Request) {
 
     if (body.action === "send") {
       const overrideTo = body.to ? String(body.to).trim() : undefined;
-      if (!overrideTo && !brandManagers(brandId).length) {
-        return NextResponse.json({ error: "לא הוגדרה מנהלת לקוח למותג הזה (recipients.ts / EMAIL_MANAGER_*)" }, { status: 400 });
+      if (!overrideTo && !(await brandManagers(brandId)).length) {
+        return NextResponse.json({ error: "לא משויך מנהל מותג ללקוח הזה — הוסף אותו במסך ההרשאות" }, { status: 400 });
       }
       const r = await sendApprovedPlan(brandId, month, { approvedBy: session.sub, overrideTo });
       if (!r.ok) return NextResponse.json({ error: r.error ?? "send failed" }, { status: 400 });

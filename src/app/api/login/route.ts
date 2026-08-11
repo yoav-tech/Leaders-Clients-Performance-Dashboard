@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE, safeEqual, sameOrigin } from "@/lib/auth";
-import { issueSession } from "@/lib/session";
+import { issueSession, type Role } from "@/lib/session";
 import { getUserByIdentifier } from "@/lib/users";
 import { verifyPassword } from "@/lib/password";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   const password = String(body.password ?? "");
   const now = Math.floor(Date.now() / 1000);
 
-  let session: { role: "admin" | "client"; sub: string; brands: string[] } | null = null;
+  let session: { role: Role; sub: string; brands: string[] } | null = null;
 
   if (identifier === "admin") {
     // Team login → admin.

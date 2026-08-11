@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getServerSession, allowedBrands } from "@/lib/serverSession";
 import { BRANDS } from "@/lib/brands";
-import { brandManagers } from "@/lib/recipients";
+import { brandManagersByBrand } from "@/lib/recipients";
 import { listPlans } from "@/lib/mediaPlanStore";
 import { nextMonthOf, prevMonthOf } from "@/lib/mediaPlanBuilder";
 import { AUTOMATION, RULES_VERSION } from "@/lib/mediaPlanRules";
@@ -25,8 +25,11 @@ export default async function MediaPlanPage({ searchParams }: { searchParams: Pr
   const month = sp.month && MONTH_RE.test(sp.month) ? sp.month : nextMonthOf(today());
   const months = [prevMonthOf(thisMonth), thisMonth, nextMonthOf(thisMonth)];
 
-  const plans = await listPlans(month).catch(() => []);
-  const brands = BRANDS.map((b) => ({ id: b.id, name: b.name, hasManager: brandManagers(b.id).length > 0 }));
+  const [plans, managers] = await Promise.all([
+    listPlans(month).catch(() => []),
+    brandManagersByBrand(BRANDS.map((b) => b.id)).catch(() => ({}) as Record<string, string[]>),
+  ]);
+  const brands = BRANDS.map((b) => ({ id: b.id, name: b.name, managers: managers[b.id] ?? [] }));
 
   return (
     <AppShell

@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { StoredPlan } from "@/lib/mediaPlanStore";
 import { formatIls, formatNumber } from "@/lib/metrics";
 
-interface BrandOpt { id: string; name: string; hasManager: boolean }
+interface BrandOpt { id: string; name: string; managers: string[] }
 
 const STATUS_LABEL: Record<string, string> = { draft: "טיוטה", approved: "מאושר", sent: "נשלח" };
 const STATUS_TONE: Record<string, string> = {
@@ -106,8 +106,14 @@ function PlanCard({
           </button>
           <button
             className={btn}
-            disabled={busy !== "" || !plan || status === "sent" || !brand.hasManager}
-            title={!brand.hasManager ? "לא הוגדרה מנהלת לקוח למותג" : status === "sent" ? "כבר נשלח" : "אשר ושלח ללקוח"}
+            disabled={busy !== "" || !plan || status === "sent" || !brand.managers.length}
+            title={
+              !brand.managers.length
+                ? "לא משויך מנהל מותג — הוסף אותו במסך ההרשאות"
+                : status === "sent"
+                  ? "כבר נשלח"
+                  : `אשר ושלח אל ${brand.managers.join(", ")}`
+            }
             onClick={() => call("send")}
           >
             {busy === "send" ? "שולח…" : "אשר ושלח"}
@@ -115,8 +121,12 @@ function PlanCard({
         </div>
       </div>
 
-      {!brand.hasManager && (
-        <p className="mt-2 text-[11px] text-[var(--warn)]">אין נמענת מוגדרת — הוסף EMAIL_MANAGER_{brand.id.toUpperCase().replace(/-/g, "_")} או ערוך את recipients.ts</p>
+      {brand.managers.length ? (
+        <p className="mt-2 text-[11px] text-[var(--muted)]">מנהל מותג: {brand.managers.join(", ")}</p>
+      ) : (
+        <p className="mt-2 text-[11px] text-[var(--warn)]">
+          לא משויך מנהל מותג — צור אותו במסך <a href="/admin" className="underline">ההרשאות</a> ושייך אליו את {brand.name}
+        </p>
       )}
       {msg && <p className={`mt-2 text-[11px] ${msg.tone === "ok" ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>{msg.text}</p>}
 

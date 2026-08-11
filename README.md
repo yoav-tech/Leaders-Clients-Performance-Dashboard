@@ -64,9 +64,13 @@ for every client and stores it as a **draft** — it never mails a client on its
 - **Rationale:** written by Claude from the plan's own numbers when `ANTHROPIC_API_KEY` is set;
   otherwise deterministic bullets generated from the same data.
 
-Setup beyond the base install: run `npm run db:setup` again (creates `media_plans`), and set
-`EMAIL_MANAGER_<BRAND_ID>` for each client — **"אשר ושלח" stays disabled for a brand with no
-account manager configured**. Optional: `ANTHROPIC_API_KEY`, `APP_BASE_URL`.
+- **Recipients:** the approved plan goes to that brand's **manager(s)** — users created in the
+  permissions console (`/admin`) with the `manager` role and the brand ticked. That console is the
+  only place recipients are configured; **"אשר ושלח" stays disabled for a brand with no manager
+  attached**. `EMAIL_MANAGER_<BRAND_ID>` overrides it for testing.
+
+Setup beyond the base install: run `npm run db:setup` again (creates `media_plans`), then attach
+a brand manager to each client in `/admin`. Optional: `ANTHROPIC_API_KEY`, `APP_BASE_URL`.
 
 Manual runs (same auth as the other crons):
 

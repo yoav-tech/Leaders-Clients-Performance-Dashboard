@@ -129,8 +129,8 @@ export async function sendApprovedPlan(
   if (!plan) return { ok: false, to: [], error: "plan not found" };
   if (plan.status === "sent") return { ok: false, to: plan.sentTo, error: "already sent" };
 
-  const to = opts.overrideTo ? [opts.overrideTo] : brandManagers(brandId);
-  if (!to.length) return { ok: false, to: [], error: "no account manager configured for this brand" };
+  const to = opts.overrideTo ? [opts.overrideTo] : await brandManagers(brandId);
+  if (!to.length) return { ok: false, to: [], error: "no brand manager attached to this brand in the permissions console" };
   if (!emailConfigured()) return { ok: false, to, error: "SMTP not configured" };
 
   await sendEmail({ to, subject: planSubject(plan), html: renderPlanHtml(plan), text: renderPlanText(plan) });

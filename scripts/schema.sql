@@ -110,8 +110,13 @@ ALTER TABLE clickup_state FORCE  ROW LEVEL SECURITY;
 REVOKE ALL ON alerts_sent   FROM anon, authenticated;
 REVOKE ALL ON clickup_state FROM anon, authenticated;
 
--- Dashboard users for per-client access control. role=admin sees every brand; role=client is
--- scoped to brand_ids. A single client can have multiple user rows (share brand_ids).
+-- Dashboard users for per-client access control. Three roles:
+--   admin   — the team's shared login; sees every brand and the management consoles.
+--   manager — a Leaders-side brand manager, scoped to brand_ids. Sees the full dashboard for
+--             those brands, and is who that brand's reports and monthly media plan are emailed
+--             to (see recipients.ts — attaching a manager here is the only place that is set).
+--   client  — the client themselves, scoped to brand_ids, on the trimmed client view.
+-- role=admin sees every brand; manager/client are scoped to brand_ids. A single client can have multiple user rows (share brand_ids).
 -- password_hash is scrypt ("scrypt$N$r$p$salthex$hashhex"). Accessed only via service_role.
 -- Login is by username OR email. The team logs in as the reserved username "admin" (verified
 -- against DASHBOARD_PASSWORD, no row here). Clients are created by an admin with a username, then
@@ -125,7 +130,7 @@ CREATE TABLE IF NOT EXISTS dashboard_users (
   full_name     text,
   phone         text,
   password_hash text,                              -- NULL until the invited user sets their password
-  role          text NOT NULL DEFAULT 'client',   -- 'admin' | 'client'
+  role          text NOT NULL DEFAULT 'client',   -- 'admin' | 'manager' | 'client'
   brand_ids     text[] NOT NULL DEFAULT '{}',
   invited_by    uuid REFERENCES dashboard_users(id) ON DELETE CASCADE,  -- primary client; deleting them removes their team
   invited_at    timestamptz,                       -- set when created via invite, cleared on activation
