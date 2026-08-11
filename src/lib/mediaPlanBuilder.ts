@@ -32,6 +32,8 @@ import {
   performanceIndex,
   profileRules,
   profileStages,
+  minLineBudgetFor,
+  runnableChannels,
   scaleStepFor,
   seasonalityFor,
   stageRule,
@@ -424,9 +426,11 @@ function allocateShares(cells: Cell[], profile: CampaignProfile): number[] {
   return out;
 }
 
-// Turn shares into budgets: drop lines that can't realistically run (redistributing inside their
-// stage first, then across the plan), round to the rules' step, and settle the rounding remainder
-// on the largest line so the lines always add up to exactly the plan total.
+// Turn shares into budgets: drop lines that can't realistically run on their platform
+// (redistributing inside their stage first, then across the plan), round to the rules' step, and
+// settle the rounding remainder on the largest line so the lines always add up to exactly the
+// plan total. The floor is per-platform — ₪1,500 buys different amounts of learning on Meta and
+// on LinkedIn.
 function toBudgets(cells: Cell[], shares: number[], total: number): number[] {
   if (!cells.length || total <= 0) return cells.map(() => 0);
 
@@ -435,7 +439,7 @@ function toBudgets(cells: Cell[], shares: number[], total: number): number[] {
   for (let guard = 0; guard < cells.length; guard++) {
     const candidates = live
       .map((s, i) => ({ i, budget: s * total }))
-      .filter((x) => x.budget > 0 && x.budget < GUARDRAILS.minLineBudget);
+      .filter((x) => x.budget > 0 && x.budget < minLineBudgetFor(cells[x.i].channel));
     if (!candidates.length) break;
     const drop = candidates.sort((a, b) => a.budget - b.budget)[0].i;
     const freed = live[drop];
@@ -587,8 +591,9 @@ export async function buildMediaPlan(
   if (GUARDRAILS.openMissingStages && cells.length) {
     for (const rule of rules.stages) {
       if (cells.some((c) => c.stage === rule.stage)) continue;
-      const candidates = channels.filter((c) => rule.channels.includes(c.id));
-      if (!candidates.length) continue; // no configured channel can run this stage
+      const runnable = runnableChannels(profile, rule.stage);
+      const candidates = channels.filter((c) => runnable.includes(c.id));
+      if (!candidates.length) continue; // no connected channel can run this stage
       const best = candidates.reduce((a, b) => ((stats.get(b.id)?.spend ?? 0) > (stats.get(a.id)?.spend ?? 0) ? b : a));
       cells.push({
         channel: best.id,
@@ -608,7 +613,8 @@ export async function buildMediaPlan(
   // default shares.
   if (!cells.length) {
     for (const rule of rules.stages) {
-      const candidates = channels.filter((c) => rule.channels.includes(c.id));
+      const runnable = runnableChannels(profile, rule.stage);
+      const candidates = channels.filter((c) => runnable.includes(c.id));
       if (!candidates.length) continue;
       cells.push({
         channel: candidates[0].id,

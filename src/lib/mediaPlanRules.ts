@@ -18,8 +18,9 @@
 // Numbers marked [PROPOSED] are defaults chosen to be defensible, NOT Leaders methodology.
 // They are meant to be replaced by the team's own figures before the automation is switched on.
 import type { CampaignProfile } from "./brands";
+import { PLATFORMS, isIngested, platformRules, type AdChannel, type Platform } from "./platformRules";
 
-export type AdChannel = "meta" | "google" | "tiktok";
+export type { AdChannel, Platform };
 
 // A funnel stage is a planning bucket, not a platform object. Campaigns are matched into one by
 // name (STAGE_PATTERNS), so the naming convention in the ad accounts is part of the doctrine.
@@ -50,7 +51,7 @@ export const STAGE_LABEL: Record<FunnelStage, string> = {
   leads: "לידים · Leads",
 };
 
-export const CHANNEL_LABEL: Record<AdChannel, string> = { meta: "Meta", google: "Google", tiktok: "TikTok" };
+export const CHANNEL_LABEL: Record<AdChannel, string> = { meta: PLATFORMS.meta.label, google: PLATFORMS.google.label, tiktok: PLATFORMS.tiktok.label };
 
 // The single KPI a client type is planned against. ROAS is higher-is-better; every other one is
 // a cost per outcome, so lower is better — performanceIndex() normalises that away.
@@ -63,10 +64,13 @@ export const KPI_HIGHER_IS_BETTER: Record<PlanKpi, boolean> = { roas: true, cpv:
 export interface StageRule {
   stage: FunnelStage;
   role: string; // what this stage is for — shown in the playbook, not in client-facing output
-  // Which channels can actually run this stage. Used to decide where a stage the client isn't
+  // Which platforms can actually run this stage. Used to decide where a stage the client isn't
   // running today would open (see GUARDRAILS.openMissingStages), and to keep a stage off a
   // platform that can't serve it — brand search doesn't exist on Meta.
-  channels: AdChannel[];
+  //
+  // This may name a platform the dashboard does not ingest yet (LinkedIn, Reddit): the doctrine
+  // records where a stage belongs, and runnableChannels() narrows it to what we have data for.
+  channels: Platform[];
   // Share bands, as a fraction of the whole plan. The allocation may move money between stages
   // on performance, but never outside these bands. minShare is a floor the stage gets even when
   // it underperforms (it exists for a reason); maxShare stops one stage eating the plan.
@@ -105,7 +109,7 @@ export const PROFILES: Record<CampaignProfile, ProfileRules> = {
     kpi: "cpv",
     channelDefaults: { meta: "video_views", tiktok: "video_views", google: "video_views" },
     stages: [
-      { stage: "awareness", role: "ריץ׳ — כיסוי קהל היעד", channels: ["meta", "tiktok", "google"], minShare: 0.1, maxShare: 0.45, defaultShare: 0.25 },
+      { stage: "awareness", role: "ריץ׳ — כיסוי קהל היעד", channels: ["meta", "tiktok", "google", "reddit"], minShare: 0.1, maxShare: 0.45, defaultShare: 0.25 },
       { stage: "video_views", role: "צפיות — עומק הצפייה במסר", channels: ["meta", "tiktok", "google"], minShare: 0.15, maxShare: 0.6, defaultShare: 0.35 },
       { stage: "influencers", role: "תוכן משפיענים בהפצה ממומנת", channels: ["meta", "tiktok"], minShare: 0.05, maxShare: 0.45, defaultShare: 0.25 },
       { stage: "ugc", role: "תוכן UGC בהפצה ממומנת", channels: ["meta", "tiktok"], minShare: 0.05, maxShare: 0.35, defaultShare: 0.15 },
@@ -116,8 +120,8 @@ export const PROFILES: Record<CampaignProfile, ProfileRules> = {
     kpi: "cpl",
     channelDefaults: { meta: "prospecting", tiktok: "prospecting", google: "generic_search" },
     stages: [
-      { stage: "prospecting", role: "גיוס פניות מקהל חדש", channels: ["meta", "tiktok"], minShare: 0.3, maxShare: 0.7, defaultShare: 0.45 },
-      { stage: "retargeting", role: "החזרת מתעניינים שלא השאירו פרטים", channels: ["meta", "tiktok", "google"], minShare: 0.05, maxShare: 0.25, defaultShare: 0.15 },
+      { stage: "prospecting", role: "גיוס פניות מקהל חדש — LinkedIn ל-B2B, Reddit לנישות", channels: ["meta", "tiktok", "linkedin", "reddit"], minShare: 0.3, maxShare: 0.7, defaultShare: 0.45 },
+      { stage: "retargeting", role: "החזרת מתעניינים שלא השאירו פרטים", channels: ["meta", "tiktok", "google", "linkedin"], minShare: 0.05, maxShare: 0.25, defaultShare: 0.15 },
       { stage: "generic_search", role: "חיפוש גנרי — ביקוש אקטיבי", channels: ["google"], minShare: 0.1, maxShare: 0.5, defaultShare: 0.3 },
       { stage: "brand_search", role: "חיפוש מותגי", channels: ["google"], minShare: 0.03, maxShare: 0.15, defaultShare: 0.1 },
     ],
@@ -130,7 +134,7 @@ export const PROFILES: Record<CampaignProfile, ProfileRules> = {
       { stage: "installs", role: "התקנות — ה-KPI הראשי", channels: ["meta", "tiktok", "google"], minShare: 0.4, maxShare: 0.85, defaultShare: 0.6 },
       { stage: "prospecting", role: "בניית ביקוש סביב האפליקציה", channels: ["meta", "tiktok"], minShare: 0.05, maxShare: 0.3, defaultShare: 0.15 },
       { stage: "retargeting", role: "החזרת משתמשים שהתקינו ולא נרשמו", channels: ["meta", "tiktok", "google"], minShare: 0.05, maxShare: 0.25, defaultShare: 0.15 },
-      { stage: "leads", role: "קמפיינים ייעודיים לפניות (למשל גיוס עובדים)", channels: ["meta", "google"], minShare: 0.03, maxShare: 0.3, defaultShare: 0.1 },
+      { stage: "leads", role: "קמפיינים ייעודיים לפניות (למשל גיוס עובדים)", channels: ["meta", "google", "linkedin"], minShare: 0.03, maxShare: 0.3, defaultShare: 0.1 },
     ],
   },
   impshare: {
@@ -201,22 +205,37 @@ export const SCALE_LADDER: ScaleStep[] = [
 ];
 
 // Applied to the recommended budget on top of the scale factor. 1.0 = no seasonal adjustment.
-// [OPEN] Every month is 1.0 until the media team fills in Leaders' own seasonality. Until then
-// the plan makes no seasonal claim, which is the honest default.
+//
+// The calendar (events + commercial mood) is [PLAYBOOK] — ecomm-analyst/il-calendar.md, the
+// agency's own Israeli eCommerce calendar. The FACTORS are [PROPOSED]: the playbook grades each
+// month Low / Moderate / High / PEAK, and turning a grade into a multiplier is a judgement the
+// media team should make. Mapping used: Low ×0.9 · Moderate ×1.0 · High ×1.1 · PEAK ×1.3.
+//
+// Seasonality only moves the RECOMMENDED budget. A client on a fixed monthly budget is never
+// moved by it — the plan just shows what the recommendation would have been.
 export const SEASONALITY: Record<string, { factor: number; note: string }> = {
-  "01": { factor: 1, note: "ינואר" },
-  "02": { factor: 1, note: "פברואר" },
-  "03": { factor: 1, note: "מרץ" },
-  "04": { factor: 1, note: "אפריל · פסח" },
-  "05": { factor: 1, note: "מאי" },
-  "06": { factor: 1, note: "יוני" },
-  "07": { factor: 1, note: "יולי" },
-  "08": { factor: 1, note: "אוגוסט" },
-  "09": { factor: 1, note: "ספטמבר · חגי תשרי" },
-  "10": { factor: 1, note: "אוקטובר" },
-  "11": { factor: 1, note: "נובמבר · בלאק פריידי" },
-  "12": { factor: 1, note: "דצמבר" },
+  "01": { factor: 0.9, note: "ינואר · שפל אחרי החגים, מבצעי סוף עונה" },
+  "02": { factor: 1.0, note: "פברואר · ולנטיין (14.2), משקל בינוני בישראל" },
+  "03": { factor: 1.1, note: "מרץ · פורים, יום האישה, לעיתים פסח" },
+  "04": { factor: 1.0, note: "אפריל · פסח (משתנה) ואז שבוע איטי" },
+  "05": { factor: 1.0, note: "מאי · יום העצמאות" },
+  "06": { factor: 1.0, note: "יוני · סוף שנת הלימודים" },
+  "07": { factor: 0.95, note: "יולי · תחילת סייל קיץ, שלושת השבועות" },
+  "08": { factor: 0.9, note: "אוגוסט · שיא החופשות, כוונת קנייה נמוכה — חודש לבדיקות קריאייטיב" },
+  "09": { factor: 1.1, note: "ספטמבר · חזרה ללימודים והיערכות לראש השנה" },
+  "10": { factor: 1.1, note: "אוקטובר · סוכות, חימום לבלאק פריידי, בניית רשימות" },
+  "11": { factor: 1.3, note: "נובמבר · בלאק פריידי — אירוע המכירות מספר 1, פי 3–6 מהיומי הרגיל" },
+  "12": { factor: 1.1, note: "דצמבר · חנוכה (משתנה)" },
 };
+
+// Dates where the right action is to pause or change tone, not to change budget. Surfaced in the
+// plan as a note; the builder never acts on them by itself. [PLAYBOOK] ecomm-analyst/il-calendar.md
+export const CALENDAR_CAUTIONS: { when: string; note: string }[] = [
+  { when: "יום כיפור", note: "אפס מסחר — להשהות את כל הקמפיינים ל-24 שעות." },
+  { when: "תשעה באב", note: "יום של אבל — להשהות או לרכך את הטון ל-24–48 שעות." },
+  { when: "שלושת השבועות", note: "רגישות סביב השקות ומוצרים חדשים — עניין של טון, לא של תקציב." },
+  { when: "הסלמה ביטחונית", note: "לבדוק מיד את טון הקריאייטיב; דימויי לייף-סטייל שאפתניים מרגישים מנותקים. CTR ו-CVR צונחים חדות." },
+];
 
 // ---------------------------------------------------------------- 4. guardrails
 
@@ -236,8 +255,10 @@ export interface Guardrails {
   // the best-suited channel — which is what makes a plan a recommendation rather than a mirror
   // of last month. Seeded lines are marked in the output and are still subject to minLineBudget.
   openMissingStages: boolean;
-  // The floor is a budget, not a percentage: a line under this can't realistically run, so it is
-  // folded into the rest of its stage instead of being planned as a token amount.
+  // Fallback floor for a line whose platform has no rule of its own. The real floor is
+  // per-platform (platformRules(p).minLineBudget) — ₪1,500 on Meta buys a different amount of
+  // learning than ₪1,500 on LinkedIn. A line under its platform's floor is folded into the rest
+  // of its stage instead of being planned as a token amount.
   minLineBudget: number; // ILS per month
   roundTo: number; // ILS, all line budgets round to this
   maxScaleUp: number; // hard ceiling on the monthly scale factor
@@ -290,6 +311,18 @@ export function stageRule(profile: CampaignProfile, stage: FunnelStage): StageRu
 
 export function profileStages(profile: CampaignProfile): FunnelStage[] {
   return PROFILES[profile].stages.map((s) => s.stage);
+}
+
+// The platforms a stage can run on, narrowed to the ones the dashboard ingests. The doctrine may
+// place a stage on LinkedIn or Reddit; until those are connected there is no data to plan from,
+// so they are filtered out here rather than silently producing an empty line.
+export function runnableChannels(profile: CampaignProfile, stage: FunnelStage): AdChannel[] {
+  return (stageRule(profile, stage)?.channels ?? []).filter(isIngested);
+}
+
+// The monthly budget below which a line on this platform cannot realistically run.
+export function minLineBudgetFor(channel: AdChannel): number {
+  return platformRules(channel).minLineBudget || GUARDRAILS.minLineBudget;
 }
 
 // Where a channel's unclassifiable campaigns land: the client type's explicit default when the

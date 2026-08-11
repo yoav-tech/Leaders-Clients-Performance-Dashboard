@@ -19,9 +19,11 @@ import {
   defaultStageFor,
   performanceIndex,
   profileStages,
+  runnableChannels,
   scaleStepFor,
   type FunnelStage,
 } from "../src/lib/mediaPlanRules";
+import { BUDGET_TIERS, PLATFORMS, isIngested } from "../src/lib/platformRules";
 
 const MONTH = process.argv[2] ?? "2026-09";
 
@@ -73,6 +75,38 @@ async function main() {
       (["meta", "google", "tiktok"] as const).some((ch) => defaultStageFor(profile as keyof typeof PROFILES, ch) !== null),
       `${profile}: at least one channel can run this client type`,
     );
+  }
+
+  // Platform rules: the operational layer the allocation leans on.
+  console.log("— platform rules —");
+  for (const [id, p] of Object.entries(PLATFORMS)) {
+    ok(p.id === id, `${id}: id matches its key`);
+    ok(p.label.trim().length > 0, `${id}: has a label`);
+    ok(p.minLineBudget > 0, `${id}: has a minimum line budget`);
+    ok(p.healthyLineBudget >= p.minLineBudget, `${id}: healthy budget is not below the minimum`);
+    ok(p.benchmarks.length > 0, `${id}: has benchmarks to read results against`);
+    ok(p.benchmarks.every((b) => b.label && b.good), `${id}: every benchmark names a metric and a range`);
+    ok(p.scaling.maxStepPct > 0 && p.scaling.maxStepPct <= 50, `${id}: scaling step is sane`);
+    ok(p.cautions.length > 0, `${id}: documents what goes wrong on it`);
+    ok(p.ingested === isIngested(p.id), `${id}: ingested flag matches INGESTED_PLATFORMS`);
+    ok(!p.ingested || Boolean(p.connector), `${id}: an ingested platform names its Windsor connector`);
+  }
+  ok(Math.abs(BUDGET_TIERS.reduce((s, t) => s + t.share, 0) - 1) < 0.001, "budget tiers sum to 100%");
+
+  // A stage may name a platform we do not ingest (LinkedIn, Reddit) — the doctrine records where
+  // it belongs. But every profile must still have somewhere to actually plan.
+  for (const [profile, r] of Object.entries(PROFILES)) {
+    for (const s of r.stages) {
+      ok(s.channels.every((c) => c in PLATFORMS), `${profile}/${s.stage}: names only known platforms`);
+    }
+    const plannable = r.stages.filter((s) => runnableChannels(profile as keyof typeof PROFILES, s.stage).length > 0);
+    ok(plannable.length > 0, `${profile}: at least one stage runs on a platform we ingest`);
+  }
+
+  // Seasonality moves the recommendation, so a typo here quietly re-plans every client.
+  for (const [m, s] of Object.entries(SEASONALITY)) {
+    ok(s.factor >= 0.7 && s.factor <= 1.5, `seasonality ${m}: factor ${s.factor} outside a sane 0.7–1.5 band`);
+    ok(s.note.trim().length > 0, `seasonality ${m}: says what drives it`);
   }
 
   // Every pattern must resolve to a stage the profiles it applies to actually plan against —

@@ -43,8 +43,13 @@ for every client and stores it as a **draft** — it never mails a client on its
 
 - **Rules, not code:** every planning decision — the funnel stages per client type, the share
   band each stage may occupy, how campaign names map to stages, the scale ladder, the data
-  thresholds — is data in `mediaPlanRules.ts`. The builder applies them and holds no judgement of
-  its own, so changing how Leaders plans means editing the rules, never the engine.
+  thresholds — is data in `mediaPlanRules.ts`. What each *platform* needs for that money to work
+  — minimum line budget, learning-phase volume, scaling step, attribution caveats, Israeli
+  benchmarks — is data in `platformRules.ts`, sourced from the agency's own playbooks. The
+  builder applies both and holds no judgement of its own, so changing how Leaders plans means
+  editing the rules, never the engine. Written for review in
+  [`docs/media-plan-playbook.md`](docs/media-plan-playbook.md) (how much) and
+  [`docs/platform-playbooks.md`](docs/platform-playbooks.md) (what each platform needs).
 - **Structure:** each plan is a set of lines — **channel × funnel stage**, with a budget, a share
   of the total, the change vs last month, and a forecast. The stages adapt to the client type
   (`campaignProfileOf`): ecommerce → prospecting / retargeting / shopping / search; views →
@@ -58,7 +63,8 @@ for every client and stores it as a **draft** — it never mails a client on its
 - **Allocation:** two levels, in that order — how much each **funnel stage** gets (recent spend
   tilted by performance, inside the stage's band), then how that splits across the **channels**
   running it. A cell only moves money on its own performance once it clears the data-sufficiency
-  bar; lines under the minimum monthly budget are folded away; everything rounds to ₪50. The
+  bar; lines under their platform's minimum monthly budget are folded away; everything rounds
+  to ₪50. The
   per-channel rates come from `daily_metrics`; Windsor campaign names supply only the funnel
   split, so a Windsor outage degrades the plan to channel level instead of failing.
 - **Rationale:** written by Claude from the plan's own numbers when `ANTHROPIC_API_KEY` is set;
