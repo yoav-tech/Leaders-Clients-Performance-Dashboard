@@ -1,6 +1,7 @@
 // DB-backed metrics for views/leads brands (SCJ, Style, Leaders, Bestie). Reads daily_metrics
 // (the awareness/leads KPI columns) so these clients get the same overview / funnel / trend /
 // daily sections as ecommerce — every client is served from the DB.
+import { unstable_cache } from "next/cache";
 import { getSupabase, hasDb } from "./db";
 import { campaignProfileOf, type BrandConfig } from "./brands";
 import { shiftDate } from "./dates";
@@ -34,7 +35,9 @@ export interface CampBrandMetrics {
 
 interface Raw { date: string; channel: "meta" | "google" | "tiktok"; spend: number; impr: number; clicks: number; reach: number; views: number; completed: number; leads: number }
 
-async function fetchCamp(brandId: string, from: string, to: string): Promise<Raw[]> {
+// Cached like the ecommerce reads (busted on ingest via the "metrics" tag).
+const fetchCamp = unstable_cache(_fetchCamp, ["camp-metrics-rows"], { revalidate: 120, tags: ["metrics"] });
+async function _fetchCamp(brandId: string, from: string, to: string): Promise<Raw[]> {
   if (!hasDb()) return [];
   const sb = getSupabase();
   const { data, error } = await sb

@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { getSupabase, hasDb } from "./db";
 import { BRANDS } from "./brands";
 import { monthProgress, shiftDate, today } from "./dates";
@@ -12,7 +13,12 @@ import type {
 } from "./types";
 import { AD_CHANNELS } from "./types";
 
-async function fetchRows(from: string, to: string): Promise<DailyMetricRow[]> {
+// daily_metrics changes only on ingest (daily cron + live-warm), so cache reads for a short TTL
+// and bust the "metrics" tag on ingest. This collapses the 4–5 daily_metrics round-trips a single
+// brand render makes (getBrandMetrics + getMonthForecast×2 + getDailyBreakdown + getBrandMonthSpend)
+// into cache hits, and makes navigating between clients near-instant.
+const fetchRows = unstable_cache(_fetchRows, ["daily-metrics-rows"], { revalidate: 120, tags: ["metrics"] });
+async function _fetchRows(from: string, to: string): Promise<DailyMetricRow[]> {
   if (!hasDb()) return [];
   const sb = getSupabase();
   const { data, error } = await sb
@@ -50,7 +56,8 @@ interface UtmRow {
   revenueIls: number;
 }
 
-async function fetchUtmRows(from: string, to: string): Promise<UtmRow[]> {
+const fetchUtmRows = unstable_cache(_fetchUtmRows, ["daily-utm-rows"], { revalidate: 120, tags: ["metrics"] });
+async function _fetchUtmRows(from: string, to: string): Promise<UtmRow[]> {
   if (!hasDb()) return [];
   const sb = getSupabase();
   const { data, error } = await sb
@@ -262,8 +269,9 @@ export interface SourceDaily {
   rows: Record<string, Record<string, { orders: number; revenue: number }>>; // source -> date -> vals
 }
 
-export async function getDailySourceBreakdown(from: string, to: string): Promise<Record<string, SourceDaily>> {
-  if (!hasDb()) return {};
+const fetchSourceRows = unstable_cache(_fetchSourceRows, ["daily-source-rows"], { revalidate: 120, tags: ["metrics"] });
+async function _fetchSourceRows(from: string, to: string) {
+  if (!hasDb()) return [] as { date: string; brand_id: string; source: string; orders: number; revenue_ils: number }[];
   const sb = getSupabase();
   const { data, error } = await sb
     .from("daily_source")
@@ -272,6 +280,11 @@ export async function getDailySourceBreakdown(from: string, to: string): Promise
     .lte("date", to)
     .limit(50000);
   if (error) throw new Error(`daily_source query failed: ${error.message}`);
+  return (data ?? []) as { date: string; brand_id: string; source: string; orders: number; revenue_ils: number }[];
+}
+
+export async function getDailySourceBreakdown(from: string, to: string): Promise<Record<string, SourceDaily>> {
+  const data = await fetchSourceRows(from, to);
 
   const raw = (data ?? []).map((r) => ({
     brand: r.brand_id as string,
@@ -379,7 +392,8 @@ export async function getMonthForecast(brandId: string): Promise<MonthForecast> 
 }
 
 // When the DB was last written (drives the "last updated" label). Null if no DB/data.
-export async function getLastUpdated(): Promise<string | null> {
+export const getLastUpdated = unstable_cache(_getLastUpdated, ["last-updated"], { revalidate: 120, tags: ["metrics"] });
+async function _getLastUpdated(): Promise<string | null> {
   if (!hasDb()) return null;
   const sb = getSupabase();
   const { data } = await sb
