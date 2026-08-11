@@ -19,13 +19,18 @@ const monthLabel = (m: string) => `${MONTH_HE[Number(m.slice(5, 7)) - 1]} ${m.sl
 function forecastText(p: StoredPlan, l: StoredPlan["lines"][number]): string {
   const f = l.forecast;
   if (p.profile === "ecommerce") return f.revenue == null ? "—" : `${formatIls(f.revenue)}${f.roas ? ` · ROAS ${f.roas.toFixed(1)}` : ""}`;
-  if (p.profile === "views") return f.views == null ? formatNumber(f.impressions) : `${formatNumber(f.views)} צפיות`;
+  if (p.profile === "views") {
+    if (f.views == null) return formatNumber(f.impressions);
+    const vr = f.viewRate == null ? "" : ` · שיעור צפייה ${(f.viewRate * 100).toFixed(1)}%`;
+    const cr = f.completionRate == null ? "" : ` · מלאה ${(f.completionRate * 100).toFixed(0)}%`;
+    return `${formatNumber(f.views)} צפיות 15ש׳${vr}${cr}`;
+  }
   if (p.profile === "leads") return f.leads == null ? "—" : `${formatNumber(f.leads)} לידים`;
   if (p.profile === "app") return f.installs == null ? "—" : `${formatNumber(f.installs)} התקנות`;
   return `${formatNumber(f.impressions)} חשיפות`;
 }
 function forecastHeader(p: StoredPlan): string {
-  return p.profile === "ecommerce" ? "הכנסות צפויות" : p.profile === "views" ? "צפיות" : p.profile === "leads" ? "לידים" : p.profile === "app" ? "התקנות" : "חשיפות";
+  return p.profile === "ecommerce" ? "הכנסות צפויות" : p.profile === "views" ? "צפיות 15 שניות · איכות" : p.profile === "leads" ? "לידים" : p.profile === "app" ? "התקנות" : "חשיפות";
 }
 
 function PlanCard({

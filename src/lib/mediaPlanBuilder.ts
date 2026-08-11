@@ -51,7 +51,10 @@ export interface PlanForecast {
   purchases: number | null;
   revenue: number | null;
   roas: number | null;
-  views: number | null;
+  views: number | null; // qualified (15s / ThruPlay) views
+  completedViews: number | null; // 100% completions
+  viewRate: number | null; // qualified views ÷ impressions — the rate that should be climbing
+  completionRate: number | null; // completions ÷ qualified views
   leads: number | null;
   installs: number | null;
   cpm: number | null;
@@ -175,13 +178,14 @@ interface ChannelStats {
   clicks: number;
   purchases: number;
   revenue: number; // ILS
-  views: number;
+  views: number; // qualified views — Meta ThruPlay (15s), TikTok 6s, Google video_views
+  completed: number; // 100% completions
   leads: number;
   installs: number;
 }
 
 const emptyStats = (channel: AdChannel): ChannelStats => ({
-  channel, spend: 0, impressions: 0, clicks: 0, purchases: 0, revenue: 0, views: 0, leads: 0, installs: 0,
+  channel, spend: 0, impressions: 0, clicks: 0, purchases: 0, revenue: 0, views: 0, completed: 0, leads: 0, installs: 0,
 });
 
 async function channelStats(brandId: string, from: string, to: string): Promise<Map<AdChannel, ChannelStats>> {
@@ -189,7 +193,7 @@ async function channelStats(brandId: string, from: string, to: string): Promise<
   if (!hasDb()) return out;
   const { data, error } = await getSupabase()
     .from("daily_metrics")
-    .select("channel,spend_ils,revenue_ils,purchases,impressions,clicks,views,leads,installs")
+    .select("channel,spend_ils,revenue_ils,purchases,impressions,clicks,views,completed_views,leads,installs")
     .eq("brand_id", brandId)
     .neq("channel", "site")
     .gte("date", from)
@@ -205,6 +209,7 @@ async function channelStats(brandId: string, from: string, to: string): Promise<
     e.impressions += Number(r.impressions);
     e.clicks += Number(r.clicks);
     e.views += Number(r.views);
+    e.completed += Number(r.completed_views);
     e.leads += Number(r.leads);
     e.installs += Number(r.installs);
     out.set(ch, e);
@@ -481,7 +486,7 @@ function forecastFor(profile: CampaignProfile, budget: number, s: ChannelStats, 
   const cpm = s.impressions > 0 ? (s.spend / s.impressions) * 1000 : null;
   const cpc = ratio(s.spend, s.clicks);
   const cpa = ratio(s.spend, s.purchases);
-  const cpv = ratio(s.spend, s.views);
+  const cpv = ratio(s.spend, s.views); // cost per qualified (15s) view
   const cpl = ratio(s.spend, s.leads);
   const cpi = ratio(s.spend, s.installs);
   const baseRoas = ratio(s.revenue, s.spend);
@@ -495,6 +500,9 @@ function forecastFor(profile: CampaignProfile, budget: number, s: ChannelStats, 
     revenue: isEcom && roas ? Math.round(budget * roas) : null,
     roas: isEcom ? roas : null,
     views: profile === "views" && cpv ? Math.round(budget / cpv) : null,
+    completedViews: profile === "views" && cpv && s.views > 0 ? Math.round((budget / cpv) * (s.completed / s.views)) : null,
+    viewRate: profile === "views" ? ratio(s.views, s.impressions) : null,
+    completionRate: profile === "views" ? ratio(s.completed, s.views) : null,
     leads: profile === "leads" && cpl ? Math.round(budget / cpl) : null,
     installs: profile === "app" && cpi ? Math.round(budget / cpi) : null,
     cpm, cpc, cpa, cpv, cpl, cpi,
@@ -536,7 +544,7 @@ export async function buildMediaPlan(
   const totals = [...stats.values()].reduce((acc, c) => {
     acc.spend += c.spend; acc.revenue += c.revenue; acc.purchases += c.purchases;
     acc.impressions += c.impressions; acc.clicks += c.clicks;
-    acc.views += c.views; acc.leads += c.leads; acc.installs += c.installs;
+    acc.views += c.views; acc.completed += c.completed; acc.leads += c.leads; acc.installs += c.installs;
     return acc;
   }, emptyStats("meta"));
   const kpiValue = kpiOf(profile, totals);

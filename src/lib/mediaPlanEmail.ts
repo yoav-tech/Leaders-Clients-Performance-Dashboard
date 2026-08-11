@@ -22,14 +22,18 @@ export function monthLabel(month: string): string {
 function forecastCell(p: MediaPlanDraft): (l: MediaPlanDraft["lines"][number]) => string {
   switch (p.profile) {
     case "ecommerce": return (l) => (l.forecast.revenue == null ? "—" : `${ils(l.forecast.revenue)}${l.forecast.roas ? ` · ROAS ${l.forecast.roas.toFixed(1)}` : ""}`);
-    case "views": return (l) => (l.forecast.views == null ? n0(l.forecast.impressions) : `${n0(l.forecast.views)} צפיות`);
+    case "views": return (l) => {
+      if (l.forecast.views == null) return n0(l.forecast.impressions);
+      const completion = l.forecast.completionRate == null ? "" : ` · ${Math.round(l.forecast.completionRate * 100)}% צפייה מלאה`;
+      return `${n0(l.forecast.views)} צפיות 15ש׳${completion}`;
+    };
     case "leads": return (l) => (l.forecast.leads == null ? "—" : `${n0(l.forecast.leads)} לידים`);
     case "app": return (l) => (l.forecast.installs == null ? "—" : `${n0(l.forecast.installs)} התקנות`);
     default: return (l) => `${n0(l.forecast.impressions)} חשיפות`;
   }
 }
 function forecastHeader(p: MediaPlanDraft): string {
-  return p.profile === "ecommerce" ? "הכנסות צפויות" : p.profile === "views" ? "צפיות צפויות" : p.profile === "leads" ? "לידים צפויים" : p.profile === "app" ? "התקנות צפויות" : "חשיפות צפויות";
+  return p.profile === "ecommerce" ? "הכנסות צפויות" : p.profile === "views" ? "צפיות 15 שניות" : p.profile === "leads" ? "לידים צפויים" : p.profile === "app" ? "התקנות צפויות" : "חשיפות צפויות";
 }
 
 function card(title: string, inner: string): string {

@@ -338,7 +338,7 @@ async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to:
         ? ch.id === "meta"
           ? ["reach", "video_thruplay_watched_actions", "video_p100_watched_actions"]
           : ch.id === "tiktok"
-            ? ["reach", "video_watched_2s", "video_watched_6s"]
+            ? ["reach", "video_watched_6s", "video_views_p100"]
             : ["video_views"]
         : ch.id === "meta"
           ? ["actions_lead"]
@@ -368,9 +368,17 @@ async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to:
         a.impr += num(r.impressions);
         a.clicks += num(r.clicks);
         if (profile === "views") {
+          // Two columns, one meaning each, across every platform:
+          //   views           = a QUALIFIED view — Meta ThruPlay (15s or completion),
+          //                     TikTok 6s, Google video_views. This is what CPV is priced on.
+          //   completed_views = a 100% completion.
+          // TikTok used to store 2s as "views" and 6s as "completed"; 2 seconds is a scroll, not
+          // a view, and 6s is not a completion — so both were re-pointed. `video_views_p100` is
+          // the TikTok completion field to verify on the next ingest run (see channelFields.ts
+          // for the same caveat on other TikTok fields).
           a.reach += num(r.reach);
           if (ch.id === "meta") { a.views += sumAction(r.video_thruplay_watched_actions); a.completed += sumAction(r.video_p100_watched_actions); }
-          else if (ch.id === "tiktok") { a.views += num(r.video_watched_2s); a.completed += num(r.video_watched_6s); }
+          else if (ch.id === "tiktok") { a.views += num(r.video_watched_6s); a.completed += num(r.video_views_p100); }
           else { a.views += num(r.video_views); }
         } else {
           a.leads += ch.id === "meta" ? sumAction(r.actions_lead) : num(r.conversions);

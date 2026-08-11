@@ -111,6 +111,9 @@ const META: PlatformRules = {
   benchmarks: [
     { label: "CPM", good: "₪20–60", note: "ביוטי בקצה הגבוה" },
     { label: "CTR (link)", good: "0.8–2.5%", note: "קריאייטיב טוב = 2%+" },
+    { label: "ThruPlay (15 שניות)", good: "—", note: "ה-KPI של לקוח צפיות. ThruPlay = 15 שניות או סיום, המוקדם מביניהם" },
+    { label: "שיעור צפייה (ThruPlay ÷ חשיפות)", good: "צריך לטפס", note: "מגמה חשובה מהערך המוחלט — ירידה = ההוק לא עובד" },
+    { label: "צפייה מלאה (p100 ÷ ThruPlay)", good: "ככל שגבוה יותר", note: "צפייה זולה שאף אחד לא מסיים אינה תוצאה" },
     { label: "CPC", good: "₪1.2–5" },
     { label: "CPA (קהל קר)", good: "₪70–200", note: "תלוי מאוד במחיר המוצר" },
     { label: "ROAS (מדווח)", good: "1.8–5x", note: "מנופח — לא לקבל כפשוטו" },
@@ -183,6 +186,8 @@ const TIKTOK: PlatformRules = {
   benchmarks: [
     { label: "CPM", good: "₪12–40", note: "בדרך כלל זול ממטא" },
     { label: "VTR (3 שניות)", good: "12–35%" },
+    { label: "צפייה 6 שניות", good: "—", note: "המקבילה של TikTok לצפייה מוכשרת — זה מה שנספר כ-view, לא 2 שניות" },
+    { label: "צפייה מלאה (p100)", good: "ככל שגבוה יותר", note: "השדה `video_views_p100` — לאמת בהרצת ingest" },
     { label: "CTR", good: "0.4–1.8%", note: "נמוך ממטא — כוונת גילוי" },
     { label: "CPA", good: "₪90–250", note: "גבוה ממטא באותו תקציב" },
   ],
@@ -335,4 +340,22 @@ export const ACTION_THRESHOLDS = [
   { signal: "CVR יורד מעל 25% שבוע-על-שבוע", action: "דף נחיתה, טראקינג או בעיית מוצר" },
   { signal: "CTR יורד מעל 30% עם אותו קריאייטיב", action: "שחיקת קהל או קריאייטיב" },
   { signal: "CPM מזנק מעל 50% בלי עונתיות", action: "רוויית קהל או תחרות במכרז" },
+  { signal: "שיעור הצפייה יורד בלקוח צפיות", action: "ההוק לא עובד — לרענן את 3 השניות הראשונות" },
+  { signal: "אחוז הצפייה המלאה יורד", action: "המסר לא מחזיק — לקצר או לשנות מבנה, לא להוסיף תקציב" },
 ];
+
+// [AGENCY] How a views account is actually judged. The cost KPI decides the allocation; the two
+// rates decide whether that cost bought anything worth having.
+export const VIEWS_MEASUREMENT = {
+  primary: "עלות לצפיית 15 שניות (ThruPlay) — זה ה-KPI שהתקציב נפרס לפיו",
+  quality: [
+    "שיעור צפייה = צפיות מוכשרות ÷ חשיפות. הכיוון חשוב מהערך — הוא צריך לטפס.",
+    "צפייה מלאה = 100% ÷ צפיות מוכשרות. צפייה זולה שאף אחד לא מסיים אינה תוצאה.",
+  ],
+  qualifiedView: {
+    meta: "ThruPlay — 15 שניות או סיום, המוקדם מביניהם",
+    tiktok: "צפיית 6 שניות (המקבילה של הפלטפורמה)",
+    google: "video_views",
+  },
+  note: "2 שניות זה גלילה, לא צפייה. הן לא נספרות.",
+};

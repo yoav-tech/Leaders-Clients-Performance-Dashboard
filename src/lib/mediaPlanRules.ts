@@ -56,7 +56,13 @@ export const CHANNEL_LABEL: Record<AdChannel, string> = { meta: PLATFORMS.meta.l
 // The single KPI a client type is planned against. ROAS is higher-is-better; every other one is
 // a cost per outcome, so lower is better — performanceIndex() normalises that away.
 export type PlanKpi = "roas" | "cpv" | "cpl" | "cpi" | "cpm";
-export const KPI_LABEL: Record<PlanKpi, string> = { roas: "ROAS", cpv: "CPV", cpl: "CPL", cpi: "CPI", cpm: "CPM" };
+export const KPI_LABEL: Record<PlanKpi, string> = {
+  roas: "ROAS",
+  cpv: "CPV · עלות לצפיית 15 שניות (ThruPlay)",
+  cpl: "CPL",
+  cpi: "CPI",
+  cpm: "CPM",
+};
 export const KPI_HIGHER_IS_BETTER: Record<PlanKpi, boolean> = { roas: true, cpv: false, cpl: false, cpi: false, cpm: false };
 // Is this KPI counted in real conversions? The 50-conversions minimum only means something when
 // it is — a video view or an impression is not a learning event you can budget 50 of.
@@ -108,6 +114,11 @@ export const PROFILES: Record<CampaignProfile, ProfileRules> = {
     ],
   },
   views: {
+    // The KPI is the cost of a QUALIFIED view — Meta ThruPlay (15s or completion), TikTok 6s,
+    // Google video_views — not a 2-second scroll past. Two more numbers are read alongside it
+    // and reported on every line, because a cheap view that nobody finishes is not a result:
+    //   • שיעור צפייה (view rate) = qualified views ÷ impressions — should be trending UP
+    //   • צפייה מלאה (completion) = 100% completions ÷ qualified views
     label: "צפיות וחשיפה",
     kpi: "cpv",
     channelDefaults: { meta: "video_views", tiktok: "video_views", google: "video_views" },
