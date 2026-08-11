@@ -63,8 +63,9 @@ for every client and stores it as a **draft** — it never mails a client on its
 - **Allocation:** two levels, in that order — how much each **funnel stage** gets (recent spend
   tilted by performance, inside the stage's band), then how that splits across the **channels**
   running it. A cell only moves money on its own performance once it clears the data-sufficiency
-  bar; lines under their platform's minimum monthly budget are folded away; everything rounds
-  to ₪50. The
+  bar; a line that cannot buy 50 conversions at its own cost per conversion is folded away
+  (₪15k per platform when there is no history, so ₪30k is what two platforms cost); everything
+  rounds to ₪50. The
   per-channel rates come from `daily_metrics`; Windsor campaign names supply only the funnel
   split, so a Windsor outage degrades the plan to channel level instead of failing.
 - **Rationale:** written by Claude from the plan's own numbers when `ANTHROPIC_API_KEY` is set;

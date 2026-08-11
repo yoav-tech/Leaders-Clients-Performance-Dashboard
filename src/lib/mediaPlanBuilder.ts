@@ -25,6 +25,7 @@ import { shiftDate } from "./dates";
 import {
   CHANNEL_LABEL,
   GUARDRAILS,
+  MIN_BUDGET_RULE,
   RULES_VERSION,
   STAGE_LABEL,
   classifyStage,
@@ -247,6 +248,13 @@ function kpiTarget(profile: CampaignProfile, brand: BrandConfig): number | null 
   }
 }
 
+// What one conversion costs on this channel, by the profile's KPI. This is what the minimum-line
+// rule is priced against: 50 of these is the smallest budget worth planning.
+function costPerConversion(profile: CampaignProfile, s: ChannelStats): number | null {
+  const conv = conversionsOf(profile, s);
+  return conv > 0 ? s.spend / conv : null;
+}
+
 // The conversion count behind a KPI — the data-sufficiency test needs the denominator, not the ratio.
 function conversionsOf(profile: CampaignProfile, s: ChannelStats): number {
   switch (profileRules(profile).kpi) {
@@ -366,6 +374,7 @@ interface Cell {
   eff: number; // performance vs target, clamped (1 = neutral)
   trusted: boolean; // did the cell clear the data-sufficiency bar?
   seeded: boolean; // opened by the rules rather than observed in the data
+  floor: number; // the smallest monthly budget worth planning here (50 × cost per conversion)
   stats: ChannelStats; // the channel's rates, used for the forecast
   roasIndex: number | null;
 }
@@ -439,7 +448,7 @@ function toBudgets(cells: Cell[], shares: number[], total: number): number[] {
   for (let guard = 0; guard < cells.length; guard++) {
     const candidates = live
       .map((s, i) => ({ i, budget: s * total }))
-      .filter((x) => x.budget > 0 && x.budget < minLineBudgetFor(cells[x.i].channel));
+      .filter((x) => x.budget > 0 && x.budget < cells[x.i].floor);
     if (!candidates.length) break;
     const drop = candidates.sort((a, b) => a.budget - b.budget)[0].i;
     const freed = live[drop];
@@ -580,7 +589,11 @@ export async function buildMediaPlan(
         : kpiOf(profile, s);
       const cellIndex = trusted ? performanceIndex(rules.kpi, cellKpi, target) : null;
       const eff = clamp(cellIndex ?? 1, GUARDRAILS.efficiency.min, GUARDRAILS.efficiency.max);
-      cells.push({ channel: c.id, stage, prevSpend, weight: prevSpend * eff, eff, trusted, seeded: false, stats: s, roasIndex: sp.roasIndex });
+      cells.push({
+        channel: c.id, stage, prevSpend, weight: prevSpend * eff, eff, trusted, seeded: false,
+        floor: minLineBudgetFor(c.id, profile, costPerConversion(profile, s)),
+        stats: s, roasIndex: sp.roasIndex,
+      });
     }
   }
 
@@ -603,6 +616,7 @@ export async function buildMediaPlan(
         eff: 1,
         trusted: false,
         seeded: true,
+        floor: minLineBudgetFor(best.id, profile, costPerConversion(profile, stats.get(best.id) ?? emptyStats(best.id))),
         stats: stats.get(best.id) ?? emptyStats(best.id),
         roasIndex: null,
       });
@@ -624,6 +638,7 @@ export async function buildMediaPlan(
         eff: 1,
         trusted: false,
         seeded: true,
+        floor: minLineBudgetFor(candidates[0].id, profile, null), // no history → the no-data floor
         stats: stats.get(candidates[0].id) ?? emptyStats(candidates[0].id),
         roasIndex: null,
       });
@@ -657,9 +672,11 @@ export async function buildMediaPlan(
     .filter((l) => l.budget > 0) // lines folded away by the minimum-budget rule
     .sort((a, b) => order.indexOf(a.stage) - order.indexOf(b.stage) || b.budget - a.budget);
 
-  const reason = season.factor === 1
-    ? step.label
-    : `${step.label} · התאמה עונתית ל${season.note}: ×${season.factor}`;
+  const reason = season.enabled && season.factor !== 1
+    ? `${step.label} · התאמה עונתית ל${season.note}: ×${season.factor}`
+    : season.note
+      ? `${step.label} · ${season.note} (העונתיות כבויה — לא הוחלה על התקציב)`
+      : step.label;
 
   const draft: MediaPlanDraft = {
     brandId: brand.id,
@@ -688,7 +705,7 @@ export async function buildMediaPlan(
       }),
     },
   };
-  draft.rationale = baseRationale(draft);
+  draft.rationale = baseRationale(draft, lookbackSpend);
   return draft;
 }
 
@@ -704,7 +721,7 @@ function lineNote(c: Cell, deltaPct: number | null): string {
 
 // Deterministic bullets, straight from the plan's own numbers. The LLM narrative
 // (mediaPlanNarrative.ts) replaces these when ANTHROPIC_API_KEY is configured.
-function baseRationale(d: MediaPlanDraft): string[] {
+function baseRationale(d: MediaPlanDraft, lookbackSpend: number): string[] {
   const ils = (v: number) => `₪${Math.round(v).toLocaleString("en-US")}`;
   const out: string[] = [];
   out.push(
@@ -720,6 +737,14 @@ function baseRationale(d: MediaPlanDraft): string[] {
   }
   for (const l of d.lines.filter((l) => (l.deltaPct ?? 0) <= -10).slice(0, 2)) {
     out.push(`הפחתה ב-${l.channelLabel} · ${l.stageLabel}: ${ils(l.prevSpend)} → ${ils(l.budget)}.`);
+  }
+  // The two-platform rule: with no cost-per-conversion history, each platform needs its no-data
+  // floor. A budget under the pair's cost simply cannot be spread across two platforms.
+  if (lookbackSpend <= 0 && d.totalBudget > 0 && d.totalBudget < MIN_BUDGET_RULE.twoPlatformMinimum) {
+    out.push(
+      `אין היסטוריית עלות להמרה, והתקציב (${ils(d.totalBudget)}) נמוך מ-${ils(MIN_BUDGET_RULE.twoPlatformMinimum)} — ` +
+        "לא מספיק לשתי פלטפורמות. הפריסה מרכזת אותו בפלטפורמה אחת.",
+    );
   }
   if (d.basis.stageSource === "channel-only") out.push("פילוח הפאנל לא היה זמין מנתוני הקמפיינים — הפריסה ברמת ערוץ בלבד.");
   return out;

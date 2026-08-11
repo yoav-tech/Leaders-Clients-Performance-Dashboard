@@ -18,7 +18,7 @@
 // Numbers marked [PROPOSED] are defaults chosen to be defensible, NOT Leaders methodology.
 // They are meant to be replaced by the team's own figures before the automation is switched on.
 import type { CampaignProfile } from "./brands";
-import { PLATFORMS, isIngested, platformRules, type AdChannel, type Platform } from "./platformRules";
+import { MIN_BUDGET_RULE, PLATFORMS, isIngested, minLineBudget, type AdChannel, type Platform } from "./platformRules";
 
 export type { AdChannel, Platform };
 
@@ -58,6 +58,9 @@ export const CHANNEL_LABEL: Record<AdChannel, string> = { meta: PLATFORMS.meta.l
 export type PlanKpi = "roas" | "cpv" | "cpl" | "cpi" | "cpm";
 export const KPI_LABEL: Record<PlanKpi, string> = { roas: "ROAS", cpv: "CPV", cpl: "CPL", cpi: "CPI", cpm: "CPM" };
 export const KPI_HIGHER_IS_BETTER: Record<PlanKpi, boolean> = { roas: true, cpv: false, cpl: false, cpi: false, cpm: false };
+// Is this KPI counted in real conversions? The 50-conversions minimum only means something when
+// it is — a video view or an impression is not a learning event you can budget 50 of.
+export const KPI_IS_CONVERSION: Record<PlanKpi, boolean> = { roas: true, cpl: true, cpi: true, cpv: false, cpm: false };
 
 // ---------------------------------------------------------------- 1. funnel stages per client type
 
@@ -213,6 +216,11 @@ export const SCALE_LADDER: ScaleStep[] = [
 //
 // Seasonality only moves the RECOMMENDED budget. A client on a fixed monthly budget is never
 // moved by it — the plan just shows what the recommendation would have been.
+//
+// OFF until the media team confirms they want it. While off, the month's character is still
+// carried into the plan as a note (so a November plan says Black Friday is coming) but no
+// number moves. Flip to true to let the factors apply.
+export const SEASONALITY_ENABLED = false;
 export const SEASONALITY: Record<string, { factor: number; note: string }> = {
   "01": { factor: 0.9, note: "ינואר · שפל אחרי החגים, מבצעי סוף עונה" },
   "02": { factor: 1.0, note: "פברואר · ולנטיין (14.2), משקל בינוני בישראל" },
@@ -255,11 +263,10 @@ export interface Guardrails {
   // the best-suited channel — which is what makes a plan a recommendation rather than a mirror
   // of last month. Seeded lines are marked in the output and are still subject to minLineBudget.
   openMissingStages: boolean;
-  // Fallback floor for a line whose platform has no rule of its own. The real floor is
-  // per-platform (platformRules(p).minLineBudget) — ₪1,500 on Meta buys a different amount of
-  // learning than ₪1,500 on LinkedIn. A line under its platform's floor is folded into the rest
-  // of its stage instead of being planned as a token amount.
-  minLineBudget: number; // ILS per month
+  // (The per-line floor is not here — it is derived from the learning-phase requirement,
+  // MIN_BUDGET_RULE in platformRules.ts: 50 conversions × that cell's own cost per conversion.
+  // A line under its floor is folded into the rest of its stage rather than planned as a token
+  // amount.)
   roundTo: number; // ILS, all line budgets round to this
   maxScaleUp: number; // hard ceiling on the monthly scale factor
   maxScaleDown: number; // hard floor
@@ -272,7 +279,6 @@ export const GUARDRAILS: Guardrails = {
   efficiency: { min: 0.6, max: 1.5 },
   withinStageChannelShare: { min: 0.15, max: 0.85 },
   openMissingStages: true,
-  minLineBudget: 1000,
   roundTo: 50,
   maxScaleUp: 1.2,
   maxScaleDown: 0.85,
@@ -320,10 +326,6 @@ export function runnableChannels(profile: CampaignProfile, stage: FunnelStage): 
   return (stageRule(profile, stage)?.channels ?? []).filter(isIngested);
 }
 
-// The monthly budget below which a line on this platform cannot realistically run.
-export function minLineBudgetFor(channel: AdChannel): number {
-  return platformRules(channel).minLineBudget || GUARDRAILS.minLineBudget;
-}
 
 // Where a channel's unclassifiable campaigns land: the client type's explicit default when the
 // channel can run it, otherwise the first stage the rules allow that channel. null means this
@@ -365,6 +367,15 @@ export function scaleStepFor(index: number | null): ScaleStep {
   return { ...step, factor: Math.min(GUARDRAILS.maxScaleUp, Math.max(GUARDRAILS.maxScaleDown, step.factor)) };
 }
 
-export function seasonalityFor(month: string): { factor: number; note: string } {
-  return SEASONALITY[month.slice(5, 7)] ?? { factor: 1, note: "" };
+export function seasonalityFor(month: string): { factor: number; note: string; enabled: boolean } {
+  const s = SEASONALITY[month.slice(5, 7)] ?? { factor: 1, note: "" };
+  return { factor: SEASONALITY_ENABLED ? s.factor : 1, note: s.note, enabled: SEASONALITY_ENABLED };
 }
+
+// The monthly floor for a line: 50 conversions at that cell's own cost per conversion, with the
+// documented fallbacks. See MIN_BUDGET_RULE.
+export function minLineBudgetFor(channel: AdChannel, profile: CampaignProfile, costPerConversion: number | null): number {
+  return minLineBudget(channel, costPerConversion, KPI_IS_CONVERSION[PROFILES[profile].kpi]);
+}
+
+export { MIN_BUDGET_RULE };

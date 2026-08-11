@@ -23,7 +23,7 @@ import {
   scaleStepFor,
   type FunnelStage,
 } from "../src/lib/mediaPlanRules";
-import { BUDGET_TIERS, PLATFORMS, isIngested } from "../src/lib/platformRules";
+import { BUDGET_TIERS, MIN_BUDGET_RULE, PLATFORMS, isIngested, minLineBudget } from "../src/lib/platformRules";
 
 const MONTH = process.argv[2] ?? "2026-09";
 
@@ -82,8 +82,8 @@ async function main() {
   for (const [id, p] of Object.entries(PLATFORMS)) {
     ok(p.id === id, `${id}: id matches its key`);
     ok(p.label.trim().length > 0, `${id}: has a label`);
-    ok(p.minLineBudget > 0, `${id}: has a minimum line budget`);
-    ok(p.healthyLineBudget >= p.minLineBudget, `${id}: healthy budget is not below the minimum`);
+    ok(p.noDataFloor > 0 && p.viewKpiFloor > 0, `${id}: has both fallback floors`);
+    ok(p.healthyLineBudget >= p.viewKpiFloor, `${id}: healthy budget is not below the view-KPI floor`);
     ok(p.benchmarks.length > 0, `${id}: has benchmarks to read results against`);
     ok(p.benchmarks.every((b) => b.label && b.good), `${id}: every benchmark names a metric and a range`);
     ok(p.scaling.maxStepPct > 0 && p.scaling.maxStepPct <= 50, `${id}: scaling step is sane`);
@@ -168,10 +168,6 @@ async function main() {
     if (p.lines.length && p.totalBudget > 0) ok(Math.abs(shares - 100) < 1.5, `${b.id}: shares ≈ 100% (got ${shares})`);
 
     // Guardrails the plan must never violate.
-    ok(
-      p.lines.every((l) => l.budget >= GUARDRAILS.minLineBudget || l.budget === 0),
-      `${b.id}: no line under the ₪${GUARDRAILS.minLineBudget} minimum`,
-    );
     ok(p.lines.every((l) => l.budget % GUARDRAILS.roundTo === 0), `${b.id}: every line rounds to ₪${GUARDRAILS.roundTo}`);
     ok(p.lines.every((l) => profileStages(p.profile).includes(l.stage)), `${b.id}: every line's stage belongs to the profile`);
     ok(p.scale.factor <= GUARDRAILS.maxScaleUp && p.scale.factor >= GUARDRAILS.maxScaleDown * 1.0, `${b.id}: scale factor inside the guardrails`);
@@ -195,6 +191,21 @@ async function main() {
       `  ${b.id.padEnd(14)} ${String(p.profile).padEnd(10)} ${p.budgetSource.padEnd(8)} ₪${p.totalBudget.toLocaleString("en-US").padStart(9)}  ${p.lines.length} lines`,
     );
   }
+
+  // The minimum-line rule: 50 conversions at the cell's own cost per conversion, with the two
+  // documented fallbacks.
+  console.log("— minimum line budget —");
+  ok(minLineBudget("meta", 120, true) === 6000, "₪120 CPA → ₪6,000 floor (50 × 120)");
+  ok(minLineBudget("meta", 400, true) === 20000, "₪400 CPA → ₪20,000 floor");
+  ok(minLineBudget("meta", null, true) === 15000, "no cost-per-conversion → the ₪15k no-data floor");
+  ok(minLineBudget("meta", 0, true) === 15000, "a zero cost per conversion is treated as no data");
+  ok(minLineBudget("linkedin", null, true) === 15000, "no-data floor is the same across platforms");
+  ok(
+    minLineBudget("meta", null, true) * 2 === MIN_BUDGET_RULE.twoPlatformMinimum,
+    `two no-data platforms must cost ₪${MIN_BUDGET_RULE.twoPlatformMinimum}`,
+  );
+  ok(minLineBudget("meta", 0.03, false) === PLATFORMS.meta.viewKpiFloor, "a view KPI uses the operational floor, not 50 × CPV");
+  ok(MIN_BUDGET_RULE.conversions === 50, "the rule is 50 conversions");
 
   console.log("— manager budget override —");
   const argania = BRANDS.find((b) => b.id === "argania")!;

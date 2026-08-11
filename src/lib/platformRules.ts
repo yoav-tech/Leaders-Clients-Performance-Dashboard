@@ -41,9 +41,18 @@ export interface PlatformRules {
   ingested: boolean;
 
   // --- what it costs to be there ---
-  // A funnel-stage line below this cannot realistically run on this platform, so the plan folds
-  // it away rather than planning a token amount.
-  minLineBudget: number; // ILS/month
+  // The floor for a line on this platform is NOT a fixed number — it is derived from the
+  // learning-phase requirement: enough budget to buy `learning.conversions` conversions at the
+  // cell's own cost per conversion (see MIN_BUDGET_RULE). These two numbers only apply when
+  // that cannot be computed.
+  //
+  // noDataFloor — a client with no cost-per-conversion history yet. Per the agency rule: ₪30k
+  // buys two platforms, so ₪15k is one platform's share.
+  noDataFloor: number; // ILS/month
+  // viewKpiFloor — a client planned on a view/impression KPI (CPV, CPM). "50 conversions" is not
+  // a meaningful bar there: 50 video views costs a few shekels. This is the operational floor
+  // instead — roughly what the platform needs per day to deliver at all.
+  viewKpiFloor: number; // ILS/month
   // The budget at which the platform's automation actually has room to work.
   healthyLineBudget: number; // ILS/month
 
@@ -83,7 +92,8 @@ const META: PlatformRules = {
   label: "Meta",
   connector: "facebook",
   ingested: true,
-  minLineBudget: 1500, // [DERIVED] ~₪50/day — the playbook's "manual campaigns when budget <$50/day"
+  noDataFloor: 15000, // [AGENCY] ₪30k מספיק לשתי פלטפורמות → ₪15k לפלטפורמה
+  viewKpiFloor: 1500, // [DERIVED] ~₪50/day — הספר: "manual campaigns when budget <$50/day"
   healthyLineBudget: 9000, // [DERIVED] ~₪300/day ≈ $100/day, the Advantage+ threshold [PLAYBOOK]
   learning: {
     conversions: 50,
@@ -117,7 +127,8 @@ const GOOGLE: PlatformRules = {
   label: "Google",
   connector: "google_ads",
   ingested: true,
-  minLineBudget: 1500, // [DERIVED] ~₪50/day — under ~$15/day a campaign burns out by noon [PLAYBOOK]
+  noDataFloor: 15000, // [AGENCY]
+  viewKpiFloor: 1500, // [DERIVED] מתחת ל-~$15/יום הקמפיין נגמר בצהריים [ספר]
   healthyLineBudget: 3600, // [DERIVED] ~₪120/day ≈ $40/day, the playbook's healthy campaign budget
   learning: {
     conversions: 30,
@@ -153,7 +164,8 @@ const TIKTOK: PlatformRules = {
   label: "TikTok",
   connector: "tiktok",
   ingested: true,
-  minLineBudget: 1800, // [DERIVED] ~₪60/day — TikTok's own ad-group minimum is ~$20/day
+  noDataFloor: 15000, // [AGENCY]
+  viewKpiFloor: 1800, // [DERIVED] ~₪60/day — המינימום של TikTok לאד-גרופ הוא ~$20/יום
   healthyLineBudget: 6000, // [DERIVED] ~₪200/day
   learning: {
     conversions: 50,
@@ -185,7 +197,8 @@ const LINKEDIN: PlatformRules = {
   label: "LinkedIn",
   connector: "linkedin", // Windsor connector exists; not yet connected for Leaders
   ingested: false,
-  minLineBudget: 3000, // [DERIVED] CPL $50–150 → ~10 לידים בחודש דורשים $500–1,500
+  noDataFloor: 15000, // [AGENCY]
+  viewKpiFloor: 3000, // [DERIVED] הפלטפורמה היקרה ביותר
   healthyLineBudget: 9000, // [DERIVED]
   learning: {
     conversions: null,
@@ -215,7 +228,8 @@ const REDDIT: PlatformRules = {
   label: "Reddit",
   connector: "reddit", // not yet connected for Leaders
   ingested: false,
-  minLineBudget: 1000, // [DERIVED] CPC נמוך — נכנסים בזול, אבל מתחת לזה אין נפח ללמוד ממנו
+  noDataFloor: 15000, // [AGENCY]
+  viewKpiFloor: 1000, // [DERIVED] CPC נמוך — נכנסים בזול
   healthyLineBudget: 4500, // [DERIVED]
   learning: {
     conversions: null,
@@ -249,6 +263,36 @@ export const PLATFORMS: Record<Platform, PlatformRules> = {
 
 export function platformRules(p: Platform): PlatformRules {
   return PLATFORMS[p];
+}
+
+// ---------------------------------------------------------------- the minimum-budget rule
+
+// [AGENCY] How little money a funnel-stage line may be planned with.
+//
+// The floor is not a fixed number — it is the learning-phase requirement expressed in money:
+// a line must be able to buy `conversions` conversions at that cell's own cost per conversion.
+// ₪120 CPA → ₪6,000; ₪400 CPA → ₪20,000. Same rule, different client, different floor.
+//
+// Two fallbacks, for the cases where a cost per conversion cannot be computed:
+//   • no history at all → the platform's noDataFloor (₪15k; ₪30k buys two platforms)
+//   • a view/impression KPI (CPV, CPM) → the platform's viewKpiFloor. "50 conversions" means
+//     nothing when a conversion is a video view — 50 of those cost a few shekels. [ASSUMPTION:
+//     the 50× rule was given for conversion clients; this is how it is applied to views clients,
+//     and it is the one part of this rule still open for the team to confirm.]
+export const MIN_BUDGET_RULE = {
+  conversions: 50,
+  twoPlatformMinimum: 30000, // ILS — the no-history budget that supports two platforms
+  note: "מינימום לשורה = 50 המרות × עלות להמרה בפועל של אותו תא. בלי היסטוריה: ₪30,000 לשתי פלטפורמות (₪15,000 לפלטפורמה).",
+};
+
+// The monthly floor for a line, given what it costs that cell to buy a conversion.
+//   costPerConversion — the cell's own cost per conversion (ILS), or null when unknown
+//   isConversionKpi   — false for view/impression KPIs, where the 50× rule does not apply
+export function minLineBudget(platform: Platform, costPerConversion: number | null, isConversionKpi: boolean): number {
+  const p = PLATFORMS[platform];
+  if (!isConversionKpi) return p.viewKpiFloor;
+  if (costPerConversion == null || costPerConversion <= 0) return p.noDataFloor;
+  return MIN_BUDGET_RULE.conversions * costPerConversion;
 }
 
 // ---------------------------------------------------------------- cross-platform allocation
