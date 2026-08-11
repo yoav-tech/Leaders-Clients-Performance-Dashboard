@@ -344,13 +344,22 @@ export const ACTION_THRESHOLDS = [
   { signal: "אחוז הצפייה המלאה יורד", action: "המסר לא מחזיק — לקצר או לשנות מבנה, לא להוסיף תקציב" },
 ];
 
-// [AGENCY] How a views account is actually judged. The cost KPI decides the allocation; the two
-// rates decide whether that cost bought anything worth having.
+// [AGENCY] How a views account is judged — and, just as important, which of these numbers is
+// allowed to move money.
+//
+// Cost per 15-second view is the MEDIA target: it is measurable, it is what the campaign is
+// optimised toward, and it is the event that takes a campaign out of its learning phase. That is
+// the number the allocation runs on.
+//
+// Completion rate is a CREATIVE verdict, not a budget lever. It says whether the content and the
+// creative worked — a piece nobody finishes is a content problem, and the answer is a different
+// edit, not a different budget. It is measured and reported on every line and never enters the
+// allocation.
 export const VIEWS_MEASUREMENT = {
-  primary: "עלות לצפיית 15 שניות (ThruPlay) — זה ה-KPI שהתקציב נפרס לפיו",
-  quality: [
+  budgetKpi: "עלות לצפיית 15 שניות (ThruPlay) — יעד מדיד, וזה גם האירוע שמוציא קמפיין מלמידה",
+  creativeSignals: [
+    "צפייה מלאה = 100% ÷ צפיות מוכשרות. **מגדירה הצלחה של תוכן וקריאייטיב, לא הקצאת תקציב** — התשובה לצפייה מלאה נמוכה היא עריכה אחרת, לא תקציב אחר.",
     "שיעור צפייה = צפיות מוכשרות ÷ חשיפות. הכיוון חשוב מהערך — הוא צריך לטפס.",
-    "צפייה מלאה = 100% ÷ צפיות מוכשרות. צפייה זולה שאף אחד לא מסיים אינה תוצאה.",
   ],
   qualifiedView: {
     meta: "ThruPlay — 15 שניות או סיום, המוקדם מביניהם",
@@ -358,4 +367,20 @@ export const VIEWS_MEASUREMENT = {
     google: "video_views",
   },
   note: "2 שניות זה גלילה, לא צפייה. הן לא נספרות.",
+};
+
+// [AGENCY] What a 15-second view should cost, by vertical. This is the range a views client's
+// `targetCpv` must be set from — the scale ladder is meaningless without it.
+//
+// The spread is wide and it is the vertical that drives it: a high-consideration category with
+// a small, expensive audience costs several times what an everyday consumer category costs.
+export const CPV15_BENCHMARK = {
+  min: 0.03,
+  max: 0.16,
+  byVertical: [
+    { vertical: "טיפוח, יופי ומוצרי צריכה", range: "₪0.03–0.05", note: "הקצה הזול — קהל רחב, תוכן שנצרך בקלות" },
+    { vertical: "אופנה, קמעונאות, פנאי", range: "₪0.05–0.09", note: "" },
+    { vertical: "רכב, פיננסים, B2B ונישות יקרות", range: "₪0.10–0.16", note: "הקצה היקר — קהל צר ושיקול רכישה ארוך" },
+  ],
+  note: "עלות לצפיית 15 שניות נעה בין ₪0.03 ל-₪0.16 לפי תחום. לקבוע targetCpv לכל לקוח מהטבלה — בלי יעד, סולם הסקייל תמיד יוצא ×1.",
 };

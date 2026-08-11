@@ -65,7 +65,9 @@ export const KPI_LABEL: Record<PlanKpi, string> = {
 };
 export const KPI_HIGHER_IS_BETTER: Record<PlanKpi, boolean> = { roas: true, cpv: false, cpl: false, cpi: false, cpm: false };
 // Is this KPI counted in real conversions? The 50-conversions minimum only means something when
-// it is — a video view or an impression is not a learning event you can budget 50 of.
+// it is. A 15-second view IS the optimisation event for a views campaign — but at ₪0.03–0.16 a
+// view (CPV15_BENCHMARK), 50 of them cost ₪1.50–₪8. The learning phase is simply not the binding
+// constraint there; delivery is, so those clients get an operational floor instead.
 export const KPI_IS_CONVERSION: Record<PlanKpi, boolean> = { roas: true, cpl: true, cpi: true, cpv: false, cpm: false };
 
 // ---------------------------------------------------------------- 1. funnel stages per client type
@@ -115,10 +117,14 @@ export const PROFILES: Record<CampaignProfile, ProfileRules> = {
   },
   views: {
     // The KPI is the cost of a QUALIFIED view — Meta ThruPlay (15s or completion), TikTok 6s,
-    // Google video_views — not a 2-second scroll past. Two more numbers are read alongside it
-    // and reported on every line, because a cheap view that nobody finishes is not a result:
-    //   • שיעור צפייה (view rate) = qualified views ÷ impressions — should be trending UP
-    //   • צפייה מלאה (completion) = 100% completions ÷ qualified views
+    // Google video_views — not a 2-second scroll past. It is the media target: measurable,
+    // optimised toward, and the event that takes a campaign out of learning.
+    //
+    // Two more numbers are reported on every line but deliberately do NOT enter the allocation:
+    //   • צפייה מלאה (completion) = 100% ÷ qualified views. This is a verdict on the CREATIVE,
+    //     not on the budget — a piece nobody finishes needs a different edit, not different
+    //     money, so it never moves a shekel.
+    //   • שיעור צפייה (view rate) = qualified views ÷ impressions — should be trending UP.
     label: "צפיות וחשיפה",
     kpi: "cpv",
     channelDefaults: { meta: "video_views", tiktok: "video_views", google: "video_views" },

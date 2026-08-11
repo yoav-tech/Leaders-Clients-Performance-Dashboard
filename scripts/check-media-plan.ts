@@ -23,7 +23,7 @@ import {
   scaleStepFor,
   type FunnelStage,
 } from "../src/lib/mediaPlanRules";
-import { BUDGET_TIERS, MIN_BUDGET_RULE, PLATFORMS, isIngested, minLineBudget } from "../src/lib/platformRules";
+import { BUDGET_TIERS, CPV15_BENCHMARK, MIN_BUDGET_RULE, PLATFORMS, VIEWS_MEASUREMENT, isIngested, minLineBudget } from "../src/lib/platformRules";
 
 const MONTH = process.argv[2] ?? "2026-09";
 
@@ -92,6 +92,21 @@ async function main() {
     ok(!p.ingested || Boolean(p.connector), `${id}: an ingested platform names its Windsor connector`);
   }
   ok(Math.abs(BUDGET_TIERS.reduce((s, t) => s + t.share, 0) - 1) < 0.001, "budget tiers sum to 100%");
+
+  // A views client's target is a cost per 15-second view. A value outside the agency's range is
+  // almost always a unit mistake (cost per any view, or per 1,000 views) and would silently
+  // freeze the scale ladder at ×1.
+  ok(CPV15_BENCHMARK.min < CPV15_BENCHMARK.max, "the CPV15 benchmark is a range");
+  ok(CPV15_BENCHMARK.byVertical.length > 0, "the CPV15 benchmark names verticals");
+  for (const b of BRANDS) {
+    if (b.targetCpv == null) continue;
+    ok(
+      b.targetCpv >= CPV15_BENCHMARK.min && b.targetCpv <= CPV15_BENCHMARK.max,
+      `${b.id}: targetCpv ${b.targetCpv} is outside the ₪${CPV15_BENCHMARK.min}–${CPV15_BENCHMARK.max} range for a 15-second view`,
+    );
+  }
+  // Completion rate is a creative verdict, never an allocation input.
+  ok(VIEWS_MEASUREMENT.creativeSignals.length >= 2, "the views doctrine records its creative signals");
 
   // A stage may name a platform we do not ingest (LinkedIn, Reddit) — the doctrine records where
   // it belongs. But every profile must still have somewhere to actually plan.
