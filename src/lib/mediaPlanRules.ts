@@ -104,6 +104,8 @@ export interface ProfileRules {
 // defaultShare within a profile should sum to 1.
 export const PROFILES: Record<CampaignProfile, ProfileRules> = {
   ecommerce: {
+    // The KPI is ROAS, and it has a floor: MIN_TARGET_ROAS. A client may be held to more than
+    // that, never to less — a plan is not built toward a goal the agency would not commit to.
     label: "איקומרס · ROAS",
     kpi: "roas",
     channelDefaults: { meta: "prospecting", tiktok: "prospecting", google: "generic_search" },
@@ -212,6 +214,19 @@ export interface ScaleStep {
   minIndex: number; // performance vs target (1 = exactly on goal); step applies at or above it
   factor: number; // multiplier on last month's actual spend
   label: string; // Hebrew explanation, quoted verbatim in the plan's rationale
+}
+
+// [AGENCY] The lowest ROAS target an ecommerce client may be planned against. A configured
+// target below this is treated as a config error: the check script fails on it, and the builder
+// plans against 2.4 anyway rather than optimising toward a goal the agency would not stand
+// behind — saying so in the plan's rationale so the substitution is never silent.
+export const MIN_TARGET_ROAS = 2.4;
+
+// The ROAS target actually used: whatever is configured, but never below the floor. Returns null
+// when nothing is configured (the scale ladder then holds the budget flat).
+export function effectiveRoasTarget(configured: number | null | undefined): { target: number | null; raised: boolean } {
+  if (configured == null || configured <= 0) return { target: null, raised: false };
+  return configured < MIN_TARGET_ROAS ? { target: MIN_TARGET_ROAS, raised: true } : { target: configured, raised: false };
 }
 
 // [PROPOSED] Read top-down; the first step whose minIndex is met applies. Deliberately

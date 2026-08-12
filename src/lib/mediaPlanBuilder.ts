@@ -30,6 +30,8 @@ import {
   STAGE_LABEL,
   classifyStage,
   defaultStageFor,
+  effectiveRoasTarget,
+  MIN_TARGET_ROAS,
   performanceIndex,
   profileRules,
   profileStages,
@@ -113,6 +115,7 @@ export interface MediaPlanDraft {
   baselineBudget: number; // previous full month's actual spend
   recommendedBudget: number;
   scale: ScaleDecision;
+  roasFloorApplied: boolean; // the configured ROAS target was below MIN_TARGET_ROAS
   lines: PlanLine[];
   rationale: string[];
   basis: PlanBasis;
@@ -245,7 +248,7 @@ function kpiOf(profile: CampaignProfile, s: ChannelStats): number | null {
 
 function kpiTarget(profile: CampaignProfile, brand: BrandConfig): number | null {
   switch (profileRules(profile).kpi) {
-    case "roas": return brand.targetRoas > 0 ? brand.targetRoas : null;
+    case "roas": return effectiveRoasTarget(brand.targetRoas).target;
     case "cpv": return brand.targetCpv ?? null;
     case "cpl": return brand.targetCpl ?? null;
     case "cpi": return brand.targetCpi ?? null;
@@ -680,6 +683,7 @@ export async function buildMediaPlan(
     .filter((l) => l.budget > 0) // lines folded away by the minimum-budget rule
     .sort((a, b) => order.indexOf(a.stage) - order.indexOf(b.stage) || b.budget - a.budget);
 
+  const roasFloorRaised = profile === "ecommerce" && effectiveRoasTarget(brand.targetRoas).raised;
   const reason = season.enabled && season.factor !== 1
     ? `${step.label} · התאמה עונתית ל${season.note}: ×${season.factor}`
     : season.note
@@ -699,6 +703,7 @@ export async function buildMediaPlan(
     baselineBudget,
     recommendedBudget,
     scale: { factor: combinedFactor, scaleFactor: step.factor, seasonalFactor: season.factor, kpi: rules.kpi, kpiValue, kpiTarget: target, index, reason },
+    roasFloorApplied: roasFloorRaised,
     lines,
     rationale: [],
     basis: {
@@ -738,6 +743,9 @@ function baseRationale(d: MediaPlanDraft, lookbackSpend: number): string[] {
       : `תקציב מוצע של ${ils(d.totalBudget)} לחודש ${d.month}, מבוסס על ${ils(d.baselineBudget)} בחודש הקודם.`,
   );
   out.push(d.scale.reason);
+  if (d.roasFloorApplied) {
+    out.push(`יעד ה-ROAS המוגדר נמוך מהמינימום ${MIN_TARGET_ROAS} — הפריסה נבנתה מול ${MIN_TARGET_ROAS}.`);
+  }
   const top = d.lines[0];
   if (top) out.push(`הקצאה מובילה: ${top.channelLabel} · ${top.stageLabel} — ${ils(top.budget)} (${top.sharePct}%).`);
   for (const l of d.lines.filter((l) => (l.deltaPct ?? 0) >= 10).slice(0, 2)) {

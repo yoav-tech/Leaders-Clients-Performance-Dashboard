@@ -22,7 +22,10 @@ export interface BrandConfig {
   // Per-channel currency override, for when one platform's account bills in a
   // different currency than the rest (e.g. Seacret: Meta/Google USD, TikTok ILS).
   channelCurrency?: Partial<Record<ChannelKey, Currency>>;
-  targetRoas: number; // for green/red coloring
+  // Target ROAS. Never below MIN_TARGET_ROAS (2.4) — a plan is not built toward a goal the
+  // agency would not commit to; a lower value is treated as a config error and the builder plans
+  // against 2.4 anyway, saying so in the plan. Also drives the green/red colouring.
+  targetRoas: number;
   // Per-KPI targets for the campaign explorer's goal-based coloring (lower-is-better metrics).
   // Only the one matching the brand's profile is used. Tune per client; omit to skip coloring.
   // Views brands — cost per 15-second view (Meta ThruPlay / TikTok 6s), ILS. NOT cost per any

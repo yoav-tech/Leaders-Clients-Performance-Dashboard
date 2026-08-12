@@ -6,7 +6,7 @@
 // up to the plan total, shares summing to 100%, and every profile rendering an email.
 //
 // With SUPABASE_* set in .env.local this also exercises the real 90-day lookback.
-import { BRANDS } from "../src/lib/brands";
+import { BRANDS, campaignProfileOf } from "../src/lib/brands";
 import { buildMediaPlan, monthBounds, nextMonthOf, prevMonthOf } from "../src/lib/mediaPlanBuilder";
 import { monthLabel, planSubject, renderPlanHtml, renderPlanText } from "../src/lib/mediaPlanEmail";
 import {
@@ -17,6 +17,8 @@ import {
   STAGE_PATTERNS,
   classifyStage,
   defaultStageFor,
+  effectiveRoasTarget,
+  MIN_TARGET_ROAS,
   performanceIndex,
   profileStages,
   runnableChannels,
@@ -105,6 +107,19 @@ async function main() {
       `${b.id}: targetCpv ${b.targetCpv} is outside the ₪${CPV15_BENCHMARK.min}–${CPV15_BENCHMARK.max} range for a 15-second view`,
     );
   }
+  // An ecommerce client is never planned against a ROAS goal below the agency floor.
+  ok(MIN_TARGET_ROAS >= 2, `the ROAS floor (${MIN_TARGET_ROAS}) is a real target`);
+  ok(effectiveRoasTarget(2.0).target === MIN_TARGET_ROAS && effectiveRoasTarget(2.0).raised, "a target under the floor is raised to it");
+  ok(effectiveRoasTarget(3).target === 3 && !effectiveRoasTarget(3).raised, "a target above the floor is left alone");
+  ok(effectiveRoasTarget(0).target === null, "no target configured stays null");
+  for (const b of BRANDS) {
+    if (campaignProfileOf(b) !== "ecommerce") continue;
+    ok(
+      b.targetRoas >= MIN_TARGET_ROAS,
+      `${b.id}: targetRoas ${b.targetRoas} is below the ${MIN_TARGET_ROAS} floor`,
+    );
+  }
+
   // Completion rate is a creative verdict, never an allocation input.
   ok(VIEWS_MEASUREMENT.creativeSignals.length >= 2, "the views doctrine records its creative signals");
 
