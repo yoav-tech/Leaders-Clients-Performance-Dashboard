@@ -110,8 +110,13 @@ ALTER TABLE clickup_state FORCE  ROW LEVEL SECURITY;
 REVOKE ALL ON alerts_sent   FROM anon, authenticated;
 REVOKE ALL ON clickup_state FROM anon, authenticated;
 
--- Dashboard users for per-client access control. role=admin sees every brand; role=client is
--- scoped to brand_ids. A single client can have multiple user rows (share brand_ids).
+-- Dashboard users for per-client access control. Three roles:
+--   admin   — the team's shared login; sees every brand and the management consoles.
+--   manager — a Leaders-side brand manager, scoped to brand_ids. Sees the full dashboard for
+--             those brands, and is who that brand's reports and monthly media plan are emailed
+--             to (see recipients.ts — attaching a manager here is the only place that is set).
+--   client  — the client themselves, scoped to brand_ids, on the trimmed client view.
+-- role=admin sees every brand; manager/client are scoped to brand_ids. A single client can have multiple user rows (share brand_ids).
 -- password_hash is scrypt ("scrypt$N$r$p$salthex$hashhex"). Accessed only via service_role.
 -- Login is by username OR email. The team logs in as the reserved username "admin" (verified
 -- against DASHBOARD_PASSWORD, no row here). Clients are created by an admin with a username, then
@@ -125,7 +130,7 @@ CREATE TABLE IF NOT EXISTS dashboard_users (
   full_name     text,
   phone         text,
   password_hash text,                              -- NULL until the invited user sets their password
-  role          text NOT NULL DEFAULT 'client',   -- 'admin' | 'client'
+  role          text NOT NULL DEFAULT 'client',   -- 'admin' | 'manager' | 'client'
   brand_ids     text[] NOT NULL DEFAULT '{}',
   invited_by    uuid REFERENCES dashboard_users(id) ON DELETE CASCADE,  -- primary client; deleting them removes their team
   invited_at    timestamptz,                       -- set when created via invite, cleared on activation
@@ -135,3 +140,61 @@ CREATE TABLE IF NOT EXISTS dashboard_users (
 ALTER TABLE dashboard_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE dashboard_users FORCE  ROW LEVEL SECURITY;
 REVOKE ALL ON dashboard_users FROM anon, authenticated;
+
+-- ---- Monthly media plans ----
+-- Built automatically on the 24th for the NEXT calendar month, reviewed by a media manager,
+-- and only emailed to the client's account manager once approved. One row per (brand, month).
+--   lines     — the plan itself: one entry per channel × funnel stage (budget + forecast).
+--   basis     — the lookback window and per-cell history the allocation was derived from, so an
+--               approved plan stays explainable after the underlying data moves on.
+--   status    — draft (built, awaiting review) → approved (manager signed off) → sent (emailed).
+CREATE TABLE IF NOT EXISTS media_plans (
+  brand_id           text NOT NULL,
+  month              text NOT NULL,                     -- YYYY-MM the plan covers
+  status             text NOT NULL DEFAULT 'draft',     -- draft | approved | sent
+  profile            text NOT NULL DEFAULT 'ecommerce', -- ecommerce | views | leads | app | impshare
+  budget_source      text NOT NULL DEFAULT 'fixed',     -- fixed (client-set) | proposed (performance-derived)
+  total_budget       numeric NOT NULL DEFAULT 0,        -- the plan's budget (ILS); editable until approval
+  baseline_budget    numeric NOT NULL DEFAULT 0,        -- previous month's actual spend (ILS)
+  recommended_budget numeric NOT NULL DEFAULT 0,        -- what the scale model suggests (ILS)
+  lines              jsonb NOT NULL DEFAULT '[]'::jsonb,
+  rationale          jsonb NOT NULL DEFAULT '[]'::jsonb,
+  basis              jsonb NOT NULL DEFAULT '{}'::jsonb,
+  approved_by        text,
+  approved_at        timestamptz,
+  sent_to            text[] NOT NULL DEFAULT '{}',
+  sent_at            timestamptz,
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  updated_at         timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (brand_id, month)
+);
+DO $$ BEGIN
+  ALTER TABLE media_plans
+    ADD CONSTRAINT media_plans_status_chk CHECK (status IN ('draft','approved','sent'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_media_plans_month ON media_plans (month);
+ALTER TABLE media_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE media_plans FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON media_plans FROM anon, authenticated;
+
+-- ---- Unit economics per ecommerce client ----
+-- Where a client's ROAS target comes from: their own margin, fulfilment cost and how much of the
+-- contribution they are willing to spend acquiring an order. Collected from the client before the
+-- first media plan and re-confirmed when prices or costs move. One row per brand.
+CREATE TABLE IF NOT EXISTS brand_economics (
+  brand_id                  text PRIMARY KEY,
+  aov                       numeric NOT NULL,           -- ILS, ex-VAT
+  gross_margin_pct          numeric NOT NULL,           -- 0..1
+  shipping_per_order        numeric NOT NULL DEFAULT 0, -- ILS
+  payment_fee_pct           numeric NOT NULL DEFAULT 0, -- 0..1
+  other_variable_per_order  numeric NOT NULL DEFAULT 0, -- ILS
+  target_profit_share       numeric NOT NULL DEFAULT 0, -- 0..1, kept as profit rather than spent
+  ltv_multiple              numeric NOT NULL DEFAULT 1, -- >= 1, contribution over first order
+  source                    text,                       -- who at the client supplied these
+  notes                     text,
+  collected_at              timestamptz NOT NULL DEFAULT now(),
+  updated_at                timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE brand_economics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE brand_economics FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON brand_economics FROM anon, authenticated;

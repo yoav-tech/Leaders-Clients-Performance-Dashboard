@@ -1,7 +1,7 @@
 // Dashboard user records (per-client access control). Stored in Supabase `dashboard_users`,
 // surrogate uuid `id` PK (so username stays editable). Login is by username OR email. Node-only.
 import { getSupabase, hasDb } from "./db";
-import type { Role } from "./session";
+import { asRole, type Role } from "./session";
 
 // "admin" is the reserved team username (verified against DASHBOARD_PASSWORD, no DB row).
 export const RESERVED_USERNAMES = new Set(["admin"]);
@@ -41,7 +41,7 @@ function mapRow(d: Record<string, unknown>): DashboardUser {
     fullName: d.full_name == null ? null : String(d.full_name),
     phone: d.phone == null ? null : String(d.phone),
     passwordHash: d.password_hash == null ? null : String(d.password_hash),
-    role: d.role === "admin" ? "admin" : "client",
+    role: asRole(d.role),
     brandIds: Array.isArray(d.brand_ids) ? d.brand_ids.map(String) : [],
     invitedBy: d.invited_by == null ? null : String(d.invited_by),
   };

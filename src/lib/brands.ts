@@ -22,10 +22,17 @@ export interface BrandConfig {
   // Per-channel currency override, for when one platform's account bills in a
   // different currency than the rest (e.g. Seacret: Meta/Google USD, TikTok ILS).
   channelCurrency?: Partial<Record<ChannelKey, Currency>>;
-  targetRoas: number; // for green/red coloring
+  // Target ROAS. Never below MIN_TARGET_ROAS (2.4) — a plan is not built toward a goal the
+  // agency would not commit to; a lower value is treated as a config error and the builder plans
+  // against 2.4 anyway, saying so in the plan. Also drives the green/red colouring.
+  targetRoas: number;
   // Per-KPI targets for the campaign explorer's goal-based coloring (lower-is-better metrics).
   // Only the one matching the brand's profile is used. Tune per client; omit to skip coloring.
-  targetCpv?: number; // views brands — cost per view (ILS)
+  // Views brands — cost per 15-second view (Meta ThruPlay / TikTok 6s), ILS. NOT cost per any
+  // view: a 2-second scroll doesn't count. Set it per client from CPV15_BENCHMARK in
+  // platformRules.ts — ₪0.03–0.05 for beauty/personal care, up to ₪0.10–0.16 for automotive,
+  // finance and other high-consideration verticals. Without it the scale ladder always returns ×1.
+  targetCpv?: number;
   targetCpl?: number; // leads brands — cost per lead (ILS)
   targetCpi?: number; // app brands — cost per install (ILS)
   monthlyBudget: number; // total monthly ad budget (ILS) for pacing; 0 = pacing hidden
@@ -169,7 +176,7 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 0,
-    targetCpv: 0.03, // default CPV goal (ILS) — tune per client
+    targetCpv: 0.03, // hair care → the beauty/personal-care end of the ₪0.03–0.16 range
     monthlyBudget: 12000, // fixed monthly awareness budget; pace is computed over the picked range
     // Awareness media plan (video), split by platform + campaign type (from the breakdown).
     mediaPlan: {
@@ -219,7 +226,7 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 0,
-    targetCpv: 0.03, // default CPV goal (ILS) — tune per client
+    targetCpv: 0.03, // TODO: confirm SCJ's vertical and set from CPV15_BENCHMARK (₪0.03–0.16)
     monthlyBudget: 84000,
     campaignFilter: "scj",
     awarenessSources: [

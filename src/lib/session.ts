@@ -8,7 +8,13 @@
 
 import { hmacHex, safeEqual } from "./auth";
 
-export type Role = "admin" | "client";
+// admin   — the Leaders team's shared login; sees every brand and the management consoles.
+// manager — a Leaders-side brand manager, scoped to brand_ids. Sees the full (non-trimmed)
+//           dashboard for those brands, and is who a monthly media plan is emailed to.
+// client  — the client themselves, scoped to brand_ids, on the trimmed client view.
+export type Role = "admin" | "manager" | "client";
+export const ROLES: Role[] = ["admin", "manager", "client"];
+export const asRole = (v: unknown): Role => (v === "admin" ? "admin" : v === "manager" ? "manager" : "client");
 export interface Session {
   role: Role;
   sub: string; // subject: email for clients, "team" for the shared-password admin
@@ -54,7 +60,7 @@ export async function readSession(value: string | undefined, nowSec: number): Pr
     const o = JSON.parse(b64urlDecode(payload)) as { r?: string; s?: string; b?: unknown; e?: number };
     if (!o || typeof o.e !== "number" || o.e < nowSec) return null;
     return {
-      role: o.r === "admin" ? "admin" : "client",
+      role: asRole(o.r),
       sub: String(o.s ?? ""),
       brands: Array.isArray(o.b) ? o.b.map(String) : [],
       exp: o.e,

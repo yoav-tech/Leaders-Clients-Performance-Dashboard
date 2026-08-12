@@ -26,7 +26,7 @@ export async function sendManagerReports(
 
   for (const brand of BRANDS) {
     if (opts.onlyBrand && brand.id !== opts.onlyBrand) continue;
-    const to = opts.overrideTo ? [opts.overrideTo] : brandManagers(brand.id);
+    const to = opts.overrideTo ? [opts.overrideTo] : await brandManagers(brand.id);
     if (!to.length) continue;
     brandsWithMgr.push(brand.id);
     try {

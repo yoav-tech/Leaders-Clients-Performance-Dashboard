@@ -19,7 +19,7 @@ export default function Sidebar({
 }: {
   brands: BrandOpt[];
   activeBrand: string;
-  activeSection: "brands" | "admin" | "account";
+  activeSection: "brands" | "admin" | "media-plan" | "account";
   isAdmin: boolean;
   rangeQuery: string;
   accountLabel: string;
@@ -73,6 +73,17 @@ export default function Sidebar({
                 >
                   <span className="nav-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted)]" />
                   הרשאות
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/media-plan"
+                  onClick={close}
+                  aria-current={activeSection === "media-plan" ? "page" : undefined}
+                  className={`nav-bubble ${activeSection === "media-plan" ? "nav-bubble-active" : ""}`}
+                >
+                  <span className="nav-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted)]" />
+                  פריסות מדיה
                 </Link>
               </li>
             </ul>
