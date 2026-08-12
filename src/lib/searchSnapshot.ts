@@ -11,6 +11,7 @@
 
 import type { BrandConfig, GoogleSnapshotConfig } from "./brands";
 import { fetchWindsor, num, type WindsorRow } from "./windsor";
+import { gaql, googleAdsConfigured } from "./googleAds";
 import { shiftDate } from "./dates";
 
 const normId = (v: unknown) => String(v ?? "").replace(/^act_/i, "").trim();
@@ -236,6 +237,70 @@ function buildSection(cfg: GoogleSnapshotConfig, campRows: WindsorRow[], kwRows:
   return { title: cfg.title, account: cfg.account, currency, rows, totals, campaigns, trend: [], trendByType: [], competitors: [] };
 }
 
+// Build a section directly from the Google Ads API (accurate first-party IS; competitor domains via
+// the auction_insight_domain segment). Flattens GAQL rows into the same shape the Windsor builder
+// consumes, so buildSection is reused for the type table + keyword/search-term analysis.
+async function buildSectionViaApi(cfg: GoogleSnapshotConfig, from: string, to: string, prevFrom: string, prevTo: string): Promise<SnapSection> {
+  const cust = cfg.account;
+  const dateBetween = (a: string, b: string) => `segments.date BETWEEN '${a}' AND '${b}'`;
+  const [camp, kw, st, daily, auc, aucPrev] = await Promise.all([
+    gaql(cust, `SELECT campaign.name, customer.currency_code, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.search_impression_share, metrics.search_rank_lost_impression_share, metrics.search_budget_lost_impression_share FROM campaign WHERE ${dateBetween(from, to)} AND metrics.impressions > 0`).catch(() => []),
+    gaql(cust, `SELECT campaign.name, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, metrics.impressions, metrics.clicks, metrics.cost_micros FROM keyword_view WHERE ${dateBetween(from, to)} AND metrics.impressions > 0`).catch(() => []),
+    gaql(cust, `SELECT campaign.name, search_term_view.search_term, metrics.impressions, metrics.clicks, metrics.cost_micros FROM search_term_view WHERE ${dateBetween(from, to)} AND metrics.impressions > 0`).catch(() => []),
+    gaql(cust, `SELECT segments.date, campaign.name, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.search_impression_share FROM campaign WHERE ${dateBetween(from, to)} AND metrics.impressions > 0`).catch(() => []),
+    gaql(cust, `SELECT campaign.name, segments.date, segments.auction_insight_domain FROM campaign WHERE ${dateBetween(from, to)}`).catch(() => []),
+    gaql(cust, `SELECT segments.auction_insight_domain FROM campaign WHERE ${dateBetween(prevFrom, prevTo)}`).catch(() => []),
+  ]);
+  const g = (r: unknown, path: string): unknown => path.split(".").reduce<unknown>((o, k) => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined), r);
+  const cost = (r: unknown) => num(g(r, "metrics.costMicros") as never) / 1e6;
+  const currency = String((g(camp[0], "customer.currencyCode") as string) ?? "EUR").toUpperCase();
+
+  // Flatten to the Windsor row shape buildSection expects.
+  const campRows = camp.map((r) => ({ account_id: cust, currency, campaign: g(r, "campaign.name"), impressions: num(g(r, "metrics.impressions") as never), clicks: num(g(r, "metrics.clicks") as never), spend: cost(r), search_impression_share: num(g(r, "metrics.searchImpressionShare") as never), search_rank_lost_impression_share: g(r, "metrics.searchRankLostImpressionShare") ?? null, search_budget_lost_impression_share: g(r, "metrics.searchBudgetLostImpressionShare") ?? null })) as unknown as WindsorRow[];
+  const kwRows = kw.map((r) => ({ account_id: cust, campaign: g(r, "campaign.name"), keyword_text: g(r, "adGroupCriterion.keyword.text"), match_type: g(r, "adGroupCriterion.keyword.matchType"), impressions: num(g(r, "metrics.impressions") as never), clicks: num(g(r, "metrics.clicks") as never), spend: cost(r) })) as unknown as WindsorRow[];
+  const stRows = st.map((r) => ({ account_id: cust, campaign: g(r, "campaign.name"), search_term: g(r, "searchTermView.searchTerm"), impressions: num(g(r, "metrics.impressions") as never), clicks: num(g(r, "metrics.clicks") as never), spend: cost(r) })) as unknown as WindsorRow[];
+  const sec = buildSection(cfg, campRows, kwRows, stRows);
+
+  // Impression-weighted IS trend (all + per type) from the daily rows.
+  const trendOf = (typeFilter?: ColgateType): SnapTrendPoint[] => {
+    const byDate = new Map<string, { impr: number; clicks: number; cost: number; el: number }>();
+    for (const r of daily) {
+      const camp = String(g(r, "campaign.name") ?? "");
+      if (typeFilter && classify(camp) !== typeFilter) continue;
+      const d = String(g(r, "segments.date") ?? "").slice(0, 10);
+      if (!d) continue;
+      const impr = num(g(r, "metrics.impressions") as never), is = num(g(r, "metrics.searchImpressionShare") as never);
+      const e = byDate.get(d) ?? { impr: 0, clicks: 0, cost: 0, el: 0 };
+      e.impr += impr; e.clicks += num(g(r, "metrics.clicks") as never); e.cost += cost(r); e.el += is > 0 ? impr / is : 0;
+      byDate.set(d, e);
+    }
+    return [...byDate].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([date, e]) => ({ date, impressions: Math.round(e.impr), clicks: Math.round(e.clicks), spend: Math.round(e.cost * 100) / 100, impShare: e.el ? e.impr / e.el : null }));
+  };
+  const typesPresent = TYPE_ORDER.filter((t) => sec.campaigns.some((cp) => cp.type === t));
+
+  // Competitors (auction insights): domains only — the per-competitor metrics need a metric-access
+  // grant, so we characterise by campaign types, days active, and new-vs-previous, like the Windsor path.
+  const prevDomains = new Set(aucPrev.map((r) => String(g(r, "segments.auctionInsightDomain") ?? "").trim().toLowerCase()).filter(Boolean));
+  const byDomain = new Map<string, { camps: Set<string>; dates: Set<string>; types: Set<ColgateType> }>();
+  for (const r of auc) {
+    const domain = String(g(r, "segments.auctionInsightDomain") ?? "").trim().toLowerCase();
+    if (!domain) continue;
+    const camp = String(g(r, "campaign.name") ?? "");
+    const e = byDomain.get(domain) ?? { camps: new Set(), dates: new Set(), types: new Set() };
+    e.camps.add(camp);
+    const d = String(g(r, "segments.date") ?? "").slice(0, 10);
+    if (d) e.dates.add(d);
+    e.types.add(classify(camp));
+    byDomain.set(domain, e);
+  }
+  const competitors: CompetitorRow[] = [...byDomain]
+    .map(([domain, e]) => ({ domain, campaigns: e.camps.size, days: e.dates.size, types: [...e.types].filter((t) => t !== "other").sort((a, b) => TYPE_ORDER.indexOf(a) - TYPE_ORDER.indexOf(b)), isNew: !prevDomains.has(domain) }))
+    .sort((a, b) => b.days - a.days || b.campaigns - a.campaigns || a.domain.localeCompare(b.domain))
+    .slice(0, 50);
+
+  return { ...sec, trend: trendOf(), trendByType: typesPresent.map((t) => ({ type: t, trend: trendOf(t) })), competitors };
+}
+
 export async function getSearchSnapshot(brand: BrandConfig, from: string, to: string): Promise<SearchSnapshot | null> {
   if (!brand.googleSnapshot?.length) return null;
 
@@ -246,43 +311,48 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
   const prevTo = shiftDate(from, -1);
   const prevFrom = shiftDate(prevTo, -(daysInclusive(from, to) - 1));
 
-  const [campRows, kwRows, stRows, dayRows, auctionRows, prevAuctionRows] = await Promise.all([
-    fetchWindsor({
-      connector: "google_ads",
-      fields: ["account_id", "currency", "campaign", "impressions", "clicks", "spend", "search_impression_share", "search_rank_lost_impression_share", "search_budget_lost_impression_share"],
-      dateFrom: from, dateTo: to, cacheSeconds: 60,
-    }).catch(() => [] as WindsorRow[]),
-    fetchWindsor({
-      connector: "google_ads",
-      fields: ["account_id", "campaign", "keyword_text", "match_type", "impressions", "clicks", "spend"],
-      dateFrom: from, dateTo: to, cacheSeconds: 60,
-    }).catch(() => [] as WindsorRow[]),
-    fetchWindsor({
-      connector: "google_ads",
-      fields: ["account_id", "campaign", "search_term", "impressions", "clicks", "spend"],
-      dateFrom: from, dateTo: to, cacheSeconds: 60,
-    }).catch(() => [] as WindsorRow[]),
-    fetchWindsor({
-      connector: "google_ads",
-      fields: ["date", "account_id", "currency", "campaign", "impressions", "clicks", "spend", "search_impression_share"],
-      dateFrom: from, dateTo: to, cacheSeconds: 60,
-    }).catch(() => [] as WindsorRow[]),
-    fetchWindsor({
-      connector: "google_ads",
-      fields: ["date", "account_id", "campaign", "auction_insight_domain"],
-      dateFrom: from, dateTo: to, cacheSeconds: 60,
-    }).catch(() => [] as WindsorRow[]),
-    // Previous equal-length period — to flag NEW competitors (present now, absent before).
-    fetchWindsor({
-      connector: "google_ads",
-      fields: ["account_id", "auction_insight_domain"],
-      dateFrom: prevFrom, dateTo: prevTo, cacheSeconds: 300,
-    }).catch(() => [] as WindsorRow[]),
-  ]);
+  // Sections flagged `api` (and only when the Google Ads API is configured) come straight from the
+  // Google Ads API; the rest still come from Windsor. Skip the Windsor fetches entirely if no
+  // section needs them.
+  const apiOn = googleAdsConfigured();
+  const needWindsor = brand.googleSnapshot.some((c) => !(c.api && apiOn));
+  const [campRows, kwRows, stRows, dayRows, auctionRows, prevAuctionRows] = needWindsor
+    ? await Promise.all([
+        fetchWindsor({
+          connector: "google_ads",
+          fields: ["account_id", "currency", "campaign", "impressions", "clicks", "spend", "search_impression_share", "search_rank_lost_impression_share", "search_budget_lost_impression_share"],
+          dateFrom: from, dateTo: to, cacheSeconds: 60,
+        }).catch(() => [] as WindsorRow[]),
+        fetchWindsor({
+          connector: "google_ads",
+          fields: ["account_id", "campaign", "keyword_text", "match_type", "impressions", "clicks", "spend"],
+          dateFrom: from, dateTo: to, cacheSeconds: 60,
+        }).catch(() => [] as WindsorRow[]),
+        fetchWindsor({
+          connector: "google_ads",
+          fields: ["account_id", "campaign", "search_term", "impressions", "clicks", "spend"],
+          dateFrom: from, dateTo: to, cacheSeconds: 60,
+        }).catch(() => [] as WindsorRow[]),
+        fetchWindsor({
+          connector: "google_ads",
+          fields: ["date", "account_id", "currency", "campaign", "impressions", "clicks", "spend", "search_impression_share"],
+          dateFrom: from, dateTo: to, cacheSeconds: 60,
+        }).catch(() => [] as WindsorRow[]),
+        fetchWindsor({
+          connector: "google_ads",
+          fields: ["date", "account_id", "campaign", "auction_insight_domain"],
+          dateFrom: from, dateTo: to, cacheSeconds: 60,
+        }).catch(() => [] as WindsorRow[]),
+        fetchWindsor({
+          connector: "google_ads",
+          fields: ["account_id", "auction_insight_domain"],
+          dateFrom: prevFrom, dateTo: prevTo, cacheSeconds: 300,
+        }).catch(() => [] as WindsorRow[]),
+      ])
+    : ([[], [], [], [], [], []] as WindsorRow[][]);
 
-  // Impression-share trend: per day, impression-weighted IS = Σimpr / Σeligible (eligible = impr/IS).
-  // Built per account (each section) AND across all accounts (client-level). Native currency (EUR).
-  const accSet = new Set(brand.googleSnapshot.map((g) => normId(g.account)));
+  // Client-level trend uses the Windsor (non-api) accounts. Native currency (EUR).
+  const accSet = new Set(brand.googleSnapshot.filter((c) => !(c.api && apiOn)).map((g) => normId(g.account)));
   let currency = "EUR";
   for (const r of dayRows) {
     if (accSet.has(normId(r.account_id)) && r.currency) { currency = String(r.currency).toUpperCase(); break; }
@@ -346,16 +416,19 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
       .slice(0, 50);
   };
 
-  const sections = brand.googleSnapshot.map((c) => {
-    const sec = buildSection(c, campRows, kwRows, stRows);
-    const acc1 = new Set([normId(c.account)]);
-    const typesPresent = TYPE_ORDER.filter((t) => sec.campaigns.some((cp) => cp.type === t));
-    return {
-      ...sec,
-      trend: buildTrend(acc1),
-      trendByType: typesPresent.map((t) => ({ type: t, trend: buildTrend(acc1, t) })),
-      competitors: buildCompetitors(normId(c.account)),
-    };
-  });
+  const sections = await Promise.all(
+    brand.googleSnapshot.map(async (c) => {
+      if (c.api && apiOn) return buildSectionViaApi(c, from, to, prevFrom, prevTo);
+      const sec = buildSection(c, campRows, kwRows, stRows);
+      const acc1 = new Set([normId(c.account)]);
+      const typesPresent = TYPE_ORDER.filter((t) => sec.campaigns.some((cp) => cp.type === t));
+      return {
+        ...sec,
+        trend: buildTrend(acc1),
+        trendByType: typesPresent.map((t) => ({ type: t, trend: buildTrend(acc1, t) })),
+        competitors: buildCompetitors(normId(c.account)),
+      };
+    }),
+  );
   return { sections, trend: buildTrend(accSet), currency };
 }
