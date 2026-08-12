@@ -307,6 +307,29 @@ function SectionBlock({ s }: { s: SnapSection }) {
   );
 }
 
+// One-line, data-driven takeaway for an account's competitive picture (deterministic — no LLM).
+function competitorSummary(s: SnapSection): string {
+  const t = s.totals;
+  const is = t.impShare != null ? Math.round(t.impShare * 100) : null;
+  const lr = t.lostRank != null ? Math.round(t.lostRank * 100) : null;
+  const lb = t.lostBudget != null ? Math.round(t.lostBudget * 100) : null;
+  const top = s.competitors.slice(0, 3).map((c) => c.domain);
+  const newCount = s.competitors.filter((c) => c.isNew).length;
+
+  const parts: string[] = [];
+  if (is != null) parts.push(`נתח החשיפה שלנו ${is}%`);
+  if (lb != null && lr != null && lb >= lr && lb >= 30) {
+    parts.push(`הבעיה העיקרית תקציב — ${lb}% מהחשיפות אבדו לתקציב (רק ${lr}% נלקחו ע״י מתחרים בדירוג), אז ההמלצה להעלות תקציב`);
+  } else if (lr != null && lr > 0) {
+    parts.push(`המתחרים לוקחים ${lr}% מהחשיפות בדירוג${lb ? ` (ועוד ${lb}% אבד לתקציב)` : ""}, אז ההמלצה לחזק הצעות מחיר/איכות`);
+  } else if (is != null && is >= 70) {
+    parts.push("שליטה טובה בשוק, מעט אובדן חשיפות");
+  }
+  if (top.length) parts.push(`המתחרים המובילים: ${top.join(", ")}`);
+  if (newCount) parts.push(`${newCount} מתחרים חדשים בתקופה`);
+  return parts.join(" · ");
+}
+
 // Competitors on our search terms (auction insights), one table per account: filterable by the
 // campaign type they compete on, with days-active and a NEW badge (vs the previous period).
 function CompetitorsBlock({ s }: { s: SnapSection }) {
@@ -334,6 +357,10 @@ function CompetitorsBlock({ s }: { s: SnapSection }) {
 
   return (
     <Panel title={`מתחרים · ${s.title} · ${s.account}`}>
+      <div className="mb-4 flex items-start gap-2 rounded-lg border border-[var(--panel-border)] bg-[var(--background)]/40 px-3 py-2.5 text-sm leading-relaxed" dir="rtl">
+        <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--accent, #8b5cf6)" }} />
+        <span className="text-[var(--foreground)]">{competitorSummary(s)}</span>
+      </div>
       <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {sumCell("נתח החשיפה שלנו", pct(t.impShare), "text-[var(--foreground)]")}
         {sumCell("נלקח ע״י מתחרים · דירוג", pct(t.lostRank), "text-[var(--bad)]", lostRankImpr != null ? `≈ ${formatNumber(lostRankImpr)} חשיפות` : undefined)}
