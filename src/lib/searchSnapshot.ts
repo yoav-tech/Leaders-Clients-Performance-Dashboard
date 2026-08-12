@@ -85,9 +85,15 @@ export interface SnapSection {
   rows: TypeRow[];
   totals: TypeRow;
   campaigns: CampaignDetail[];
+  trend: SnapTrendPoint[]; // per-account impression-share trend
+  competitors: CompetitorRow[]; // rival domains on the same search terms (auction insights)
 }
 // Per-day trend across all snapshot accounts: impression-weighted IS + impressions/clicks/spend.
 export interface SnapTrendPoint { date: string; impShare: number | null; impressions: number; clicks: number; spend: number }
+// A rival domain competing on the same search terms (Google auction insights). Windsor exposes the
+// domain but not the per-competitor impression share, so we rank by overlap breadth (# of our
+// campaigns they appear in).
+export interface CompetitorRow { domain: string; campaigns: number }
 export interface SearchSnapshot { sections: SnapSection[]; trend: SnapTrendPoint[]; currency: string }
 
 const cKey = (r: WindsorRow) => `${normId(r.account_id)}||${String(r.campaign ?? "")}`;
@@ -224,7 +230,7 @@ function buildSection(cfg: GoogleSnapshotConfig, campRows: WindsorRow[], kwRows:
   const rank = (t: ColgateType) => { const i = TYPE_ORDER.indexOf(t); return i < 0 ? 99 : i; };
   campaigns.sort((a, b) => rank(a.type) - rank(b.type) || b.impressions - a.impressions);
 
-  return { title: cfg.title, account: cfg.account, currency, rows, totals, campaigns };
+  return { title: cfg.title, account: cfg.account, currency, rows, totals, campaigns, trend: [], competitors: [] };
 }
 
 export async function getSearchSnapshot(brand: BrandConfig, from: string, to: string): Promise<SearchSnapshot | null> {
@@ -233,7 +239,7 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
   // Windsor ignores the accounts param, so one call each returns all accounts; we filter per-section
   // by account_id. Granularities: campaign (with impression-share), keyword, search-term, and a
   // per-day pull for the impression-share trend.
-  const [campRows, kwRows, stRows, dayRows] = await Promise.all([
+  const [campRows, kwRows, stRows, dayRows, auctionRows] = await Promise.all([
     fetchWindsor({
       connector: "google_ads",
       fields: ["account_id", "currency", "campaign", "impressions", "clicks", "spend", "search_impression_share", "search_rank_lost_impression_share", "search_budget_lost_impression_share"],
@@ -254,37 +260,61 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
       fields: ["date", "account_id", "currency", "impressions", "clicks", "spend", "search_impression_share"],
       dateFrom: from, dateTo: to, cacheSeconds: 60,
     }).catch(() => [] as WindsorRow[]),
+    fetchWindsor({
+      connector: "google_ads",
+      fields: ["account_id", "campaign", "auction_insight_domain"],
+      dateFrom: from, dateTo: to, cacheSeconds: 60,
+    }).catch(() => [] as WindsorRow[]),
   ]);
 
-  const sections = brand.googleSnapshot.map((c) => buildSection(c, campRows, kwRows, stRows));
-
-  // Impression-share trend: per day, impression-weighted IS = Σimpr / Σeligible (eligible = impr/IS)
-  // across the snapshot accounts. Spend/impressions/clicks summed. Native currency (EUR for Colgate).
+  // Impression-share trend: per day, impression-weighted IS = Σimpr / Σeligible (eligible = impr/IS).
+  // Built per account (each section) AND across all accounts (client-level). Native currency (EUR).
   const accSet = new Set(brand.googleSnapshot.map((g) => normId(g.account)));
   let currency = "EUR";
-  const byDate = new Map<string, { impr: number; clicks: number; cost: number; eligible: number }>();
   for (const r of dayRows) {
-    if (!accSet.has(normId(r.account_id))) continue;
-    const d = String(r.date ?? "").slice(0, 10);
-    if (!d) continue;
-    if (r.currency) currency = String(r.currency).toUpperCase();
-    const impr = num(r.impressions), is = num(r.search_impression_share);
-    const e = byDate.get(d) ?? { impr: 0, clicks: 0, cost: 0, eligible: 0 };
-    e.impr += impr;
-    e.clicks += num(r.clicks);
-    e.cost += num(r.spend);
-    e.eligible += is > 0 ? impr / is : 0;
-    byDate.set(d, e);
+    if (accSet.has(normId(r.account_id)) && r.currency) { currency = String(r.currency).toUpperCase(); break; }
   }
-  const trend: SnapTrendPoint[] = [...byDate]
-    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    .map(([date, e]) => ({
-      date,
-      impressions: Math.round(e.impr),
-      clicks: Math.round(e.clicks),
-      spend: Math.round(e.cost * 100) / 100,
-      impShare: e.eligible ? e.impr / e.eligible : null,
-    }));
+  const buildTrend = (accs: Set<string>): SnapTrendPoint[] => {
+    const byDate = new Map<string, { impr: number; clicks: number; cost: number; eligible: number }>();
+    for (const r of dayRows) {
+      if (!accs.has(normId(r.account_id))) continue;
+      const d = String(r.date ?? "").slice(0, 10);
+      if (!d) continue;
+      const impr = num(r.impressions), is = num(r.search_impression_share);
+      const e = byDate.get(d) ?? { impr: 0, clicks: 0, cost: 0, eligible: 0 };
+      e.impr += impr;
+      e.clicks += num(r.clicks);
+      e.cost += num(r.spend);
+      e.eligible += is > 0 ? impr / is : 0;
+      byDate.set(d, e);
+    }
+    return [...byDate]
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+      .map(([date, e]) => ({ date, impressions: Math.round(e.impr), clicks: Math.round(e.clicks), spend: Math.round(e.cost * 100) / 100, impShare: e.eligible ? e.impr / e.eligible : null }));
+  };
 
-  return { sections, trend, currency };
+  // Competitors (auction insights): rival domains on the same terms, per account. Windsor returns
+  // the domain but not per-competitor IS, so rank by overlap breadth (# of our campaigns they hit).
+  const buildCompetitors = (acc: string): CompetitorRow[] => {
+    const byDomain = new Map<string, Set<string>>();
+    for (const r of auctionRows) {
+      if (normId(r.account_id) !== acc) continue;
+      const domain = String(r.auction_insight_domain ?? "").trim().toLowerCase();
+      if (!domain) continue;
+      const set = byDomain.get(domain) ?? new Set<string>();
+      set.add(String(r.campaign ?? ""));
+      byDomain.set(domain, set);
+    }
+    return [...byDomain]
+      .map(([domain, camps]) => ({ domain, campaigns: camps.size }))
+      .sort((a, b) => b.campaigns - a.campaigns || a.domain.localeCompare(b.domain))
+      .slice(0, 40);
+  };
+
+  const sections = brand.googleSnapshot.map((c) => ({
+    ...buildSection(c, campRows, kwRows, stRows),
+    trend: buildTrend(new Set([normId(c.account)])),
+    competitors: buildCompetitors(normId(c.account)),
+  }));
+  return { sections, trend: buildTrend(accSet), currency };
 }
