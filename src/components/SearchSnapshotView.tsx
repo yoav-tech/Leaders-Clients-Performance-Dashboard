@@ -271,13 +271,52 @@ function SectionBlock({ s }: { s: SnapSection }) {
         </table>
       </div>
 
-      <div className="mt-3 space-y-2">
+      {s.trend?.length ? (
+        <div className="mt-4">
+          <div className="mb-2 text-[11px] uppercase tracking-wide text-[var(--muted)]">Trend · impression share · {s.title}</div>
+          <SnapshotTrend trend={s.trend} currency={s.currency} />
+        </div>
+      ) : null}
+
+      <div className="mt-4 space-y-2">
         <div className="text-[11px] uppercase tracking-wide text-[var(--muted)]">ניתוח לפי קמפיין · מילות מפתח ומונחי חיפוש</div>
         {s.campaigns.map((c) => (
           <CampaignDetailBlock key={c.name} c={c} cur={s.currency} />
         ))}
         {s.campaigns.length === 0 && <div className="text-sm text-[var(--muted)]">No campaigns in range.</div>}
       </div>
+    </Panel>
+  );
+}
+
+// Competitors on our search terms (auction insights), one table per account.
+function CompetitorsBlock({ s }: { s: SnapSection }) {
+  return (
+    <Panel title={`מתחרים · ${s.title} · ${s.account}`}>
+      {s.competitors?.length ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[420px] border-collapse text-sm">
+            <thead>
+              <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
+                <th className="w-8 px-2 py-1.5 text-left">#</th>
+                <th className="px-2 py-1.5 text-left">מתחרה · דומיין</th>
+                <th className="px-2 py-1.5 text-right">קמפיינים חופפים</th>
+              </tr>
+            </thead>
+            <tbody className="tabular-nums">
+              {s.competitors.map((c, i) => (
+                <tr key={c.domain} className="border-t border-[var(--card-border)]">
+                  <td className="px-2 py-1.5 text-left text-[var(--muted)]">{i + 1}</td>
+                  <td className="px-2 py-1.5 text-left font-medium" dir="ltr">{c.domain}</td>
+                  <td className="px-2 py-1.5 text-right">{formatNumber(c.campaigns)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="py-4 text-sm text-[var(--muted)]">אין נתוני מתחרים לטווח הזה.</div>
+      )}
     </Panel>
   );
 }
@@ -296,6 +335,7 @@ export default function SearchSnapshotView({
   const [report, setReport] = useState<SearchSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [tab, setTab] = useState<"snapshot" | "competitors">("snapshot");
 
   useEffect(() => {
     let cancelled = false;
@@ -324,25 +364,44 @@ export default function SearchSnapshotView({
   if (err && !report) return <div className="panel p-4 text-sm text-[var(--muted)]">Couldn&apos;t load: {err}</div>;
   if (!report || report.sections.length === 0) return <div className="panel p-4 text-sm text-[var(--muted)]">No snapshot data for this range.</div>;
 
+  const pill = (active: boolean) =>
+    `rounded-md px-3 py-1 text-sm transition-colors ${active ? "bg-blue-600 text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`;
+
   return (
     <div className="space-y-4">
       <Panel title={`${brandName} · Google search snapshot · ${from} → ${to}`}>
-        <div className="text-[11px] leading-relaxed text-[var(--muted)]">
-          קמפיינים מקובצים לפי סוג (Compete / Lead / Participate / Compete Site) · חי מ־Windsor.
-          <br />
-          יעדי Impression Share: <b>Lead ≥70%</b> · <b>Compete ≥50%</b> · <b>Participate ≤50%</b>.
-          ירוק = עומד ביעד, אדום = מתחת. <b>Lost IS</b>: <span className="inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: "var(--warn)" }} /> אובדן לתקציב (להגדיל תקציב) · <span className="inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: "var(--bad)" }} /> אובדן לדירוג (הצעות מחיר / איכות).
-          לחיצה על קמפיין פותחת ניתוח מילות מפתח ומונחי חיפוש. Google לא חושף IS ברמת מילת־מפתח.
+        <div className="mb-3 inline-flex flex-wrap gap-1 rounded-lg border border-[var(--card-border)] p-1">
+          <button onClick={() => setTab("snapshot")} className={pill(tab === "snapshot")}>תמונת מצב</button>
+          <button onClick={() => setTab("competitors")} className={pill(tab === "competitors")}>מתחרים</button>
         </div>
+        {tab === "snapshot" ? (
+          <div className="text-[11px] leading-relaxed text-[var(--muted)]">
+            קמפיינים מקובצים לפי סוג (Compete / Lead / Participate / Compete Site) · חי מ־Windsor.
+            <br />
+            יעדי Impression Share: <b>Lead ≥70%</b> · <b>Compete ≥50%</b> · <b>Participate ≤50%</b>.
+            ירוק = עומד ביעד, אדום = מתחת. <b>Lost IS</b>: <span className="inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: "var(--warn)" }} /> אובדן לתקציב (להגדיל תקציב) · <span className="inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: "var(--bad)" }} /> אובדן לדירוג (הצעות מחיר / איכות).
+            לחיצה על קמפיין פותחת ניתוח מילות מפתח ומונחי חיפוש. Google לא חושף IS ברמת מילת־מפתח.
+          </div>
+        ) : (
+          <div className="text-[11px] leading-relaxed text-[var(--muted)]">
+            הדומיינים שמתחרים על מונחי החיפוש שלנו (Google Auction Insights), טבלה לכל חשבון. מדורג לפי <b>רוחב חפיפה</b> — במספר הקמפיינים שלנו שהמתחרה מופיע בהם. Google/Windsor לא חושפים את נתח החשיפה של כל מתחרה בנפרד.
+          </div>
+        )}
       </Panel>
-      {report.trend?.length ? (
-        <Panel title="Trend · impression share">
-          <SnapshotTrend trend={report.trend} currency={report.currency} />
-        </Panel>
-      ) : null}
-      {report.sections.map((s) => (
-        <SectionBlock key={s.account} s={s} />
-      ))}
+      {tab === "snapshot" ? (
+        <>
+          {report.trend?.length ? (
+            <Panel title="Trend · impression share">
+              <SnapshotTrend trend={report.trend} currency={report.currency} />
+            </Panel>
+          ) : null}
+          {report.sections.map((s) => (
+            <SectionBlock key={s.account} s={s} />
+          ))}
+        </>
+      ) : (
+        report.sections.map((s) => <CompetitorsBlock key={s.account} s={s} />)
+      )}
     </div>
   );
 }
