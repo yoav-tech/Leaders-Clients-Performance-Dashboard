@@ -317,8 +317,29 @@ function CompetitorsBlock({ s }: { s: SnapSection }) {
   const pill = (active: boolean) =>
     `rounded-md px-3 py-1 text-sm transition-colors ${active ? "bg-blue-600 text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`;
 
+  // Account-level competitive pressure (already in the data): our IS, and how much impression share
+  // competitors take from us — split into rank (they outrank us) vs budget, in % and est. impressions.
+  const t = s.totals;
+  const pct = (v: number | null) => (v == null ? "—" : `${Math.round(v * 100)}%`);
+  const eligible = t.impShare ? t.impressions / t.impShare : null;
+  const lostRankImpr = eligible != null && t.lostRank != null ? Math.round(eligible * t.lostRank) : null;
+  const lostBudgetImpr = eligible != null && t.lostBudget != null ? Math.round(eligible * t.lostBudget) : null;
+  const sumCell = (label: string, value: string, tone?: string, sub?: string) => (
+    <div className="rounded-lg border border-[var(--card-border)] bg-[var(--background)]/40 p-3">
+      <div className="text-[11px] uppercase tracking-wide text-[var(--muted)]">{label}</div>
+      <div className={`text-lg font-bold ${tone ?? ""}`}>{value}</div>
+      {sub ? <div className="text-[11px] text-[var(--muted)]">{sub}</div> : null}
+    </div>
+  );
+
   return (
     <Panel title={`מתחרים · ${s.title} · ${s.account}`}>
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {sumCell("נתח החשיפה שלנו", pct(t.impShare), "text-[var(--foreground)]")}
+        {sumCell("נלקח ע״י מתחרים · דירוג", pct(t.lostRank), "text-[var(--bad)]", lostRankImpr != null ? `≈ ${formatNumber(lostRankImpr)} חשיפות` : undefined)}
+        {sumCell("אבד לתקציב", pct(t.lostBudget), "text-[var(--warn)]", lostBudgetImpr != null ? `≈ ${formatNumber(lostBudgetImpr)} חשיפות` : undefined)}
+        {sumCell("סה״כ שוק · חשיפות זמינות", eligible != null ? formatNumber(Math.round(eligible)) : "—", "text-[var(--foreground)]")}
+      </div>
       {s.competitors?.length ? (
         <>
           {typesPresent.length ? (
