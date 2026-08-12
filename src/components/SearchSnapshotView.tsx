@@ -16,8 +16,10 @@ import { formatNumber } from "@/lib/metrics";
 
 const CUR_SYM: Record<string, string> = { EUR: "€", ILS: "₪", USD: "$" };
 
-// Impression-share trend with a per-field selector (IS is the star metric for Colgate).
-function SnapshotTrend({ trend, currency }: { trend: SnapTrendPoint[]; currency: string }) {
+// Impression-share trend with a per-field selector, and a series selector (All / per campaign type)
+// so a single type — e.g. Lead (LED) — can be isolated instead of the account-blended line.
+interface TrendSeries { key: string; label: string; trend: SnapTrendPoint[] }
+function SnapshotTrend({ series, currency }: { series: TrendSeries[]; currency: string }) {
   const sym = CUR_SYM[currency] ?? "";
   const metrics = useMemo(
     () => [
@@ -29,8 +31,10 @@ function SnapshotTrend({ trend, currency }: { trend: SnapTrendPoint[]; currency:
     [sym],
   );
   const [key, setKey] = useState("impShare");
+  const [seriesKey, setSeriesKey] = useState(series[0]?.key ?? "all");
   const [hover, setHover] = useState<number | null>(null);
   const m = metrics.find((x) => x.key === key) ?? metrics[0];
+  const trend = (series.find((s) => s.key === seriesKey) ?? series[0])?.trend ?? [];
 
   const W = 900, H = 200, PAD = 8;
   const { pts, max } = useMemo(() => {
@@ -51,10 +55,19 @@ function SnapshotTrend({ trend, currency }: { trend: SnapTrendPoint[]; currency:
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="inline-flex flex-wrap gap-1 rounded-lg border border-[var(--card-border)] p-1">
-          {metrics.map((mm) => (
-            <button key={mm.key} onClick={() => setKey(mm.key)} className={`rounded-md px-3 py-1 text-sm transition-colors ${key === mm.key ? "bg-blue-600 text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`}>{mm.label}</button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          {series.length > 1 ? (
+            <div className="inline-flex flex-wrap gap-1 rounded-lg border border-[var(--card-border)] p-1">
+              {series.map((sr) => (
+                <button key={sr.key} onClick={() => setSeriesKey(sr.key)} className={`rounded-md px-3 py-1 text-sm transition-colors ${seriesKey === sr.key ? "bg-[var(--accent,#6E56F6)] text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`}>{sr.label}</button>
+              ))}
+            </div>
+          ) : null}
+          <div className="inline-flex flex-wrap gap-1 rounded-lg border border-[var(--card-border)] p-1">
+            {metrics.map((mm) => (
+              <button key={mm.key} onClick={() => setKey(mm.key)} className={`rounded-md px-3 py-1 text-sm transition-colors ${key === mm.key ? "bg-blue-600 text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`}>{mm.label}</button>
+            ))}
+          </div>
         </div>
         {hp ? (
           <div className="text-xs text-[var(--muted)]">{hp.date.slice(5)} · <span className="font-semibold text-[var(--foreground)]">{m.fmt(hp.v)}</span></div>
@@ -273,8 +286,11 @@ function SectionBlock({ s }: { s: SnapSection }) {
 
       {s.trend?.length ? (
         <div className="mt-4">
-          <div className="mb-2 text-[11px] uppercase tracking-wide text-[var(--muted)]">Trend · impression share · {s.title}</div>
-          <SnapshotTrend trend={s.trend} currency={s.currency} />
+          <div className="mb-2 text-[11px] uppercase tracking-wide text-[var(--muted)]">Trend · impression share · {s.title} · לפי סוג קמפיין</div>
+          <SnapshotTrend
+            series={[{ key: "all", label: "הכל", trend: s.trend }, ...s.trendByType.map((t) => ({ key: t.type, label: TYPE_LABEL[t.type], trend: t.trend }))]}
+            currency={s.currency}
+          />
         </div>
       ) : null}
 
@@ -391,8 +407,8 @@ export default function SearchSnapshotView({
       {tab === "snapshot" ? (
         <>
           {report.trend?.length ? (
-            <Panel title="Trend · impression share">
-              <SnapshotTrend trend={report.trend} currency={report.currency} />
+            <Panel title="Trend · impression share · כל החשבונות">
+              <SnapshotTrend series={[{ key: "all", label: "הכל", trend: report.trend }]} currency={report.currency} />
             </Panel>
           ) : null}
           {report.sections.map((s) => (
