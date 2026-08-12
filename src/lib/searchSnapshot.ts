@@ -85,7 +85,8 @@ export interface SnapSection {
   rows: TypeRow[];
   totals: TypeRow;
   campaigns: CampaignDetail[];
-  trend: SnapTrendPoint[]; // per-account impression-share trend
+  trend: SnapTrendPoint[]; // per-account impression-share trend (all campaigns blended)
+  trendByType: { type: ColgateType; trend: SnapTrendPoint[] }[]; // trend per campaign type (Lead, …)
   competitors: CompetitorRow[]; // rival domains on the same search terms (auction insights)
 }
 // Per-day trend across all snapshot accounts: impression-weighted IS + impressions/clicks/spend.
@@ -230,7 +231,7 @@ function buildSection(cfg: GoogleSnapshotConfig, campRows: WindsorRow[], kwRows:
   const rank = (t: ColgateType) => { const i = TYPE_ORDER.indexOf(t); return i < 0 ? 99 : i; };
   campaigns.sort((a, b) => rank(a.type) - rank(b.type) || b.impressions - a.impressions);
 
-  return { title: cfg.title, account: cfg.account, currency, rows, totals, campaigns, trend: [], competitors: [] };
+  return { title: cfg.title, account: cfg.account, currency, rows, totals, campaigns, trend: [], trendByType: [], competitors: [] };
 }
 
 export async function getSearchSnapshot(brand: BrandConfig, from: string, to: string): Promise<SearchSnapshot | null> {
@@ -257,7 +258,7 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
     }).catch(() => [] as WindsorRow[]),
     fetchWindsor({
       connector: "google_ads",
-      fields: ["date", "account_id", "currency", "impressions", "clicks", "spend", "search_impression_share"],
+      fields: ["date", "account_id", "currency", "campaign", "impressions", "clicks", "spend", "search_impression_share"],
       dateFrom: from, dateTo: to, cacheSeconds: 60,
     }).catch(() => [] as WindsorRow[]),
     fetchWindsor({
@@ -274,10 +275,13 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
   for (const r of dayRows) {
     if (accSet.has(normId(r.account_id)) && r.currency) { currency = String(r.currency).toUpperCase(); break; }
   }
-  const buildTrend = (accs: Set<string>): SnapTrendPoint[] => {
+  // Impression-weighted IS trend for a set of accounts, optionally filtered to one campaign type.
+  // Filtering by type isolates e.g. the Lead (LED) campaign so it isn't diluted by the account blend.
+  const buildTrend = (accs: Set<string>, typeFilter?: ColgateType): SnapTrendPoint[] => {
     const byDate = new Map<string, { impr: number; clicks: number; cost: number; eligible: number }>();
     for (const r of dayRows) {
       if (!accs.has(normId(r.account_id))) continue;
+      if (typeFilter && classify(String(r.campaign ?? "")) !== typeFilter) continue;
       const d = String(r.date ?? "").slice(0, 10);
       if (!d) continue;
       const impr = num(r.impressions), is = num(r.search_impression_share);
@@ -311,10 +315,16 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
       .slice(0, 40);
   };
 
-  const sections = brand.googleSnapshot.map((c) => ({
-    ...buildSection(c, campRows, kwRows, stRows),
-    trend: buildTrend(new Set([normId(c.account)])),
-    competitors: buildCompetitors(normId(c.account)),
-  }));
+  const sections = brand.googleSnapshot.map((c) => {
+    const sec = buildSection(c, campRows, kwRows, stRows);
+    const acc1 = new Set([normId(c.account)]);
+    const typesPresent = TYPE_ORDER.filter((t) => sec.campaigns.some((cp) => cp.type === t));
+    return {
+      ...sec,
+      trend: buildTrend(acc1),
+      trendByType: typesPresent.map((t) => ({ type: t, trend: buildTrend(acc1, t) })),
+      competitors: buildCompetitors(normId(c.account)),
+    };
+  });
   return { sections, trend: buildTrend(accSet), currency };
 }
