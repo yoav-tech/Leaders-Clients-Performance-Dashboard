@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   TYPE_LABEL,
   type SearchSnapshot,
   type SnapSection,
+  type SnapTrendPoint,
   type TypeRow,
   type CampaignDetail,
   type KwRow,
@@ -12,6 +13,82 @@ import {
   type Target,
 } from "@/lib/searchSnapshot";
 import { formatNumber } from "@/lib/metrics";
+
+const CUR_SYM: Record<string, string> = { EUR: "€", ILS: "₪", USD: "$" };
+
+// Impression-share trend with a per-field selector (IS is the star metric for Colgate).
+function SnapshotTrend({ trend, currency }: { trend: SnapTrendPoint[]; currency: string }) {
+  const sym = CUR_SYM[currency] ?? "";
+  const metrics = useMemo(
+    () => [
+      { key: "impShare", label: "Impression Share", get: (d: SnapTrendPoint) => d.impShare ?? 0, fmt: (v: number) => `${Math.round(v * 100)}%` },
+      { key: "impressions", label: "Impressions", get: (d: SnapTrendPoint) => d.impressions, fmt: (v: number) => formatNumber(v) },
+      { key: "clicks", label: "Clicks", get: (d: SnapTrendPoint) => d.clicks, fmt: (v: number) => formatNumber(v) },
+      { key: "spend", label: "Spend", get: (d: SnapTrendPoint) => d.spend, fmt: (v: number) => `${sym}${formatNumber(Math.round(v))}` },
+    ],
+    [sym],
+  );
+  const [key, setKey] = useState("impShare");
+  const [hover, setHover] = useState<number | null>(null);
+  const m = metrics.find((x) => x.key === key) ?? metrics[0];
+
+  const W = 900, H = 200, PAD = 8;
+  const { pts, max } = useMemo(() => {
+    const vals = trend.map((d) => m.get(d));
+    const max = Math.max(m.key === "impShare" ? 0.01 : 1, ...vals);
+    const n = trend.length;
+    const x = (i: number) => (n <= 1 ? W / 2 : PAD + (i * (W - 2 * PAD)) / (n - 1));
+    const y = (v: number) => H - PAD - (v / max) * (H - 2 * PAD);
+    return { pts: vals.map((v, i) => ({ x: x(i), y: y(v), v, date: trend[i].date })), max };
+  }, [trend, m]);
+
+  if (!trend.length) return <div className="py-6 text-center text-sm text-[var(--muted)]">אין נתוני טרנד לטווח הזה.</div>;
+
+  const line = pts.map((p) => `${p.x},${p.y}`).join(" ");
+  const area = `${PAD},${H - PAD} ${line} ${W - PAD},${H - PAD}`;
+  const hp = hover != null ? pts[hover] : null;
+
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex flex-wrap gap-1 rounded-lg border border-[var(--card-border)] p-1">
+          {metrics.map((mm) => (
+            <button key={mm.key} onClick={() => setKey(mm.key)} className={`rounded-md px-3 py-1 text-sm transition-colors ${key === mm.key ? "bg-blue-600 text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`}>{mm.label}</button>
+          ))}
+        </div>
+        {hp ? (
+          <div className="text-xs text-[var(--muted)]">{hp.date.slice(5)} · <span className="font-semibold text-[var(--foreground)]">{m.fmt(hp.v)}</span></div>
+        ) : (
+          <div className="text-xs text-[var(--muted)]">מקס׳ {m.fmt(max)}</div>
+        )}
+      </div>
+      <div className="overflow-x-auto">
+        <svg viewBox={`0 0 ${W} ${H}`} className="h-[200px] w-full min-w-[520px]" preserveAspectRatio="none"
+          onMouseLeave={() => setHover(null)}
+          onMouseMove={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            const rx = ((e.clientX - r.left) / r.width) * W;
+            let best = 0, bd = Infinity;
+            pts.forEach((p, i) => { const d = Math.abs(p.x - rx); if (d < bd) { bd = d; best = i; } });
+            setHover(best);
+          }}>
+          <polygon points={area} fill="var(--accent, #6E56F6)" opacity="0.10" />
+          <polyline points={line} fill="none" stroke="var(--accent, #6E56F6)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+          {hp ? (
+            <>
+              <line x1={hp.x} y1={PAD} x2={hp.x} y2={H - PAD} stroke="var(--card-border)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+              <circle cx={hp.x} cy={hp.y} r="3.5" fill="var(--accent, #6E56F6)" />
+            </>
+          ) : null}
+        </svg>
+      </div>
+      <div className="mt-1 flex justify-between text-[10px] text-[var(--muted)]">
+        <span>{trend[0]?.date.slice(5)}</span>
+        <span>{trend[trend.length - 1]?.date.slice(5)}</span>
+      </div>
+    </div>
+  );
+}
 
 const money = (v: number | null, cur: string) =>
   v === null ? "—" : new Intl.NumberFormat("en", { style: "currency", currency: cur, maximumFractionDigits: 2 }).format(v);
@@ -258,6 +335,11 @@ export default function SearchSnapshotView({
           לחיצה על קמפיין פותחת ניתוח מילות מפתח ומונחי חיפוש. Google לא חושף IS ברמת מילת־מפתח.
         </div>
       </Panel>
+      {report.trend?.length ? (
+        <Panel title="Trend · impression share">
+          <SnapshotTrend trend={report.trend} currency={report.currency} />
+        </Panel>
+      ) : null}
       {report.sections.map((s) => (
         <SectionBlock key={s.account} s={s} />
       ))}

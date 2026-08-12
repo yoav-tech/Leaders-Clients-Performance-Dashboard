@@ -86,7 +86,9 @@ export interface SnapSection {
   totals: TypeRow;
   campaigns: CampaignDetail[];
 }
-export interface SearchSnapshot { sections: SnapSection[] }
+// Per-day trend across all snapshot accounts: impression-weighted IS + impressions/clicks/spend.
+export interface SnapTrendPoint { date: string; impShare: number | null; impressions: number; clicks: number; spend: number }
+export interface SearchSnapshot { sections: SnapSection[]; trend: SnapTrendPoint[]; currency: string }
 
 const cKey = (r: WindsorRow) => `${normId(r.account_id)}||${String(r.campaign ?? "")}`;
 
@@ -229,8 +231,9 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
   if (!brand.googleSnapshot?.length) return null;
 
   // Windsor ignores the accounts param, so one call each returns all accounts; we filter per-section
-  // by account_id. Three granularities: campaign (with impression-share), keyword, search-term.
-  const [campRows, kwRows, stRows] = await Promise.all([
+  // by account_id. Granularities: campaign (with impression-share), keyword, search-term, and a
+  // per-day pull for the impression-share trend.
+  const [campRows, kwRows, stRows, dayRows] = await Promise.all([
     fetchWindsor({
       connector: "google_ads",
       fields: ["account_id", "currency", "campaign", "impressions", "clicks", "spend", "search_impression_share", "search_rank_lost_impression_share", "search_budget_lost_impression_share"],
@@ -246,8 +249,42 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
       fields: ["account_id", "campaign", "search_term", "impressions", "clicks", "spend"],
       dateFrom: from, dateTo: to, cacheSeconds: 60,
     }).catch(() => [] as WindsorRow[]),
+    fetchWindsor({
+      connector: "google_ads",
+      fields: ["date", "account_id", "currency", "impressions", "clicks", "spend", "search_impression_share"],
+      dateFrom: from, dateTo: to, cacheSeconds: 60,
+    }).catch(() => [] as WindsorRow[]),
   ]);
 
   const sections = brand.googleSnapshot.map((c) => buildSection(c, campRows, kwRows, stRows));
-  return { sections };
+
+  // Impression-share trend: per day, impression-weighted IS = Σimpr / Σeligible (eligible = impr/IS)
+  // across the snapshot accounts. Spend/impressions/clicks summed. Native currency (EUR for Colgate).
+  const accSet = new Set(brand.googleSnapshot.map((g) => normId(g.account)));
+  let currency = "EUR";
+  const byDate = new Map<string, { impr: number; clicks: number; cost: number; eligible: number }>();
+  for (const r of dayRows) {
+    if (!accSet.has(normId(r.account_id))) continue;
+    const d = String(r.date ?? "").slice(0, 10);
+    if (!d) continue;
+    if (r.currency) currency = String(r.currency).toUpperCase();
+    const impr = num(r.impressions), is = num(r.search_impression_share);
+    const e = byDate.get(d) ?? { impr: 0, clicks: 0, cost: 0, eligible: 0 };
+    e.impr += impr;
+    e.clicks += num(r.clicks);
+    e.cost += num(r.spend);
+    e.eligible += is > 0 ? impr / is : 0;
+    byDate.set(d, e);
+  }
+  const trend: SnapTrendPoint[] = [...byDate]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([date, e]) => ({
+      date,
+      impressions: Math.round(e.impr),
+      clicks: Math.round(e.clicks),
+      spend: Math.round(e.cost * 100) / 100,
+      impShare: e.eligible ? e.impr / e.eligible : null,
+    }));
+
+  return { sections, trend, currency };
 }
