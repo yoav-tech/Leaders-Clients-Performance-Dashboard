@@ -150,6 +150,7 @@ function Row({ r, cur, bold }: { r: TypeRow; cur: string; bold?: boolean }) {
       <td className={`px-2 py-1.5 text-left ${bold ? "font-bold" : "font-medium"}`}>{bold ? "Total" : TYPE_LABEL[r.type]}</td>
       <td className={`px-2 py-1.5 text-right ${bold ? "font-semibold" : ""}`}>{formatNumber(r.impressions)}</td>
       <ImpShareCell value={r.impShare} pass={r.pass} target={bold ? null : r.target} bold={bold} />
+      <td className={`px-2 py-1.5 text-right ${bold ? "font-semibold" : ""}`}>{pct(r.absTopIS)}</td>
       <LostCell lostRank={r.lostRank} lostBudget={r.lostBudget} bold={bold} />
       <td className={`px-2 py-1.5 text-right ${bold ? "font-semibold" : ""}`}>{formatNumber(r.clicks)}</td>
       <td className={`px-2 py-1.5 text-right ${bold ? "font-semibold" : ""}`}>{money(r.cpc, cur)}</td>
@@ -270,6 +271,7 @@ function SectionBlock({ s }: { s: SnapSection }) {
               <th className="px-2 py-1.5 text-left">Type</th>
               <th className="px-2 py-1.5 text-right">Impressions</th>
               <th className="px-2 py-1.5 text-right">Imp Share</th>
+              <th className="px-2 py-1.5 text-right">Abs Top</th>
               <th className="px-2 py-1.5 text-right">Lost IS</th>
               <th className="px-2 py-1.5 text-right">Clicks</th>
               <th className="px-2 py-1.5 text-right">CPC</th>

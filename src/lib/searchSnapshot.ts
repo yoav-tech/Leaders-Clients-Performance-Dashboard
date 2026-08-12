@@ -75,6 +75,7 @@ export interface TypeRow {
   cost: number;
   cpc: number | null;
   ctr: number | null;
+  absTopIS: number | null; // search_absolute_top_impression_share (Google Ads API only)
   lostRank: number | null;
   lostBudget: number | null;
   target: Target | null;
@@ -139,8 +140,8 @@ function topSearchTerms(rows: WindsorRow[]): StRow[] {
     .slice(0, TOP_N);
 }
 
-type Agg = { impr: number; clicks: number; cost: number; eligible: number; lostRankW: number; lostBudgetW: number };
-const emptyAgg = (): Agg => ({ impr: 0, clicks: 0, cost: 0, eligible: 0, lostRankW: 0, lostBudgetW: 0 });
+type Agg = { impr: number; clicks: number; cost: number; eligible: number; lostRankW: number; lostBudgetW: number; absTopW: number; absTopElig: number };
+const emptyAgg = (): Agg => ({ impr: 0, clicks: 0, cost: 0, eligible: 0, lostRankW: 0, lostBudgetW: 0, absTopW: 0, absTopElig: 0 });
 
 function rowFromAgg(type: ColgateType, e: Agg): TypeRow {
   const impShare = e.eligible ? e.impr / e.eligible : null;
@@ -153,6 +154,7 @@ function rowFromAgg(type: ColgateType, e: Agg): TypeRow {
     cost: Math.round(e.cost * 100) / 100,
     cpc: e.clicks ? e.cost / e.clicks : null,
     ctr: e.impr ? e.clicks / e.impr : null,
+    absTopIS: e.absTopElig ? e.absTopW / e.absTopElig : null,
     lostRank: e.eligible ? e.lostRankW / e.eligible : null,
     lostBudget: e.eligible ? e.lostBudgetW / e.eligible : null,
     target,
@@ -193,6 +195,7 @@ function buildSection(cfg: GoogleSnapshotConfig, campRows: WindsorRow[], kwRows:
     const eligible = is > 0 ? impr / is : 0;
     const lostRank = r.search_rank_lost_impression_share == null ? null : num(r.search_rank_lost_impression_share);
     const lostBudget = r.search_budget_lost_impression_share == null ? null : num(r.search_budget_lost_impression_share);
+    const absTop = r.search_absolute_top_impression_share == null ? null : num(r.search_absolute_top_impression_share);
     const target = TYPE_TARGET[type];
 
     const key = cKey(r);
@@ -220,6 +223,7 @@ function buildSection(cfg: GoogleSnapshotConfig, campRows: WindsorRow[], kwRows:
     e.eligible += eligible;
     if (lostRank != null) e.lostRankW += lostRank * eligible;
     if (lostBudget != null) e.lostBudgetW += lostBudget * eligible;
+    if (absTop != null) { e.absTopW += absTop * eligible; e.absTopElig += eligible; }
     byType.set(type, e);
   }
 
@@ -227,6 +231,7 @@ function buildSection(cfg: GoogleSnapshotConfig, campRows: WindsorRow[], kwRows:
   const totAgg = [...byType.values()].reduce((a, e) => ({
     impr: a.impr + e.impr, clicks: a.clicks + e.clicks, cost: a.cost + e.cost,
     eligible: a.eligible + e.eligible, lostRankW: a.lostRankW + e.lostRankW, lostBudgetW: a.lostBudgetW + e.lostBudgetW,
+    absTopW: a.absTopW + e.absTopW, absTopElig: a.absTopElig + e.absTopElig,
   }), emptyAgg());
   const totals = rowFromAgg("other", totAgg);
 
@@ -244,7 +249,7 @@ async function buildSectionViaApi(cfg: GoogleSnapshotConfig, from: string, to: s
   const cust = cfg.account;
   const dateBetween = (a: string, b: string) => `segments.date BETWEEN '${a}' AND '${b}'`;
   const [camp, kw, st, daily, auc, aucPrev] = await Promise.all([
-    gaql(cust, `SELECT campaign.name, customer.currency_code, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.search_impression_share, metrics.search_rank_lost_impression_share, metrics.search_budget_lost_impression_share FROM campaign WHERE ${dateBetween(from, to)} AND metrics.impressions > 0`).catch(() => []),
+    gaql(cust, `SELECT campaign.name, customer.currency_code, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.search_impression_share, metrics.search_absolute_top_impression_share, metrics.search_rank_lost_impression_share, metrics.search_budget_lost_impression_share FROM campaign WHERE ${dateBetween(from, to)} AND metrics.impressions > 0`).catch(() => []),
     gaql(cust, `SELECT campaign.name, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, metrics.impressions, metrics.clicks, metrics.cost_micros FROM keyword_view WHERE ${dateBetween(from, to)} AND metrics.impressions > 0`).catch(() => []),
     gaql(cust, `SELECT campaign.name, search_term_view.search_term, metrics.impressions, metrics.clicks, metrics.cost_micros FROM search_term_view WHERE ${dateBetween(from, to)} AND metrics.impressions > 0`).catch(() => []),
     gaql(cust, `SELECT segments.date, campaign.name, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.search_impression_share FROM campaign WHERE ${dateBetween(from, to)} AND metrics.impressions > 0`).catch(() => []),
@@ -256,7 +261,7 @@ async function buildSectionViaApi(cfg: GoogleSnapshotConfig, from: string, to: s
   const currency = String((g(camp[0], "customer.currencyCode") as string) ?? "EUR").toUpperCase();
 
   // Flatten to the Windsor row shape buildSection expects.
-  const campRows = camp.map((r) => ({ account_id: cust, currency, campaign: g(r, "campaign.name"), impressions: num(g(r, "metrics.impressions") as never), clicks: num(g(r, "metrics.clicks") as never), spend: cost(r), search_impression_share: num(g(r, "metrics.searchImpressionShare") as never), search_rank_lost_impression_share: g(r, "metrics.searchRankLostImpressionShare") ?? null, search_budget_lost_impression_share: g(r, "metrics.searchBudgetLostImpressionShare") ?? null })) as unknown as WindsorRow[];
+  const campRows = camp.map((r) => ({ account_id: cust, currency, campaign: g(r, "campaign.name"), impressions: num(g(r, "metrics.impressions") as never), clicks: num(g(r, "metrics.clicks") as never), spend: cost(r), search_impression_share: num(g(r, "metrics.searchImpressionShare") as never), search_absolute_top_impression_share: g(r, "metrics.searchAbsoluteTopImpressionShare") ?? null, search_rank_lost_impression_share: g(r, "metrics.searchRankLostImpressionShare") ?? null, search_budget_lost_impression_share: g(r, "metrics.searchBudgetLostImpressionShare") ?? null })) as unknown as WindsorRow[];
   const kwRows = kw.map((r) => ({ account_id: cust, campaign: g(r, "campaign.name"), keyword_text: g(r, "adGroupCriterion.keyword.text"), match_type: g(r, "adGroupCriterion.keyword.matchType"), impressions: num(g(r, "metrics.impressions") as never), clicks: num(g(r, "metrics.clicks") as never), spend: cost(r) })) as unknown as WindsorRow[];
   const stRows = st.map((r) => ({ account_id: cust, campaign: g(r, "campaign.name"), search_term: g(r, "searchTermView.searchTerm"), impressions: num(g(r, "metrics.impressions") as never), clicks: num(g(r, "metrics.clicks") as never), spend: cost(r) })) as unknown as WindsorRow[];
   const sec = buildSection(cfg, campRows, kwRows, stRows);
@@ -320,7 +325,7 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
     ? await Promise.all([
         fetchWindsor({
           connector: "google_ads",
-          fields: ["account_id", "currency", "campaign", "impressions", "clicks", "spend", "search_impression_share", "search_rank_lost_impression_share", "search_budget_lost_impression_share"],
+          fields: ["account_id", "currency", "campaign", "impressions", "clicks", "spend", "search_impression_share", "search_absolute_top_impression_share", "search_rank_lost_impression_share", "search_budget_lost_impression_share"],
           dateFrom: from, dateTo: to, cacheSeconds: 60,
         }).catch(() => [] as WindsorRow[]),
         fetchWindsor({
