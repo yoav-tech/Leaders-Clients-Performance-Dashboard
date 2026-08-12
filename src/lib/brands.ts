@@ -80,6 +80,9 @@ export interface AwarenessSourceConfig {
 export interface GoogleSnapshotConfig {
   account: string; // Google Ads account id
   title: string;
+  api?: boolean; // pull this section directly from the Google Ads API (accurate IS + Absolute Top);
+  // falls back to Windsor when the API isn't configured. Requires the account to be reachable
+  // under GOOGLE_ADS_LOGIN_CUSTOMER_ID.
 }
 
 // General campaign-performance sources (e.g. Leaders / Bestie) — pull campaigns from shared
@@ -248,7 +251,7 @@ export const BRANDS: BrandConfig[] = [
     monthlyBudget: 0,
     googleSnapshot: [
       { account: "265-522-0192", title: "Total" },
-      { account: "565-797-1550", title: "Optic White" },
+      { account: "565-797-1550", title: "Optic White", api: true }, // direct Google Ads API
     ],
   },
   {
