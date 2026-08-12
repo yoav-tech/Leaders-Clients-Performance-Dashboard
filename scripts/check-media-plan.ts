@@ -234,14 +234,27 @@ async function main() {
     ok(p.lines.every((l) => profileStages(p.profile).includes(l.stage)), `${b.id}: every line's stage belongs to the profile`);
     ok(p.scale.factor <= GUARDRAILS.maxScaleUp && p.scale.factor >= GUARDRAILS.maxScaleDown * 1.0, `${b.id}: scale factor inside the guardrails`);
 
-    // Stage bands: what actually landed on each stage must sit inside its rule, allowing for
-    // rounding and for stages that lost a line to the minimum-budget rule.
+    // Stage bands: what landed on each stage must sit inside its rule — UNLESS the budget could
+    // not fund every stage at its platform minimum, in which case the minimum wins and the plan
+    // must declare it. A breach that is not declared is the bug.
     if (p.totalBudget > 0 && p.lines.length > 1) {
       for (const stage of new Set(p.lines.map((l) => l.stage))) {
         const share = p.lines.filter((l) => l.stage === stage).reduce((s, l) => s + l.budget, 0) / p.totalBudget;
         const rule = PROFILES[p.profile].stages.find((s) => s.stage === stage)!;
-        ok(share <= rule.maxShare + 0.05, `${b.id}/${stage}: ${(share * 100).toFixed(0)}% exceeds the ${(rule.maxShare * 100).toFixed(0)}% cap`);
+        const within = share <= rule.maxShare + 0.05;
+        ok(
+          within || p.bandsRelaxed,
+          `${b.id}/${stage}: ${(share * 100).toFixed(0)}% exceeds the ${(rule.maxShare * 100).toFixed(0)}% cap without the plan declaring bandsRelaxed`,
+        );
       }
+    }
+    // A declared breach must be explained to the reader, not just flagged in the data.
+    if (p.bandsRelaxed) {
+      ok(p.droppedLines > 0, `${b.id}: bands were relaxed, so some lines must have been dropped`);
+      ok(
+        p.rationale.some((r) => r.includes("רצועות ההקצאה")),
+        `${b.id}: a relaxed-bands plan must say so in its rationale`,
+      );
     }
 
     // Every profile must render both email bodies without throwing.
@@ -268,6 +281,47 @@ async function main() {
   );
   ok(minLineBudget("meta", 0.03, false) === PLATFORMS.meta.viewKpiFloor, "a view KPI uses the operational floor, not 50 × CPV");
   ok(MIN_BUDGET_RULE.conversions === 50, "the rule is 50 conversions");
+
+  // Squeeze test. The band breaches that real data exposed only appear when the budget cannot
+  // fund every stage at its platform floor — a shape the plain run never reaches, because with no
+  // history every brand sits on its configured budget. Forcing small budgets reproduces it
+  // without a database, so the regression is caught here rather than in someone's console.
+  console.log("— squeeze test (budgets too small to fund every stage) —");
+  for (const b of BRANDS) {
+    for (const budget of [5000, 20000, 50000]) {
+      const p = await buildMediaPlan(b, MONTH, { budgetOverride: budget });
+      if (!p.lines.length || p.totalBudget <= 0) continue;
+      ok(
+        p.lines.reduce((s, l) => s + l.budget, 0) === p.totalBudget,
+        `${b.id} @₪${budget}: lines still sum to the total`,
+      );
+      // Every line must clear its floor — except the last one standing, which is kept
+      // deliberately (a plan with no lines helps no one) and must be declared underfunded.
+      const belowFloor = p.lines.filter((l) => l.budget > 0 && l.budget < l.floorUsed);
+      ok(
+        belowFloor.length === 0 || (p.lines.length === 1 && p.underfunded),
+        `${b.id} @₪${budget}: ${belowFloor.length} line(s) under their floor without an underfunded plan`,
+      );
+      if (p.underfunded) {
+        ok(
+          p.rationale.some((r) => r.includes("נמוך מהמינימום להרצת שורה אחת")),
+          `${b.id} @₪${budget}: an underfunded plan must say so in its rationale`,
+        );
+      }
+      for (const stage of new Set(p.lines.map((l) => l.stage))) {
+        const share = p.lines.filter((l) => l.stage === stage).reduce((s, l) => s + l.budget, 0) / p.totalBudget;
+        const rule = PROFILES[p.profile].stages.find((s) => s.stage === stage)!;
+        ok(
+          share <= rule.maxShare + 0.05 || p.bandsRelaxed,
+          `${b.id} @₪${budget}: ${stage} took ${(share * 100).toFixed(0)}% (cap ${(rule.maxShare * 100).toFixed(0)}%) without declaring bandsRelaxed`,
+        );
+      }
+      if (p.bandsRelaxed) {
+        ok(p.droppedLines > 0, `${b.id} @₪${budget}: a relaxed plan must have dropped lines`);
+        ok(p.rationale.some((r) => r.includes("רצועות ההקצאה")), `${b.id} @₪${budget}: the breach must be explained in the rationale`);
+      }
+    }
+  }
 
   console.log("— manager budget override —");
   const argania = BRANDS.find((b) => b.id === "argania")!;

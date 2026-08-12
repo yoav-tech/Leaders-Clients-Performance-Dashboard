@@ -28,6 +28,9 @@ function toPlan(r: Row): StoredPlan {
       | (PlanBasis & {
           scale?: ScaleDecision;
           roasFloorApplied?: boolean;
+          bandsRelaxed?: boolean;
+          droppedLines?: number;
+          underfunded?: boolean;
           economics?: MediaPlanDraft["economics"];
           economicsMissing?: boolean;
           brandName?: string;
@@ -51,6 +54,9 @@ function toPlan(r: Row): StoredPlan {
     recommendedBudget: Number(r.recommended_budget),
     scale: basis?.scale ?? { factor: 1, scaleFactor: 1, seasonalFactor: 1, kpi: "roas", kpiValue: null, kpiTarget: null, targetSource: "none", index: null, reason: "" },
     roasFloorApplied: basis?.roasFloorApplied ?? false,
+    bandsRelaxed: basis?.bandsRelaxed ?? false,
+    droppedLines: basis?.droppedLines ?? 0,
+    underfunded: basis?.underfunded ?? false,
     economics: basis?.economics ?? null,
     economicsMissing: basis?.economicsMissing ?? false,
     lines,
@@ -90,6 +96,9 @@ function toRow(d: MediaPlanDraft, status: PlanStatus): Row {
       ...d.basis,
       scale: d.scale,
       roasFloorApplied: d.roasFloorApplied,
+      bandsRelaxed: d.bandsRelaxed,
+      droppedLines: d.droppedLines,
+      underfunded: d.underfunded,
       economics: d.economics,
       economicsMissing: d.economicsMissing,
       brandName: d.brandName,

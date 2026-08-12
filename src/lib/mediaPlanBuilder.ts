@@ -80,6 +80,7 @@ export interface PlanLine {
   deltaPct: number | null; // budget vs prevSpend
   trusted: boolean; // was there enough data to let this cell's performance move money?
   seeded: boolean; // a stage the client isn't running, opened by the rules
+  floorUsed: number; // the minimum monthly budget this line had to clear to survive
   forecast: PlanForecast;
   note: string; // why this line moved up or down
 }
@@ -121,6 +122,15 @@ export interface MediaPlanDraft {
   recommendedBudget: number;
   scale: ScaleDecision;
   roasFloorApplied: boolean; // the ROAS target was below MIN_TARGET_ROAS and was raised to it
+  // Lines the budget could not fund were dropped, and the surviving stages no longer fit inside
+  // their share bands. The minimum-line rule won; the plan says so rather than presenting an
+  // out-of-band split as doctrine.
+  bandsRelaxed: boolean;
+  droppedLines: number;
+  // The plan's own budget cannot fund a single line at its platform minimum. The line is kept
+  // anyway (a plan with nothing in it helps no one), but this is the headline for the manager:
+  // the client is underfunded for the channel mix their profile implies.
+  underfunded: boolean;
   // The client's unit economics, when collected — the derivation behind an ecommerce target.
   economics: (UnitEconomics & { derived: ReturnType<typeof deriveEconomics> }) | null;
   economicsMissing: boolean; // an ecommerce client with no economics on file yet
@@ -422,11 +432,17 @@ function boundedShares(raw: number[], bands: { min: number; max: number }[]): nu
 //      band from the rules;
 //   2. how that stage's money splits across the CHANNELS running it, bounded so a stage never
 //      collapses onto one platform.
-function allocateShares(cells: Cell[], profile: CampaignProfile): number[] {
-  if (!cells.length) return [];
-  const stages = [...new Set(cells.map((c) => c.stage))];
+// `active` marks the cells still in the plan — a line dropped for being under its platform's
+// minimum is excluded, and the bands are then recomputed over what is left. Recomputing is the
+// point: redistributing a dropped line's budget without re-checking the bands is how a stage ends
+// up over its cap.
+function allocateShares(cells: Cell[], profile: CampaignProfile, active: boolean[]): number[] {
+  const out = new Array<number>(cells.length).fill(0);
+  const liveIdx = cells.map((_, i) => i).filter((i) => active[i]);
+  if (!liveIdx.length) return out;
 
-  const rawStage = stages.map((st) => sumOf(cells.filter((c) => c.stage === st), (c) => c.weight));
+  const stages = [...new Set(liveIdx.map((i) => cells[i].stage))];
+  const rawStage = stages.map((st) => sumOf(liveIdx.filter((i) => cells[i].stage === st), (i) => cells[i].weight));
   const bands = stages.map((st) => {
     const r = stageRule(profile, st);
     return r ? { min: r.minShare, max: r.maxShare } : { min: 0, max: 1 };
@@ -438,9 +454,8 @@ function allocateShares(cells: Cell[], profile: CampaignProfile): number[] {
   const stageShare = boundedShares(seed, bands);
 
   const within = GUARDRAILS.withinStageChannelShare;
-  const out = new Array<number>(cells.length).fill(0);
   stages.forEach((st, si) => {
-    const idx = cells.map((c, i) => (c.stage === st ? i : -1)).filter((i) => i >= 0);
+    const idx = liveIdx.filter((i) => cells[i].stage === st);
     const w = idx.map((i) => cells[i].weight);
     const inner = idx.length === 1
       ? [1]
@@ -452,38 +467,58 @@ function allocateShares(cells: Cell[], profile: CampaignProfile): number[] {
   return out;
 }
 
-// Turn shares into budgets: drop lines that can't realistically run on their platform
-// (redistributing inside their stage first, then across the plan), round to the rules' step, and
-// settle the rounding remainder on the largest line so the lines always add up to exactly the
-// plan total. The floor is per-platform — ₪1,500 buys different amounts of learning on Meta and
-// on LinkedIn.
-function toBudgets(cells: Cell[], shares: number[], total: number): number[] {
-  if (!cells.length || total <= 0) return cells.map(() => 0);
+// Did the surviving stages end up outside their caps? Only possible when lines were dropped for
+// being unfundable and the remaining stages' caps can no longer cover the whole budget.
+function bandsBreached(cells: Cell[], profile: CampaignProfile, shares: number[], active: boolean[]): boolean {
+  const stages = [...new Set(cells.filter((_, i) => active[i]).map((c) => c.stage))];
+  return stages.some((st) => {
+    const rule = stageRule(profile, st);
+    if (!rule) return false;
+    const share = sumOf(cells.map((c, i) => (active[i] && c.stage === st ? shares[i] : 0)), (v) => v);
+    return share > rule.maxShare + 0.01;
+  });
+}
 
-  let live = shares.slice();
-  // Iteratively drop the smallest under-minimum line; each drop can push another under.
+// Turn the cell grid into budgets.
+//
+// Allocation and affordability are solved TOGETHER, not one after the other: drop the cheapest
+// line that cannot clear its platform's floor, then re-run the whole band allocation over what
+// survives, and repeat. Redistributing a dropped line's budget across the others without
+// re-applying the bands is what let a stage sail past its cap on the small accounts.
+//
+// The two rules can genuinely conflict: once enough lines are unfundable, the surviving stages'
+// caps may no longer add up to the whole budget. The minimum wins — a line that cannot run is
+// worse than a cap breach — and `bandsRelaxed` records that it happened so the plan can say so
+// instead of quietly presenting an out-of-band split as if it were the doctrine.
+function toBudgets(
+  cells: Cell[],
+  profile: CampaignProfile,
+  total: number,
+): { budgets: number[]; bandsRelaxed: boolean; dropped: number; underfunded: boolean } {
+  if (!cells.length || total <= 0) return { budgets: cells.map(() => 0), bandsRelaxed: false, dropped: 0, underfunded: false };
+
+  const active = cells.map(() => true);
+  let shares = allocateShares(cells, profile, active);
+
   for (let guard = 0; guard < cells.length; guard++) {
-    const candidates = live
-      .map((s, i) => ({ i, budget: s * total }))
-      .filter((x) => x.budget > 0 && x.budget < cells[x.i].floor);
-    if (!candidates.length) break;
-    const drop = candidates.sort((a, b) => a.budget - b.budget)[0].i;
-    const freed = live[drop];
-    live[drop] = 0;
-
-    const siblings = cells.map((c, i) => (i !== drop && c.stage === cells[drop].stage && live[i] > 0 ? i : -1)).filter((i) => i >= 0);
-    const targets = siblings.length ? siblings : live.map((s, i) => (s > 0 ? i : -1)).filter((i) => i >= 0);
-    const pool = sumOf(targets, (i) => live[i]);
-    if (!targets.length || pool <= 0) {
-      live[drop] = freed; // nowhere to move it — keep the line rather than lose the budget
-      break;
-    }
-    for (const i of targets) live[i] += freed * (live[i] / pool);
+    const under = cells
+      .map((c, i) => ({ i, budget: shares[i] * total }))
+      .filter((x) => active[x.i] && x.budget > 0 && x.budget < cells[x.i].floor)
+      .sort((a, b) => a.budget - b.budget);
+    if (!under.length) break;
+    // Never drop the last line standing — a plan with no lines is worse than an underfunded one.
+    if (active.filter(Boolean).length <= 1) break;
+    active[under[0].i] = false;
+    shares = allocateShares(cells, profile, active);
   }
 
-  const norm = sumOf(live, (s) => s);
-  if (norm > 0) live = live.map((s) => s / norm);
+  const dropped = active.filter((a) => !a).length;
+  const bandsRelaxed = bandsBreached(cells, profile, shares, active);
+  // Did we stop dropping because only one line was left, and even that one is unfundable?
+  const underfunded = cells.some((c, i) => active[i] && shares[i] * total > 0 && shares[i] * total < c.floor);
 
+  const norm = sumOf(shares, (s) => s);
+  const live = norm > 0 ? shares.map((s) => s / norm) : shares;
   const budgets = live.map((s) => Math.max(0, round(s * total)));
   const diff = total - sumOf(budgets, (b) => b);
   if (diff !== 0) {
@@ -491,7 +526,7 @@ function toBudgets(cells: Cell[], shares: number[], total: number): number[] {
     for (let i = 1; i < budgets.length; i++) if (budgets[i] > budgets[big]) big = i;
     budgets[big] = Math.max(0, budgets[big] + diff);
   }
-  return budgets;
+  return { budgets, bandsRelaxed, dropped, underfunded };
 }
 
 function forecastFor(profile: CampaignProfile, budget: number, s: ChannelStats, roasIndex: number | null): PlanForecast {
@@ -674,7 +709,7 @@ export async function buildMediaPlan(
   }
 
   // --- 3. allocation -------------------------------------------------------------------------
-  const budgets = toBudgets(cells, allocateShares(cells, profile), totalBudget);
+  const { budgets, bandsRelaxed, dropped: droppedLines, underfunded } = toBudgets(cells, profile, totalBudget);
 
   const order = profileStages(profile);
   const lines: PlanLine[] = cells
@@ -693,6 +728,7 @@ export async function buildMediaPlan(
         deltaPct,
         trusted: c.trusted,
         seeded: c.seeded,
+        floorUsed: c.floor,
         forecast: forecastFor(profile, budget, c.stats, c.roasIndex),
         note: lineNote(c, deltaPct),
       };
@@ -721,6 +757,9 @@ export async function buildMediaPlan(
     recommendedBudget,
     scale: { factor: combinedFactor, scaleFactor: step.factor, seasonalFactor: season.factor, kpi: rules.kpi, kpiValue, kpiTarget: target, targetSource, index, reason },
     roasFloorApplied: roasFloorRaised,
+    bandsRelaxed,
+    droppedLines,
+    underfunded,
     economics,
     economicsMissing: profile === "ecommerce" && !economics,
     lines,
@@ -788,6 +827,19 @@ function baseRationale(d: MediaPlanDraft, lookbackSpend: number): string[] {
     out.push(
       `אין היסטוריית עלות להמרה, והתקציב (${ils(d.totalBudget)}) נמוך מ-${ils(MIN_BUDGET_RULE.twoPlatformMinimum)} — ` +
         "לא מספיק לשתי פלטפורמות. הפריסה מרכזת אותו בפלטפורמה אחת.",
+    );
+  }
+  if (d.underfunded) {
+    const need = d.lines.length ? Math.max(...d.lines.map((l) => l.floorUsed)) : 0;
+    out.push(
+      `התקציב (${ils(d.totalBudget)}) נמוך מהמינימום להרצת שורה אחת (${ils(need)}) — ` +
+        "הפריסה מרוכזת בשורה אחת ומתחת לסף הלמידה. זו נקודה לשיחה עם הלקוח, לא בעיית פריסה.",
+    );
+  }
+  if (d.bandsRelaxed) {
+    out.push(
+      `התקציב לא מאפשר לממן את כל שלבי הפאנל במינימום הנדרש — ${d.droppedLines} שורות בוטלו, ` +
+        "ולכן החלוקה חורגת מרצועות ההקצאה. הגדלת התקציב תאפשר פריסה מלאה יותר.",
     );
   }
   if (d.basis.stageSource === "channel-only") out.push("פילוח הפאנל לא היה זמין מנתוני הקמפיינים — הפריסה ברמת ערוץ בלבד.");
