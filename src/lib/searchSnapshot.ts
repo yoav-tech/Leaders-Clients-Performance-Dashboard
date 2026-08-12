@@ -11,6 +11,7 @@
 
 import type { BrandConfig, GoogleSnapshotConfig } from "./brands";
 import { fetchWindsor, num, type WindsorRow } from "./windsor";
+import { shiftDate } from "./dates";
 
 const normId = (v: unknown) => String(v ?? "").replace(/^act_/i, "").trim();
 const TOP_N = 15; // keywords / search terms shown per campaign
@@ -92,9 +93,10 @@ export interface SnapSection {
 // Per-day trend across all snapshot accounts: impression-weighted IS + impressions/clicks/spend.
 export interface SnapTrendPoint { date: string; impShare: number | null; impressions: number; clicks: number; spend: number }
 // A rival domain competing on the same search terms (Google auction insights). Windsor exposes the
-// domain but not the per-competitor impression share, so we rank by overlap breadth (# of our
-// campaigns they appear in).
-export interface CompetitorRow { domain: string; campaigns: number }
+// domain but not the per-competitor impression share, so we characterise them by: which of our
+// campaign TYPES they hit (Lead/Compete/…), overlap breadth (# campaigns), days active in range,
+// and whether they're NEW vs the previous period.
+export interface CompetitorRow { domain: string; campaigns: number; days: number; types: ColgateType[]; isNew: boolean }
 export interface SearchSnapshot { sections: SnapSection[]; trend: SnapTrendPoint[]; currency: string }
 
 const cKey = (r: WindsorRow) => `${normId(r.account_id)}||${String(r.campaign ?? "")}`;
@@ -240,7 +242,11 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
   // Windsor ignores the accounts param, so one call each returns all accounts; we filter per-section
   // by account_id. Granularities: campaign (with impression-share), keyword, search-term, and a
   // per-day pull for the impression-share trend.
-  const [campRows, kwRows, stRows, dayRows, auctionRows] = await Promise.all([
+  const daysInclusive = (a: string, b: string) => Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 86400000) + 1;
+  const prevTo = shiftDate(from, -1);
+  const prevFrom = shiftDate(prevTo, -(daysInclusive(from, to) - 1));
+
+  const [campRows, kwRows, stRows, dayRows, auctionRows, prevAuctionRows] = await Promise.all([
     fetchWindsor({
       connector: "google_ads",
       fields: ["account_id", "currency", "campaign", "impressions", "clicks", "spend", "search_impression_share", "search_rank_lost_impression_share", "search_budget_lost_impression_share"],
@@ -263,8 +269,14 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
     }).catch(() => [] as WindsorRow[]),
     fetchWindsor({
       connector: "google_ads",
-      fields: ["account_id", "campaign", "auction_insight_domain"],
+      fields: ["date", "account_id", "campaign", "auction_insight_domain"],
       dateFrom: from, dateTo: to, cacheSeconds: 60,
+    }).catch(() => [] as WindsorRow[]),
+    // Previous equal-length period — to flag NEW competitors (present now, absent before).
+    fetchWindsor({
+      connector: "google_ads",
+      fields: ["account_id", "auction_insight_domain"],
+      dateFrom: prevFrom, dateTo: prevTo, cacheSeconds: 300,
     }).catch(() => [] as WindsorRow[]),
   ]);
 
@@ -298,21 +310,40 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
   };
 
   // Competitors (auction insights): rival domains on the same terms, per account. Windsor returns
-  // the domain but not per-competitor IS, so rank by overlap breadth (# of our campaigns they hit).
+  // the domain but not per-competitor IS, so we characterise each by the campaign types they hit,
+  // overlap breadth, days active, and whether they're new vs the previous period.
+  const prevByAcc = new Map<string, Set<string>>();
+  for (const r of prevAuctionRows) {
+    const acc = normId(r.account_id);
+    const domain = String(r.auction_insight_domain ?? "").trim().toLowerCase();
+    if (!domain) continue;
+    (prevByAcc.get(acc) ?? prevByAcc.set(acc, new Set()).get(acc)!).add(domain);
+  }
   const buildCompetitors = (acc: string): CompetitorRow[] => {
-    const byDomain = new Map<string, Set<string>>();
+    const byDomain = new Map<string, { camps: Set<string>; dates: Set<string>; types: Set<ColgateType> }>();
     for (const r of auctionRows) {
       if (normId(r.account_id) !== acc) continue;
       const domain = String(r.auction_insight_domain ?? "").trim().toLowerCase();
       if (!domain) continue;
-      const set = byDomain.get(domain) ?? new Set<string>();
-      set.add(String(r.campaign ?? ""));
-      byDomain.set(domain, set);
+      const camp = String(r.campaign ?? "");
+      const e = byDomain.get(domain) ?? { camps: new Set(), dates: new Set(), types: new Set() };
+      e.camps.add(camp);
+      const d = String(r.date ?? "").slice(0, 10);
+      if (d) e.dates.add(d);
+      e.types.add(classify(camp));
+      byDomain.set(domain, e);
     }
+    const prev = prevByAcc.get(acc) ?? new Set<string>();
     return [...byDomain]
-      .map(([domain, camps]) => ({ domain, campaigns: camps.size }))
-      .sort((a, b) => b.campaigns - a.campaigns || a.domain.localeCompare(b.domain))
-      .slice(0, 40);
+      .map(([domain, e]) => ({
+        domain,
+        campaigns: e.camps.size,
+        days: e.dates.size,
+        types: [...e.types].filter((t) => t !== "other").sort((a, b) => TYPE_ORDER.indexOf(a) - TYPE_ORDER.indexOf(b)),
+        isNew: !prev.has(domain),
+      }))
+      .sort((a, b) => b.days - a.days || b.campaigns - a.campaigns || a.domain.localeCompare(b.domain))
+      .slice(0, 50);
   };
 
   const sections = brand.googleSnapshot.map((c) => {

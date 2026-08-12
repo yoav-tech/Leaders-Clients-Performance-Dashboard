@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   TYPE_LABEL,
+  TYPE_ORDER,
+  type ColgateType,
   type SearchSnapshot,
   type SnapSection,
   type SnapTrendPoint,
@@ -305,31 +307,71 @@ function SectionBlock({ s }: { s: SnapSection }) {
   );
 }
 
-// Competitors on our search terms (auction insights), one table per account.
+// Competitors on our search terms (auction insights), one table per account: filterable by the
+// campaign type they compete on, with days-active and a NEW badge (vs the previous period).
 function CompetitorsBlock({ s }: { s: SnapSection }) {
+  const [typeFilter, setTypeFilter] = useState<ColgateType | "all">("all");
+  const typesPresent = TYPE_ORDER.filter((t) => s.competitors.some((c) => c.types.includes(t)));
+  const rows = s.competitors.filter((c) => typeFilter === "all" || c.types.includes(typeFilter));
+  const newCount = s.competitors.filter((c) => c.isNew).length;
+  const pill = (active: boolean) =>
+    `rounded-md px-3 py-1 text-sm transition-colors ${active ? "bg-blue-600 text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`;
+
   return (
     <Panel title={`מתחרים · ${s.title} · ${s.account}`}>
       {s.competitors?.length ? (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[420px] border-collapse text-sm">
-            <thead>
-              <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
-                <th className="w-8 px-2 py-1.5 text-left">#</th>
-                <th className="px-2 py-1.5 text-left">מתחרה · דומיין</th>
-                <th className="px-2 py-1.5 text-right">קמפיינים חופפים</th>
-              </tr>
-            </thead>
-            <tbody className="tabular-nums">
-              {s.competitors.map((c, i) => (
-                <tr key={c.domain} className="border-t border-[var(--card-border)]">
-                  <td className="px-2 py-1.5 text-left text-[var(--muted)]">{i + 1}</td>
-                  <td className="px-2 py-1.5 text-left font-medium" dir="ltr">{c.domain}</td>
-                  <td className="px-2 py-1.5 text-right">{formatNumber(c.campaigns)}</td>
+        <>
+          {typesPresent.length ? (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <div className="inline-flex flex-wrap gap-1 rounded-lg border border-[var(--card-border)] p-1">
+                <button onClick={() => setTypeFilter("all")} className={pill(typeFilter === "all")}>הכל</button>
+                {typesPresent.map((t) => (
+                  <button key={t} onClick={() => setTypeFilter(t)} className={pill(typeFilter === t)}>{TYPE_LABEL[t]}</button>
+                ))}
+              </div>
+              {newCount ? <span className="text-[11px] font-medium text-[var(--good)]">● {newCount} מתחרים חדשים בתקופה</span> : null}
+            </div>
+          ) : null}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[600px] border-collapse text-sm">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
+                  <th className="w-8 px-2 py-1.5 text-left">#</th>
+                  <th className="px-2 py-1.5 text-left">מתחרה · דומיין</th>
+                  <th className="px-2 py-1.5 text-left">סוגי קמפיין</th>
+                  <th className="px-2 py-1.5 text-right">קמפיינים</th>
+                  <th className="px-2 py-1.5 text-right">ימים פעיל</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="tabular-nums">
+                {rows.map((c, i) => (
+                  <tr key={c.domain} className="border-t border-[var(--card-border)]">
+                    <td className="px-2 py-1.5 text-left text-[var(--muted)]">{i + 1}</td>
+                    <td className="px-2 py-1.5 text-left font-medium" dir="ltr">
+                      {c.domain}
+                      {c.isNew ? <span className="ml-2 rounded bg-[var(--good)]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--good)]">חדש</span> : null}
+                    </td>
+                    <td className="px-2 py-1.5 text-left">
+                      <span className="flex flex-wrap gap-1">
+                        {c.types.length ? c.types.map((t) => (
+                          <span key={t} className="rounded border border-[var(--card-border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">{TYPE_LABEL[t]}</span>
+                        )) : <span className="text-[var(--muted)]">—</span>}
+                      </span>
+                    </td>
+                    <td className="px-2 py-1.5 text-right">{formatNumber(c.campaigns)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatNumber(c.days)}</td>
+                  </tr>
+                ))}
+                {rows.length === 0 ? (
+                  <tr><td colSpan={5} className="px-2 py-3 text-center text-[var(--muted)]">אין מתחרים בסוג הזה.</td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-2 text-[11px] leading-relaxed text-[var(--muted)]">
+            מדורג לפי <b>ימים פעיל</b> · <b>סוגי קמפיין</b> = על אילו ממונחי החיפוש שלנו הם מתחרים (סנן למעלה) · <b>חדש</b> = הופיע בתקופה זו ולא בקודמת · Google/Windsor לא חושפים את נתח החשיפה של כל מתחרה בנפרד.
+          </div>
+        </>
       ) : (
         <div className="py-4 text-sm text-[var(--muted)]">אין נתוני מתחרים לטווח הזה.</div>
       )}
