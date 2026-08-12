@@ -23,7 +23,19 @@ type Row = Record<string, unknown>;
 
 function toPlan(r: Row): StoredPlan {
   const lines = (r.lines as PlanLine[] | null) ?? [];
-  const basis = (r.basis as (PlanBasis & { scale?: ScaleDecision; roasFloorApplied?: boolean; brandName?: string; brandNameHe?: string; monthStart?: string; monthEnd?: string }) | null) ?? null;
+  const basis =
+    (r.basis as
+      | (PlanBasis & {
+          scale?: ScaleDecision;
+          roasFloorApplied?: boolean;
+          economics?: MediaPlanDraft["economics"];
+          economicsMissing?: boolean;
+          brandName?: string;
+          brandNameHe?: string;
+          monthStart?: string;
+          monthEnd?: string;
+        })
+      | null) ?? null;
   const month = String(r.month);
   return {
     brandId: String(r.brand_id),
@@ -37,8 +49,10 @@ function toPlan(r: Row): StoredPlan {
     totalBudget: Number(r.total_budget),
     baselineBudget: Number(r.baseline_budget),
     recommendedBudget: Number(r.recommended_budget),
-    scale: basis?.scale ?? { factor: 1, scaleFactor: 1, seasonalFactor: 1, kpi: "roas", kpiValue: null, kpiTarget: null, index: null, reason: "" },
+    scale: basis?.scale ?? { factor: 1, scaleFactor: 1, seasonalFactor: 1, kpi: "roas", kpiValue: null, kpiTarget: null, targetSource: "none", index: null, reason: "" },
     roasFloorApplied: basis?.roasFloorApplied ?? false,
+    economics: basis?.economics ?? null,
+    economicsMissing: basis?.economicsMissing ?? false,
     lines,
     rationale: (r.rationale as string[] | null) ?? [],
     basis: {
@@ -72,7 +86,17 @@ function toRow(d: MediaPlanDraft, status: PlanStatus): Row {
     recommended_budget: d.recommendedBudget,
     lines: d.lines,
     rationale: d.rationale,
-    basis: { ...d.basis, scale: d.scale, roasFloorApplied: d.roasFloorApplied, brandName: d.brandName, brandNameHe: d.brandNameHe, monthStart: d.monthStart, monthEnd: d.monthEnd },
+    basis: {
+      ...d.basis,
+      scale: d.scale,
+      roasFloorApplied: d.roasFloorApplied,
+      economics: d.economics,
+      economicsMissing: d.economicsMissing,
+      brandName: d.brandName,
+      brandNameHe: d.brandNameHe,
+      monthStart: d.monthStart,
+      monthEnd: d.monthEnd,
+    },
     updated_at: new Date().toISOString(),
   };
 }

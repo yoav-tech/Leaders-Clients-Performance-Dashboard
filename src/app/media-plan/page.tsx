@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { getServerSession, allowedBrands } from "@/lib/serverSession";
-import { BRANDS } from "@/lib/brands";
+import { BRANDS, campaignProfileOf } from "@/lib/brands";
 import { brandManagersByBrand } from "@/lib/recipients";
+import { listEconomics } from "@/lib/economicsStore";
+import { deriveEconomics, type UnitEconomics } from "@/lib/unitEconomics";
 import { listPlans } from "@/lib/mediaPlanStore";
 import { nextMonthOf, prevMonthOf } from "@/lib/mediaPlanBuilder";
 import { AUTOMATION, RULES_VERSION } from "@/lib/mediaPlanRules";
@@ -25,11 +27,23 @@ export default async function MediaPlanPage({ searchParams }: { searchParams: Pr
   const month = sp.month && MONTH_RE.test(sp.month) ? sp.month : nextMonthOf(today());
   const months = [prevMonthOf(thisMonth), thisMonth, nextMonthOf(thisMonth)];
 
-  const [plans, managers] = await Promise.all([
+  const ecomIds = BRANDS.filter((b) => campaignProfileOf(b) === "ecommerce").map((b) => b.id);
+  const [plans, managers, economics] = await Promise.all([
     listPlans(month).catch(() => []),
     brandManagersByBrand(BRANDS.map((b) => b.id)).catch(() => ({}) as Record<string, string[]>),
+    listEconomics(ecomIds).catch(() => ({}) as Record<string, UnitEconomics>),
   ]);
-  const brands = BRANDS.map((b) => ({ id: b.id, name: b.name, managers: managers[b.id] ?? [] }));
+  const brands = BRANDS.map((b) => {
+    const e = economics[b.id] ?? null;
+    return {
+      id: b.id,
+      name: b.name,
+      managers: managers[b.id] ?? [],
+      isEcom: campaignProfileOf(b) === "ecommerce",
+      economics: e,
+      derived: e ? deriveEconomics(e) : null,
+    };
+  });
 
   return (
     <AppShell

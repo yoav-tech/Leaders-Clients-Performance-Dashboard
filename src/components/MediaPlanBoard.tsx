@@ -2,9 +2,18 @@
 
 import { useState } from "react";
 import type { StoredPlan } from "@/lib/mediaPlanStore";
+import type { DerivedEconomics, UnitEconomics } from "@/lib/unitEconomics";
 import { formatIls, formatNumber } from "@/lib/metrics";
+import EconomicsForm from "./EconomicsForm";
 
-interface BrandOpt { id: string; name: string; managers: string[] }
+interface BrandOpt {
+  id: string;
+  name: string;
+  managers: string[];
+  isEcom: boolean;
+  economics: UnitEconomics | null;
+  derived: DerivedEconomics | null;
+}
 
 const STATUS_LABEL: Record<string, string> = { draft: "טיוטה", approved: "מאושר", sent: "נשלח" };
 const STATUS_TONE: Record<string, string> = {
@@ -48,6 +57,9 @@ function PlanCard({
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [budget, setBudget] = useState(plan ? String(Math.round(plan.totalBudget)) : "");
   const [open, setOpen] = useState(false);
+  const [econ, setEcon] = useState<{ e: UnitEconomics; d: DerivedEconomics } | null>(
+    brand.economics && brand.derived ? { e: brand.economics, d: brand.derived } : null,
+  );
 
   async function call(action: "rebuild" | "send") {
     setBusy(action);
@@ -135,6 +147,16 @@ function PlanCard({
       )}
       {msg && <p className={`mt-2 text-[11px] ${msg.tone === "ok" ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>{msg.text}</p>}
 
+      {brand.isEcom && (
+        <EconomicsForm
+          brandId={brand.id}
+          brandName={brand.name}
+          initial={econ?.e ?? null}
+          initialDerived={econ?.d ?? null}
+          onSaved={(e, d) => setEcon({ e, d })}
+        />
+      )}
+
       {plan && (
         <>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -151,6 +173,13 @@ function PlanCard({
               <div className="text-lg font-bold tabular-nums">
                 {plan.scale.kpiValue == null ? "—" : plan.scale.kpiValue.toFixed(2)}
                 <span className="text-[11px] text-[var(--muted)]"> / {plan.scale.kpiTarget ?? "—"}</span>
+              </div>
+              <div className="text-[10px] text-[var(--muted)]">
+                {plan.scale.targetSource === "unit-economics"
+                  ? "יעד מיוניט אקונומיקס"
+                  : plan.scale.targetSource === "configured"
+                    ? "יעד מוגדר ידנית"
+                    : "אין יעד"}
               </div>
             </div>
             <div>

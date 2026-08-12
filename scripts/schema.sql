@@ -176,3 +176,25 @@ CREATE INDEX IF NOT EXISTS idx_media_plans_month ON media_plans (month);
 ALTER TABLE media_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE media_plans FORCE  ROW LEVEL SECURITY;
 REVOKE ALL ON media_plans FROM anon, authenticated;
+
+-- ---- Unit economics per ecommerce client ----
+-- Where a client's ROAS target comes from: their own margin, fulfilment cost and how much of the
+-- contribution they are willing to spend acquiring an order. Collected from the client before the
+-- first media plan and re-confirmed when prices or costs move. One row per brand.
+CREATE TABLE IF NOT EXISTS brand_economics (
+  brand_id                  text PRIMARY KEY,
+  aov                       numeric NOT NULL,           -- ILS, ex-VAT
+  gross_margin_pct          numeric NOT NULL,           -- 0..1
+  shipping_per_order        numeric NOT NULL DEFAULT 0, -- ILS
+  payment_fee_pct           numeric NOT NULL DEFAULT 0, -- 0..1
+  other_variable_per_order  numeric NOT NULL DEFAULT 0, -- ILS
+  target_profit_share       numeric NOT NULL DEFAULT 0, -- 0..1, kept as profit rather than spent
+  ltv_multiple              numeric NOT NULL DEFAULT 1, -- >= 1, contribution over first order
+  source                    text,                       -- who at the client supplied these
+  notes                     text,
+  collected_at              timestamptz NOT NULL DEFAULT now(),
+  updated_at                timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE brand_economics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE brand_economics FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON brand_economics FROM anon, authenticated;

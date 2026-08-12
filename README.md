@@ -56,6 +56,11 @@ for every client and stores it as a **draft** — it never mails a client on its
   reach / views / influencers / UGC; leads, app installs and impression-share get their own sets.
   A stage the client isn't running today is opened at its floor, so the plan is a recommendation
   rather than a copy of last month.
+- **Unit economics first (ecommerce):** a ROAS target is arithmetic on the client's own margin,
+  fulfilment cost and how much of the contribution they will spend acquiring an order — not a
+  number typed into a config file. `/media-plan` carries a collection form per ecommerce client;
+  once filled, the plan derives break-even ROAS, target ROAS and target CAC from it and shows the
+  working. Stored in `brand_economics`, floored at `MIN_TARGET_ROAS` (2.4).
 - **Budget:** a client with `monthlyBudget` set in `brands.ts` gets that as a **fixed** budget;
   a client without one gets a **proposed** budget. Either way the plan carries a performance-based
   recommendation (`recommendedBudget`) so scaling is a visible decision — the scale factor comes

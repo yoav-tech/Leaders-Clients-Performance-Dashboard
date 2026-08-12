@@ -26,6 +26,7 @@ import {
   type FunnelStage,
 } from "../src/lib/mediaPlanRules";
 import { BUDGET_TIERS, CPV15_BENCHMARK, MIN_BUDGET_RULE, PLATFORMS, VIEWS_MEASUREMENT, isIngested, minLineBudget } from "../src/lib/platformRules";
+import { ECONOMICS_EXAMPLE, deriveEconomics, validateEconomics } from "../src/lib/unitEconomics";
 
 const MONTH = process.argv[2] ?? "2026-09";
 
@@ -119,6 +120,37 @@ async function main() {
       `${b.id}: targetRoas ${b.targetRoas} is below the ${MIN_TARGET_ROAS} floor`,
     );
   }
+
+  // Unit economics: the arithmetic a ROAS target is supposed to come from.
+  console.log("— unit economics —");
+  {
+    // 250 AOV, 60% margin, 25 shipping, 2.5% fees, 8 other:
+    //   contribution = 150 − 25 − 6.25 − 8 = 110.75  →  44.3% of AOV
+    //   break-even ROAS = 1 / 0.443 = 2.26
+    //   target = 2.26 / ((1 − 0.25) × 1) = 3.01
+    const d = deriveEconomics(ECONOMICS_EXAMPLE);
+    ok(Math.abs(d.contributionPerOrder - 110.75) < 0.01, `contribution per order (got ${d.contributionPerOrder})`);
+    ok(Math.abs(d.breakEvenRoas - 2.26) < 0.02, `break-even ROAS (got ${d.breakEvenRoas})`);
+    ok(Math.abs(d.targetRoas - 3.01) < 0.03, `target ROAS (got ${d.targetRoas})`);
+    ok(Math.abs(d.targetCac - ECONOMICS_EXAMPLE.aov / d.targetRoas) < 0.02, "target CAC matches the target ROAS");
+    ok(d.viable && !d.floorApplied, "healthy economics are viable and clear the floor");
+  }
+  {
+    // A thin-margin client derives a target under the floor — it must be raised, and said so.
+    const d = deriveEconomics({ ...ECONOMICS_EXAMPLE, targetProfitShare: 0, ltvMultiple: 2 });
+    ok(d.targetRoas === MIN_TARGET_ROAS && d.floorApplied, `a derived target below the floor is raised (got ${d.targetRoas})`);
+    ok(d.warnings.length > 0, "raising the target to the floor is reported, not silent");
+  }
+  {
+    // Costs above the margin: no budget makes this work, and the model must say so.
+    const d = deriveEconomics({ ...ECONOMICS_EXAMPLE, grossMarginPct: 0.1 });
+    ok(!d.viable, "economics with no contribution are flagged as unviable");
+    ok(d.warnings.length > 0, "an unviable client gets an explanation");
+  }
+  ok(validateEconomics(ECONOMICS_EXAMPLE).length === 0, "the worked example passes validation");
+  ok(validateEconomics({ ...ECONOMICS_EXAMPLE, grossMarginPct: 1.5 }).length > 0, "an impossible margin is rejected");
+  ok(validateEconomics({ ...ECONOMICS_EXAMPLE, aov: 0 }).length > 0, "a zero AOV is rejected");
+  ok(validateEconomics({ ...ECONOMICS_EXAMPLE, ltvMultiple: 9 }).length > 0, "an unmeasurable LTV multiple is rejected");
 
   // Completion rate is a creative verdict, never an allocation input.
   ok(VIEWS_MEASUREMENT.creativeSignals.length >= 2, "the views doctrine records its creative signals");
