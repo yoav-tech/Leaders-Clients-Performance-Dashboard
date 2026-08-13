@@ -110,15 +110,16 @@ function shell(inner: string): string {
 }
 
 export function renderGroupedHtml(d: GroupedDigest, taskLinks: Record<string, string> = {}): string {
-  const clients = d.ecom.length + d.views.length + d.leads.length + d.impshare.length;
-  const totalSpend = [...d.ecom, ...d.views, ...d.leads, ...d.impshare].reduce((s, r) => s + (r.spend || 0), 0);
+  const clients = d.ecom.length + d.views.length + d.leads.length + d.app.length + d.impshare.length;
+  const totalSpend = [...d.ecom, ...d.views, ...d.leads, ...d.app, ...d.impshare].reduce((s, r) => s + (r.spend || 0), 0);
   const critical = d.alerts.filter((a) => a.severity === "critical").length;
   const alertColor = critical ? C.bad : d.alerts.length ? C.warn : C.good;
+  const dateLine = d.period === "week" ? `דוח ביצועים שבועי · ${d.from} – ${d.to}` : `דוח ביצועים יומי · ${d.to}`;
 
   const header = `<tr><td style="padding:0">
     <div style="padding:26px 24px 20px;background:linear-gradient(135deg,#efeaff 0%,#ffffff 72%);border-bottom:1px solid ${C.border}">
       <div style="font:800 22px/1 ${FONT};letter-spacing:.16em;color:${C.text}">LEADERS</div>
-      <div style="margin-top:6px;font:400 13px/1 ${FONT};color:${C.muted}">דוח ביצועים יומי · ${d.day}</div>
+      <div style="margin-top:6px;font:400 13px/1 ${FONT};color:${C.muted}">${dateLine}</div>
       <div style="margin-top:16px">
         ${pill("הוצאה כוללת", ils(totalSpend), C.text)}
         ${pill("לקוחות", String(clients), C.text)}
@@ -136,8 +137,12 @@ export function renderGroupedHtml(d: GroupedDigest, taskLinks: Record<string, st
     [["Brand", "left"], ["Spend", "right"], ["Leads", "right"], ["CPL", "right"]],
     d.leads.map((r) => [[`<b>${esc(r.name)}</b>`, "left"], [ils(r.spend), "right"], [n0(r.leads), "right"], [ils(r.cpl), "right"]]),
   ));
-  const impshare = card("Impression Share", d.impshare.length, table(
-    [["Account", "left"], ["Imp Share", "right"], ["Spend", "right"], ["Clicks", "right"]],
+  const app = card("אפליקציה", d.app.length, table(
+    [["Brand", "left"], ["Spend", "right"], ["Installs", "right"], ["CPI", "right"], ["Leads (HR)", "right"], ["CPL", "right"]],
+    d.app.map((r) => [[`<b>${esc(r.name)}</b>`, "left"], [ils(r.spend), "right"], [n0(r.installs), "right"], [ils(r.cpi), "right"], [n0(r.leads), "right"], [ils(r.cpl), "right"]]),
+  ));
+  const impshare = card("Impression Share · לפי סוג קמפיין", d.impshare.length, table(
+    [["Account · Type", "left"], ["Imp Share", "right"], ["Spend", "right"], ["Clicks", "right"]],
     d.impshare.map((r) => [[`<b>${esc(r.name)}</b>`, "left"], [pctv(r.impShare), "right"], [ils(r.spend), "right"], [n0(r.clicks), "right"]]),
   ));
 
@@ -148,7 +153,7 @@ export function renderGroupedHtml(d: GroupedDigest, taskLinks: Record<string, st
   const footer = `<tr><td style="padding:16px 24px 22px;border-top:1px solid ${C.border}">
     <div style="font:400 11px/1.5 ${FONT};color:${C.muted}">Leaders · Powered by People</div></td></tr>`;
 
-  return shell(`<div dir="rtl">${header}${ecom}${views}${leads}${impshare}${attention}${footer}</div>`);
+  return shell(`<div dir="rtl">${header}${ecom}${views}${leads}${app}${impshare}${attention}${footer}</div>`);
 }
 
 export async function buildGroupedEmailFrom(d: GroupedDigest): Promise<{ subject: string; html: string; text: string }> {
@@ -157,7 +162,8 @@ export async function buildGroupedEmailFrom(d: GroupedDigest): Promise<{ subject
     const base = appBaseUrl();
     for (const a of d.alerts) taskLinks[a.key] = `${base}/api/clickup/task?t=${await signTask(`[${a.brandName}] ${a.detail}`)}`;
   }
-  return { subject: `דוח יומי לקוחות לידרס · ${d.day}`, html: renderGroupedHtml(d, taskLinks), text: renderGroupedText(d) };
+  const subject = d.period === "week" ? `דוח שבועי לקוחות לידרס · ${d.from} – ${d.to}` : `דוח יומי לקוחות לידרס · ${d.to}`;
+  return { subject, html: renderGroupedHtml(d, taskLinks), text: renderGroupedText(d) };
 }
 
 export async function buildDigestEmail(alerts?: Alert[]): Promise<{ subject: string; html: string; text: string }> {
