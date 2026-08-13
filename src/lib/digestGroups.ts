@@ -38,12 +38,15 @@ export interface GroupedDigest {
 const TYPE_CODE: Record<string, string> = { compete: "CPT", lead: "LED", participate: "PTP", compete_site: "CPS", other: "—" };
 
 export async function getGroupedDigest(alerts?: Alert[]): Promise<GroupedDigest> {
-  // The Thursday edition is a snapshot of the whole past week; the rest are yesterday only.
+  // Thursday = a snapshot of the whole past week; Sunday = the weekend (Fri + Sat, since there's no
+  // report on those days); Mon–Wed = yesterday only.
   const t = today();
-  const isThursday = new Date(t + "T00:00:00Z").getUTCDay() === 4;
+  const dow = new Date(t + "T00:00:00Z").getUTCDay(); // 0=Sun … 4=Thu … 6=Sat
   const to = shiftDate(t, -1);
-  const from = isThursday ? shiftDate(t, -7) : to;
-  const period: "day" | "week" = isThursday ? "week" : "day";
+  let from = to;
+  let period: "day" | "week" = "day";
+  if (dow === 4) { from = shiftDate(t, -7); period = "week"; } // Thursday → past week
+  else if (dow === 0) { from = shiftDate(t, -2); }             // Sunday → Fri + Sat
 
   const [metrics, openAlerts] = await Promise.all([
     getBrandMetrics(from, to),
@@ -145,7 +148,11 @@ function mono(headers: string[], rows: string[][], aligns: ("l" | "r")[]): strin
 }
 
 export function renderGroupedText(d: GroupedDigest): string {
-  const title = d.period === "week" ? `🗓️ **דוח שבועי לקוחות לידרס** · ${d.from} – ${d.to}` : `☀️ **דוח יומי לקוחות לידרס** · ${d.to}`;
+  const title = d.period === "week"
+    ? `🗓️ **דוח שבועי לקוחות לידרס** · ${d.from} – ${d.to}`
+    : d.from !== d.to
+      ? `☀️ **דוח סוף שבוע לקוחות לידרס** · ${d.from} – ${d.to}`
+      : `☀️ **דוח יומי לקוחות לידרס** · ${d.to}`;
   const parts: string[] = [title];
   if (d.ecom.length) {
     parts.push("🛒 **איקומרס**");

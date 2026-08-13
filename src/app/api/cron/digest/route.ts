@@ -14,7 +14,16 @@ export async function GET(request: Request) {
   const denied = await requireCron(request, "cron/digest");
   if (denied) return denied;
 
-  const dry = new URL(request.url).searchParams.get("dry") === "1";
+  const url = new URL(request.url);
+  const dry = url.searchParams.get("dry") === "1";
+  const force = url.searchParams.get("force") === "1";
+  // Vercel crons run in UTC only, so we schedule at 07:00 + 08:00 UTC (Sun–Thu) and actually send
+  // only at 10:00 Israel time — this fires exactly once whether Israel is on IST (UTC+2) or IDT
+  // (UTC+3). force=1 bypasses the gate for manual/test sends.
+  if (!force) {
+    const israelHour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", hour: "2-digit", hour12: false }).formatToParts(new Date()).find((p) => p.type === "hour")?.value);
+    if (israelHour !== 10) return NextResponse.json({ ok: true, skipped: `israel hour ${israelHour} ≠ 10` });
+  }
   try {
     const data = await getGroupedDigest(); // computed once → reused for ClickUp + email
     const text = renderGroupedText(data);
