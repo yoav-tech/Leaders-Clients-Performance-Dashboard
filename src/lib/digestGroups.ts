@@ -16,21 +16,37 @@ import { groupAlerts } from "./digest";
 export interface EcomRow { name: string; spend: number; revenue: number; blended: number | null; blendedPrev: number | null; orders: number; pacePct: number | null; target: number }
 export interface ViewsRow { name: string; spend: number; impressions: number; views: number | null; cpv: number | null }
 export interface LeadsRow { name: string; spend: number; leads: number; cpl: number | null }
+// App clients (Haat) — the KPI is installs/CPI (app registrations & downloads), NOT leads; the HR
+// recruitment section keeps its own leads/CPL. Kept separate from the leads table.
+export interface AppRow { name: string; spend: number; installs: number; cpi: number | null; leads: number; cpl: number | null }
 export interface ImpShareRow { name: string; impShare: number | null; spend: number; clicks: number; cpc: number | null }
 
 export interface GroupedDigest {
-  day: string;
+  day: string; // the range end (yesterday) — kept for compatibility
+  from: string;
+  to: string;
+  period: "day" | "week";
   ecom: EcomRow[];
   views: ViewsRow[];
   leads: LeadsRow[];
+  app: AppRow[];
   impshare: ImpShareRow[];
   alerts: Alert[];
 }
 
+// Colgate campaign-type codes (per the account naming), for the per-type impression-share breakdown.
+const TYPE_CODE: Record<string, string> = { compete: "CPT", lead: "LED", participate: "PTP", compete_site: "CPS", other: "—" };
+
 export async function getGroupedDigest(alerts?: Alert[]): Promise<GroupedDigest> {
-  const day = shiftDate(today(), -1);
+  // The Thursday edition is a snapshot of the whole past week; the rest are yesterday only.
+  const t = today();
+  const isThursday = new Date(t + "T00:00:00Z").getUTCDay() === 4;
+  const to = shiftDate(t, -1);
+  const from = isThursday ? shiftDate(t, -7) : to;
+  const period: "day" | "week" = isThursday ? "week" : "day";
+
   const [metrics, openAlerts] = await Promise.all([
-    getBrandMetrics(day, day),
+    getBrandMetrics(from, to),
     alerts ? Promise.resolve(alerts) : collectAlerts(),
   ]);
   const { elapsed, daysInMonth } = monthProgress();
@@ -38,6 +54,7 @@ export async function getGroupedDigest(alerts?: Alert[]): Promise<GroupedDigest>
   const ecom: EcomRow[] = [];
   const views: ViewsRow[] = [];
   const leads: LeadsRow[] = [];
+  const app: AppRow[] = [];
   const impshare: ImpShareRow[] = [];
   const jobs: Promise<void>[] = [];
 
@@ -56,46 +73,56 @@ export async function getGroupedDigest(alerts?: Alert[]): Promise<GroupedDigest>
       ecom.push({ name: brand.name, spend: m.total.spend, revenue: m.channels.site.revenue, blended: m.blendedRoas, blendedPrev: m.previous?.blendedRoas ?? null, orders: Math.round(m.channels.site.purchases), pacePct, target: brand.targetRoas });
     } else if (group === "views") {
       if (brand.awarenessSources) {
-        jobs.push(getAwarenessReport(brand, day, day).then((r) => {
+        jobs.push(getAwarenessReport(brand, from, to).then((r) => {
           if (r && (r.totals.spend > 0 || r.totals.impressions > 0)) views.push({ name: brand.name, spend: r.totals.spend, impressions: r.totals.impressions, views: r.totals.views, cpv: r.totals.cpv });
         }).catch(() => {}));
       } else if (m && (m.total.spend > 0 || m.total.impressions > 0)) {
         // Style (media plan) — spend + impressions from the daily pipeline; views aren't ingested.
         views.push({ name: brand.name, spend: m.total.spend, impressions: m.total.impressions, views: null, cpv: null });
       }
+    } else if (group === "leads" && brand.appInstall) {
+      // Haat is an APP client — its KPI is installs/CPI (registrations & downloads), not leads. It
+      // gets its own table. Spend = total ad spend; CPI from the app section; leads/CPL from the HR
+      // (recruitment) section, kept as a secondary metric on the same row.
+      jobs.push(getAppReport(brand, from, to).then((r) => {
+        if (!r) return;
+        const appSecs = r.sections.filter((s) => s.kind === "app");
+        const leadSecs = r.sections.filter((s) => s.kind === "leads");
+        const totalSpend = r.sections.reduce((s, x) => s + x.totals.spend, 0);
+        const appSpend = appSecs.reduce((s, x) => s + x.totals.spend, 0);
+        const installs = appSecs.reduce((s, x) => s + x.totals.installs, 0);
+        const hrSpend = leadSecs.reduce((s, x) => s + x.totals.spend, 0);
+        const hrLeads = leadSecs.reduce((s, x) => s + x.totals.leads, 0);
+        if (totalSpend > 0 || installs > 0 || hrLeads > 0) {
+          app.push({ name: brand.name, spend: totalSpend, installs: Math.round(installs), cpi: installs ? appSpend / installs : null, leads: Math.round(hrLeads), cpl: hrLeads ? hrSpend / hrLeads : null });
+        }
+      }).catch(() => {}));
     } else if (group === "leads") {
       if (brand.perfSources) {
-        jobs.push(getCampaignPerf(brand, day, day).then((r) => {
+        jobs.push(getCampaignPerf(brand, from, to).then((r) => {
           if (!r) return;
           const spend = r.sources.reduce((s, x) => s + x.totals.spend, 0);
           const ld = r.sources.reduce((s, x) => s + x.totals.conv, 0);
           if (spend > 0 || ld > 0) leads.push({ name: brand.name, spend, leads: Math.round(ld), cpl: ld ? spend / ld : null });
         }).catch(() => {}));
-      } else if (brand.appInstall) {
-        // Spend = the client's TOTAL ad spend (all sections). CPL, however, is the real cost-per-
-        // lead of the LEAD sections only (each section keeps its own CPA), not the blended total.
-        const totalSpend = m ? m.total.spend : 0;
-        jobs.push(getAppReport(brand, day, day).then((r) => {
-          const secs = r ? r.sections.filter((s) => s.kind === "leads") : [];
-          const leadSpend = secs.reduce((s, x) => s + x.totals.spend, 0);
-          const ld = secs.reduce((s, x) => s + x.totals.leads, 0);
-          if (totalSpend > 0 || ld > 0) leads.push({ name: brand.name, spend: totalSpend, leads: Math.round(ld), cpl: ld ? leadSpend / ld : null });
-        }).catch(() => {}));
       }
     } else if (group === "impshare") {
       const eur = eurIlsRate();
-      jobs.push(getSearchSnapshot(brand, day, day).then((r) => {
+      // Broken down per campaign type (LED / CPT / PTP) per account, not just the account total.
+      jobs.push(getSearchSnapshot(brand, from, to).then((r) => {
         if (!r) return;
         for (const sec of r.sections) {
-          // Colgate bills in EUR → convert spend to ILS at the representative rate.
-          const spend = sec.currency === "EUR" ? sec.totals.cost * eur : sec.totals.cost;
-          if (spend > 0 || sec.totals.impressions > 0) impshare.push({ name: `${brand.name} · ${sec.title}`, impShare: sec.totals.impShare, spend, clicks: sec.totals.clicks, cpc: sec.totals.cpc });
+          for (const row of sec.rows) {
+            if (!(row.impShare != null || row.impressions > 0)) continue;
+            const spend = sec.currency === "EUR" ? row.cost * eur : row.cost;
+            impshare.push({ name: `${sec.title} · ${TYPE_CODE[row.type]}`, impShare: row.impShare, spend, clicks: row.clicks, cpc: row.cpc });
+          }
         }
       }).catch(() => {}));
     }
   }
   await Promise.all(jobs);
-  return { day, ecom, views, leads, impshare, alerts: openAlerts };
+  return { day: to, from, to, period, ecom, views, leads, app, impshare, alerts: openAlerts };
 }
 
 // ---- ClickUp markdown (mono tables) ----
@@ -118,7 +145,8 @@ function mono(headers: string[], rows: string[][], aligns: ("l" | "r")[]): strin
 }
 
 export function renderGroupedText(d: GroupedDigest): string {
-  const parts: string[] = [`☀️ **דוח יומי לקוחות לידרס** · ${d.day}`];
+  const title = d.period === "week" ? `🗓️ **דוח שבועי לקוחות לידרס** · ${d.from} – ${d.to}` : `☀️ **דוח יומי לקוחות לידרס** · ${d.to}`;
+  const parts: string[] = [title];
   if (d.ecom.length) {
     parts.push("🛒 **איקומרס**");
     parts.push(mono(["Brand", "Spend", "Revenue", "ROAS", "Orders", "Pace"],
@@ -137,9 +165,15 @@ export function renderGroupedText(d: GroupedDigest): string {
       d.leads.map((r) => [r.name, ils(r.spend), n0(r.leads), ils(r.cpl)]),
       ["l", "r", "r", "r"]));
   }
+  if (d.app.length) {
+    parts.push("📱 **אפליקציה**");
+    parts.push(mono(["Brand", "Spend", "Installs", "CPI", "Leads (HR)", "CPL"],
+      d.app.map((r) => [r.name, ils(r.spend), n0(r.installs), ils(r.cpi), n0(r.leads), ils(r.cpl)]),
+      ["l", "r", "r", "r", "r", "r"]));
+  }
   if (d.impshare.length) {
-    parts.push("📊 **Impression Share**");
-    parts.push(mono(["Account", "Imp Share", "Spend", "Clicks"],
+    parts.push("📊 **Impression Share** (לפי סוג קמפיין)");
+    parts.push(mono(["Account · Type", "Imp Share", "Spend", "Clicks"],
       d.impshare.map((r) => [r.name, pctv(r.impShare), ils(r.spend), n0(r.clicks)]),
       ["l", "r", "r", "r"]));
   }
