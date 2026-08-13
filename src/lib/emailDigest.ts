@@ -114,7 +114,9 @@ export function renderGroupedHtml(d: GroupedDigest, taskLinks: Record<string, st
   const totalSpend = [...d.ecom, ...d.views, ...d.leads, ...d.app, ...d.impshare].reduce((s, r) => s + (r.spend || 0), 0);
   const critical = d.alerts.filter((a) => a.severity === "critical").length;
   const alertColor = critical ? C.bad : d.alerts.length ? C.warn : C.good;
-  const dateLine = d.period === "week" ? `דוח ביצועים שבועי · ${d.from} – ${d.to}` : `דוח ביצועים יומי · ${d.to}`;
+  const dateLine = d.period === "week" ? `דוח ביצועים שבועי · ${d.from} – ${d.to}`
+    : d.from !== d.to ? `דוח ביצועים · סוף שבוע · ${d.from} – ${d.to}`
+    : `דוח ביצועים יומי · ${d.to}`;
 
   const header = `<tr><td style="padding:0">
     <div style="padding:26px 24px 20px;background:linear-gradient(135deg,#efeaff 0%,#ffffff 72%);border-bottom:1px solid ${C.border}">
@@ -162,7 +164,9 @@ export async function buildGroupedEmailFrom(d: GroupedDigest): Promise<{ subject
     const base = appBaseUrl();
     for (const a of d.alerts) taskLinks[a.key] = `${base}/api/clickup/task?t=${await signTask(`[${a.brandName}] ${a.detail}`)}`;
   }
-  const subject = d.period === "week" ? `דוח שבועי לקוחות לידרס · ${d.from} – ${d.to}` : `דוח יומי לקוחות לידרס · ${d.to}`;
+  const subject = d.period === "week" ? `דוח שבועי לקוחות לידרס · ${d.from} – ${d.to}`
+    : d.from !== d.to ? `דוח סוף שבוע לקוחות לידרס · ${d.from} – ${d.to}`
+    : `דוח יומי לקוחות לידרס · ${d.to}`;
   return { subject, html: renderGroupedHtml(d, taskLinks), text: renderGroupedText(d) };
 }
 
