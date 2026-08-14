@@ -9,6 +9,7 @@
 // impression share at keyword/search-term level, so each campaign also carries a keyword and a
 // search-term breakdown (impressions/clicks/cost/CTR/CPC) to show WHERE to act.
 
+import { unstable_cache } from "next/cache";
 import type { BrandConfig, GoogleSnapshotConfig } from "./brands";
 import { fetchWindsor, num, type WindsorRow } from "./windsor";
 import { gaql, googleAdsConfigured } from "./googleAds";
@@ -242,10 +243,18 @@ function buildSection(cfg: GoogleSnapshotConfig, campRows: WindsorRow[], kwRows:
   return { title: cfg.title, account: cfg.account, currency, rows, totals, campaigns, trend: [], trendByType: [], competitors: [] };
 }
 
+// The Google Ads API section is 6 live queries — cache it (the client polls every 90s and the page
+// re-renders on nav). Impression share doesn't move minute-to-minute, so ~3 min staleness is fine.
+const buildSectionViaApi = unstable_cache(
+  (cfg: GoogleSnapshotConfig, from: string, to: string, prevFrom: string, prevTo: string) => _buildSectionViaApi(cfg, from, to, prevFrom, prevTo),
+  ["snapshot-api-section"],
+  { revalidate: 180, tags: ["snapshot"] },
+);
+
 // Build a section directly from the Google Ads API (accurate first-party IS; competitor domains via
 // the auction_insight_domain segment). Flattens GAQL rows into the same shape the Windsor builder
 // consumes, so buildSection is reused for the type table + keyword/search-term analysis.
-async function buildSectionViaApi(cfg: GoogleSnapshotConfig, from: string, to: string, prevFrom: string, prevTo: string): Promise<SnapSection> {
+async function _buildSectionViaApi(cfg: GoogleSnapshotConfig, from: string, to: string, prevFrom: string, prevTo: string): Promise<SnapSection> {
   const cust = cfg.account;
   const dateBetween = (a: string, b: string) => `segments.date BETWEEN '${a}' AND '${b}'`;
   const [camp, kw, st, daily, auc, aucPrev] = await Promise.all([
@@ -326,27 +335,27 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
         fetchWindsor({
           connector: "google_ads",
           fields: ["account_id", "currency", "campaign", "impressions", "clicks", "spend", "search_impression_share", "search_absolute_top_impression_share", "search_rank_lost_impression_share", "search_budget_lost_impression_share"],
-          dateFrom: from, dateTo: to, cacheSeconds: 60,
+          dateFrom: from, dateTo: to, cacheSeconds: 180,
         }).catch(() => [] as WindsorRow[]),
         fetchWindsor({
           connector: "google_ads",
           fields: ["account_id", "campaign", "keyword_text", "match_type", "impressions", "clicks", "spend"],
-          dateFrom: from, dateTo: to, cacheSeconds: 60,
+          dateFrom: from, dateTo: to, cacheSeconds: 180,
         }).catch(() => [] as WindsorRow[]),
         fetchWindsor({
           connector: "google_ads",
           fields: ["account_id", "campaign", "search_term", "impressions", "clicks", "spend"],
-          dateFrom: from, dateTo: to, cacheSeconds: 60,
+          dateFrom: from, dateTo: to, cacheSeconds: 180,
         }).catch(() => [] as WindsorRow[]),
         fetchWindsor({
           connector: "google_ads",
           fields: ["date", "account_id", "currency", "campaign", "impressions", "clicks", "spend", "search_impression_share"],
-          dateFrom: from, dateTo: to, cacheSeconds: 60,
+          dateFrom: from, dateTo: to, cacheSeconds: 180,
         }).catch(() => [] as WindsorRow[]),
         fetchWindsor({
           connector: "google_ads",
           fields: ["date", "account_id", "campaign", "auction_insight_domain"],
-          dateFrom: from, dateTo: to, cacheSeconds: 60,
+          dateFrom: from, dateTo: to, cacheSeconds: 180,
         }).catch(() => [] as WindsorRow[]),
         fetchWindsor({
           connector: "google_ads",
