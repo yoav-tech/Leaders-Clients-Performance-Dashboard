@@ -215,7 +215,7 @@ export const BRANDS: BrandConfig[] = [
     appInstall: true,
     appSections: [
       { key: "delivery", title: "Haat delivery IL", account: "1234295457784453", kind: "app", budget: 0 },
-      { key: "hr", title: "HR · גיוס עובדים", account: "1063774221665705", kind: "leads", budget: 0 },
+      { key: "hr", title: "Haat HR", account: "1063774221665705", kind: "leads", budget: 0 },
     ],
   },
   {
