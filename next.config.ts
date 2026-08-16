@@ -39,6 +39,16 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+  // Clean per-client URLs: dashboard.ldrsgroup.com/<client> loads that brand. `afterFiles` runs
+  // only when no real route matched, so /login, /admin, /account, /api/* keep priority; an unknown
+  // single segment (a brand id like "argania" / "la-beaute" / "haat") maps to ?brand=<client>.
+  async rewrites() {
+    return {
+      afterFiles: [{ source: "/:client", destination: "/?brand=:client" }],
+      beforeFiles: [],
+      fallback: [],
+    };
+  },
 };
 
 export default nextConfig;
