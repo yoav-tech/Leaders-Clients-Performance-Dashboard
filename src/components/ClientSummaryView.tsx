@@ -1,9 +1,13 @@
 import type { BrandConfig } from "@/lib/brands";
 import type { BrandMetrics, Channel, DayBreakdown } from "@/lib/types";
 import type { MonthForecast } from "@/lib/queries";
+import type { ClientReport } from "@/lib/clientReport";
+import type { ReportNote } from "@/lib/clientReportStore";
 import { monthProgress } from "@/lib/dates";
 import { computePacing, deltaPct, deltaTone, formatDelta, formatIls, formatNumber, formatPct, formatRoas, roasTone } from "@/lib/metrics";
 import TrendChart from "./TrendChart";
+import { PlatformTable, TopAdsTable } from "./reportTables";
+import ReportConclusions from "./ReportConclusions";
 
 // Executive summary for external clients — the outcomes that matter, no technical drill-down
 // (no per-channel CTR/CPC/CPM tables, no breakdown explorer, no daily table, no CAC/CPA).
@@ -26,6 +30,7 @@ function BigKpi({
   cur,
   prev,
   tone,
+  pointsGap,
   variant = "inner",
 }: {
   label: string;
@@ -34,9 +39,13 @@ function BigKpi({
   cur?: number | null;
   prev?: number | null;
   tone?: string;
+  // When set, show the change as a whole-percentage-POINT gap (e.g. "+1 נק׳") instead of the % delta.
+  // Used for conversion rate — the client asked for "פער של אחוז שלם".
+  pointsGap?: number | null;
   variant?: "panel" | "inner";
 }) {
-  const delta = metric && cur !== undefined ? deltaPct(cur ?? null, prev ?? null) : null;
+  const delta = pointsGap === undefined && metric && cur !== undefined ? deltaPct(cur ?? null, prev ?? null) : null;
+  const gapPts = pointsGap === undefined || pointsGap === null ? null : Math.round(pointsGap);
   // "panel" = top-level premium card (violet glow); "inner" = subtle card inside a panel.
   const cls = variant === "panel" ? "panel p-4" : "rounded-xl border border-[var(--card-border)] bg-[var(--background)]/40 p-4";
   return (
@@ -44,6 +53,11 @@ function BigKpi({
       <div className="text-[11px] uppercase tracking-wide text-[var(--muted)]">{label}</div>
       <div className="mt-1 flex items-baseline gap-2">
         <span className={`text-2xl font-bold ${tone ? TONE[tone] : ""}`}>{value}</span>
+        {gapPts !== null && (
+          <span className={`text-xs font-medium ${TONE[gapPts > 0 ? "good" : gapPts < 0 ? "bad" : "none"]}`}>
+            {gapPts > 0 ? "+" : ""}{gapPts} נק׳
+          </span>
+        )}
         {delta !== null && metric && <span className={`text-xs font-medium ${TONE[deltaTone(metric, delta)]}`}>{formatDelta(delta)}</span>}
       </div>
     </div>
@@ -59,15 +73,23 @@ export default function ClientSummaryView({
   breakdown,
   forecast,
   monthSpend,
+  report = null,
+  note = null,
+  canEdit = false,
 }: {
   brand: BrandConfig;
   metrics: BrandMetrics;
   breakdown: DayBreakdown[];
   forecast: MonthForecast;
   monthSpend: number;
+  report?: ClientReport | null;
+  note?: ReportNote | null;
+  canEdit?: boolean;
 }) {
   const { total, channels, blendedRoas, newRevenue, returningRevenue, previous: p } = metrics;
   const target = brand.targetRoas;
+  const paidRoas = total.roas;
+  const prevPaidRoas = p && p.spend ? p.revenue / p.spend : null;
 
   const storeRev = channels.site.revenue;
   const orders = channels.site.purchases;
@@ -97,12 +119,14 @@ export default function ClientSummaryView({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <BigKpi variant="panel" label="הכנסות חנות" value={formatIls(storeRev)} metric="siteRevenue" cur={storeRev} prev={p?.siteRevenue ?? null} />
         <BigKpi variant="panel" label="הזמנות" value={formatNumber(orders)} metric="storeOrders" cur={orders} prev={p?.siteOrders ?? null} />
-        <BigKpi variant="panel" label="ROAS" value={formatRoas(blendedRoas)} metric="blendedRoas" cur={blendedRoas} prev={p?.blendedRoas ?? null} tone={roasTone(blendedRoas, target)} />
+        <BigKpi variant="panel" label="ROAS אתר (כולל)" value={formatRoas(blendedRoas)} metric="blendedRoas" cur={blendedRoas} prev={p?.blendedRoas ?? null} tone={roasTone(blendedRoas, target)} />
+        <BigKpi variant="panel" label="ROAS ממומן" value={formatRoas(paidRoas)} metric="blendedRoas" cur={paidRoas} prev={prevPaidRoas} tone={roasTone(paidRoas, target)} />
         <BigKpi variant="panel" label="הוצאה" value={formatIls(total.spend)} metric="spend" cur={total.spend} prev={p?.spend ?? null} />
         <BigKpi variant="panel" label="AOV" value={formatIls(storeAov)} metric="aov" cur={storeAov} prev={prevAov} />
-        <BigKpi variant="panel" label="המרה (CVR)" value={formatPct(storeCvr)} metric="storeCvr" cur={storeCvr} prev={prevCvr} />
+        <BigKpi variant="panel" label="המרה (CVR)" value={formatPct(storeCvr)} pointsGap={storeCvr != null && prevCvr != null ? (storeCvr - prevCvr) * 100 : null} />
         <BigKpi variant="panel" label="הכנסות ממודעות" value={formatIls(total.revenue)} metric="revenue" cur={total.revenue} prev={p?.revenue ?? null} />
         <BigKpi variant="panel" label="רכישות (מודעות)" value={formatNumber(total.purchases)} metric="purchases" cur={total.purchases} prev={p?.purchases ?? null} />
+        {report && <BigKpi variant="panel" label="הרשמות לדיוור (מטא)" value={formatNumber(report.registrations)} />}
       </div>
 
       {/* Trend */}
@@ -174,6 +198,26 @@ export default function ClientSummaryView({
         </div>
         <div className="mt-2 text-[11px] text-[var(--muted)]">מבוסס על קצב 7 הימים האחרונים · {forecast.elapsedComplete}/{forecast.daysInMonth} ימים.</div>
       </Panel>
+
+      {/* Report detail folded into the client view: per-platform performance, top ads, and the
+          verbal summary (auto summary + the manager's conclusions), all for the same period. */}
+      {report && (
+        <>
+          <PlatformTable report={report} />
+          <TopAdsTable report={report} />
+          <ReportConclusions
+            brandId={report.brandId}
+            from={report.from}
+            to={report.to}
+            periodLabel={report.periodLabel}
+            summary={report.summary}
+            initialNote={note?.note ?? ""}
+            initialStatus={note?.status === "sent" ? "sent" : "draft"}
+            initialSentAt={note?.sentAt ?? null}
+            canEdit={canEdit}
+          />
+        </>
+      )}
     </div>
   );
 }

@@ -1,0 +1,122 @@
+// Client-facing performance report (ecommerce brands: Argania, La Beaute, Studio Pasha).
+// Assembles the numbers Gal reviews before sending to the client: top-level ROAS, per-platform
+// table, newsletter sign-ups (Meta complete_registration), top ads by ROAS, and an auto summary.
+import { reportGroupOf, type BrandConfig } from "./brands";
+import { getBrandMetrics } from "./queries";
+import { fetchWindsor, num } from "./windsor";
+import { toIls } from "./fx";
+
+const normId = (v: unknown) => String(v ?? "").replace(/^act_/i, "").trim();
+function sumAction(v: unknown): number {
+  if (Array.isArray(v)) return v.reduce((s: number, a) => s + num((a as { value?: string | number | null })?.value), 0);
+  return num(v as string | number | null | undefined);
+}
+
+export interface PlatformRow { platform: string; spend: number; revenue: number; roas: number | null; cvr: number | null; aov: number | null }
+export interface TopAd { name: string; spend: number; revenue: number; roas: number | null }
+export interface ClientReport {
+  brandId: string;
+  brandName: string;
+  from: string;
+  to: string;
+  periodLabel: string; // human-readable Hebrew period the report covers (so the מלל is unambiguous)
+  target: number;
+  topLevel: { siteRoas: number | null; paidRoas: number | null; cvr: number | null; cvrPrev: number | null };
+  platforms: PlatformRow[];
+  registrations: number;
+  topAds: TopAd[];
+  summary: string;
+}
+
+// Hebrew, human-readable period label — states clearly which window the report covers.
+// A full calendar month → "אוגוסט 2026"; otherwise a date range → "16 ביולי – 16 באוגוסט 2026".
+const HE_MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
+function lastDayOfMonth(y: number, m: number): number { return new Date(Date.UTC(y, m, 0)).getUTCDate(); }
+export function periodLabel(from: string, to: string): string {
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  if (fy === ty && fm === tm && fd === 1 && td === lastDayOfMonth(ty, tm)) return `${HE_MONTHS[fm - 1]} ${fy}`;
+  const heDay = (d: number, m: number) => `${d} ב${HE_MONTHS[m - 1]}`;
+  const left = fy === ty ? heDay(fd, fm) : `${heDay(fd, fm)} ${fy}`;
+  return `${left} – ${heDay(td, tm)} ${ty}`;
+}
+
+const CH_LABEL: Record<string, string> = { meta: "Meta", google: "Google", tiktok: "TikTok" };
+
+// Top Meta ads by ROAS + total newsletter sign-ups (complete_registration), ILS.
+async function metaAdsAndRegs(brand: BrandConfig, from: string, to: string): Promise<{ topAds: TopAd[]; registrations: number }> {
+  if (!brand.metaAccountId) return { topAds: [], registrations: 0 };
+  try {
+    const rows = await fetchWindsor({
+      connector: "facebook",
+      fields: ["account_id", "currency", "ad_name", "spend", "actions_purchase", "action_values_purchase", "actions_complete_registration"],
+      dateFrom: from, dateTo: to, accounts: [brand.metaAccountId], cacheSeconds: 1800,
+    });
+    const acc = normId(brand.metaAccountId);
+    const map = new Map<string, { spend: number; rev: number }>();
+    let registrations = 0;
+    for (const r of rows) {
+      if (normId(r.account_id) !== acc) continue;
+      const cur = String(r.currency ?? "ILS").toUpperCase();
+      registrations += sumAction(r.actions_complete_registration);
+      const name = String(r.ad_name ?? "").trim();
+      if (!name) continue;
+      const e = map.get(name) ?? { spend: 0, rev: 0 };
+      e.spend += toIls(num(r.spend), cur, 3);
+      e.rev += toIls(sumAction(r.action_values_purchase), cur, 3);
+      map.set(name, e);
+    }
+    const topAds = [...map]
+      .filter(([, e]) => e.spend >= 100) // ignore tiny-spend outliers so ROAS is meaningful
+      .map(([name, e]) => ({ name, spend: Math.round(e.spend), revenue: Math.round(e.rev), roas: e.spend ? e.rev / e.spend : null }))
+      .sort((a, b) => (b.roas ?? 0) - (a.roas ?? 0))
+      .slice(0, 5);
+    return { topAds, registrations: Math.round(registrations) };
+  } catch {
+    return { topAds: [], registrations: 0 };
+  }
+}
+
+const roasStr = (v: number | null) => (v == null ? "—" : v.toFixed(1));
+const pctStr = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
+
+export async function getClientReport(brand: BrandConfig, from: string, to: string): Promise<ClientReport | null> {
+  if (reportGroupOf(brand) !== "ecommerce") return null;
+  const [all, meta] = await Promise.all([getBrandMetrics(from, to), metaAdsAndRegs(brand, from, to)]);
+  const m = all.find((x) => x.brandId === brand.id);
+  if (!m) return null;
+
+  const platforms: PlatformRow[] = (["meta", "google", "tiktok"] as const)
+    .map((ch) => {
+      const c = m.channels[ch];
+      return { platform: CH_LABEL[ch], spend: Math.round(c.spend), revenue: Math.round(c.revenue), roas: c.roas, cvr: c.cvr, aov: c.aov };
+    })
+    .filter((r) => r.spend > 0 || r.revenue > 0);
+
+  const cvr = m.total.clicks ? m.channels.site.purchases / m.total.clicks : null;
+  const cvrPrev = m.previous && m.previous.clicks ? m.previous.siteOrders / m.previous.clicks : null;
+  const siteRoas = m.blendedRoas;
+  const paidRoas = m.total.roas;
+
+  const label = periodLabel(from, to);
+  const top = meta.topAds[0];
+  const bestPlatform = [...platforms].sort((a, b) => (b.roas ?? 0) - (a.roas ?? 0))[0];
+  const summary =
+    `סיכום לתקופה ${label}: רואס אתר כולל ${roasStr(siteRoas)}, רואס ממומן ${roasStr(paidRoas)}, אחוז המרה ${pctStr(cvr)}. ` +
+    `${meta.registrations.toLocaleString("en-US")} הרשמות לדיוור ממטא. ` +
+    (top ? `המודעה המובילה ברואס: "${top.name}" (רואס ${roasStr(top.roas)}). ` : "") +
+    (bestPlatform ? `הפלטפורמה החזקה ביותר: ${bestPlatform.platform} (רואס ${roasStr(bestPlatform.roas)}).` : "");
+
+  return {
+    brandId: brand.id,
+    brandName: brand.name,
+    from, to,
+    periodLabel: label,
+    target: brand.targetRoas,
+    topLevel: { siteRoas, paidRoas, cvr, cvrPrev },
+    platforms,
+    registrations: meta.registrations,
+    topAds: meta.topAds,
+    summary,
+  };
+}

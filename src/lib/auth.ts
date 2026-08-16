@@ -4,8 +4,12 @@
 
 // __Host- prefix: browser-enforced hardening — requires Secure, Path=/, and forbids a
 // Domain attribute, closing subdomain cookie-injection/theft gaps that Secure+HttpOnly alone
-// don't. (localhost is treated as a secure context, so this still works in dev.)
-export const SESSION_COOKIE = "__Host-dash_session";
+// don't. But __Host- MANDATES Secure, and Safari drops Secure cookies over http://localhost —
+// so in dev we fall back to a plain (non-prefixed, non-Secure) name so login works in every
+// browser. Prod keeps the hardened prefix. The `secure` flag on the cookie is set in lockstep
+// (login route) — both keyed off NODE_ENV so the name and its required attributes never diverge.
+export const SESSION_COOKIE =
+  process.env.NODE_ENV === "production" ? "__Host-dash_session" : "dash_session";
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
 // Constant-time string comparison (compares fixed-length SHA-256 digests) to avoid

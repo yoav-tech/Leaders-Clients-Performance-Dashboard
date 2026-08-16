@@ -5,6 +5,11 @@ import { getGroupedDigest, renderGroupedText, type GroupedDigest, type EcomRow }
 import type { Alert } from "./alerts";
 import { canCreateTasks } from "./clickup";
 import { signTask, appBaseUrl } from "./taskLink";
+import { BRANDS, reportGroupOf } from "./brands";
+
+// When set, the digest carries a client-report reminder for the media manager: on Sunday the weekly
+// summary, on the 1st of the month the monthly one. The manager fills conclusions + sends per brand.
+export type ReportReminder = "week" | "month" | null;
 
 const C = {
   text: "#1a1d26", muted: "#6b7280", border: "#ececf3", violet: "#7c3aed", violetSoft: "#f4f1ff",
@@ -109,7 +114,28 @@ function shell(inner: string): string {
   </td></tr></table></body></html>`;
 }
 
-export function renderGroupedHtml(d: GroupedDigest, taskLinks: Record<string, string> = {}): string {
+// Client-report reminder callout — lists each e-commerce brand with a button that opens its
+// dashboard, where the manager fills conclusions and hits "שלח סיכום ללקוח".
+function reportReminderBlock(kind: "week" | "month"): string {
+  const base = appBaseUrl();
+  const brands = BRANDS.filter((b) => reportGroupOf(b) === "ecommerce");
+  const title = kind === "week" ? "סיכום שבועי ללקוחות" : "סיכום חודשי ללקוחות";
+  const sub = kind === "week"
+    ? "הגיע הזמן להוציא דוח שבועי ללקוחות האיקומרס — מלאו את המסקנות ושלחו. הדוח לא נשלח אוטומטית."
+    : "תחילת חודש — הוציאו את סיכום החודש הקודם ללקוחות האיקומרס: מלאו מסקנות ושלחו. הדוח לא נשלח אוטומטית.";
+  const buttons = brands.map((b) =>
+    `<a href="${appBaseUrl()}/?brand=${b.id}" style="display:inline-block;margin:4px 4px 0 0;padding:8px 14px;border-radius:8px;background:${C.violet};color:#fff;font:600 13px/1 ${FONT};text-decoration:none">${esc(b.name)} — מלא ושלח ←</a>`,
+  ).join("");
+  return `<tr><td style="padding:16px 18px 4px">
+    <div style="padding:16px 18px;border:1px solid ${C.violetBorder};border-radius:14px;background:${C.violetSoft}">
+      <div style="font:800 14px/1 ${FONT};color:${C.violet}">⏰ ${title}</div>
+      <div style="margin-top:6px;font:400 13px/1.5 ${FONT};color:${C.text}">${sub}</div>
+      <div style="margin-top:10px">${buttons}</div>
+    </div>
+  </td></tr>`;
+}
+
+export function renderGroupedHtml(d: GroupedDigest, taskLinks: Record<string, string> = {}, reminder: ReportReminder = null): string {
   const clients = d.ecom.length + d.views.length + d.leads.length + d.app.length + d.impshare.length;
   const totalSpend = [...d.ecom, ...d.views, ...d.leads, ...d.app, ...d.impshare].reduce((s, r) => s + (r.spend || 0), 0);
   const critical = d.alerts.filter((a) => a.severity === "critical").length;
@@ -155,10 +181,11 @@ export function renderGroupedHtml(d: GroupedDigest, taskLinks: Record<string, st
   const footer = `<tr><td style="padding:16px 24px 22px;border-top:1px solid ${C.border}">
     <div style="font:400 11px/1.5 ${FONT};color:${C.muted}">Leaders · Powered by People</div></td></tr>`;
 
-  return shell(`<div dir="rtl">${header}${ecom}${views}${leads}${app}${impshare}${attention}${footer}</div>`);
+  const reminderBlock = reminder ? reportReminderBlock(reminder) : "";
+  return shell(`<div dir="rtl">${header}${reminderBlock}${ecom}${views}${leads}${app}${impshare}${attention}${footer}</div>`);
 }
 
-export async function buildGroupedEmailFrom(d: GroupedDigest): Promise<{ subject: string; html: string; text: string }> {
+export async function buildGroupedEmailFrom(d: GroupedDigest, reminder: ReportReminder = null): Promise<{ subject: string; html: string; text: string }> {
   const taskLinks: Record<string, string> = {};
   if (canCreateTasks()) {
     const base = appBaseUrl();
@@ -167,9 +194,24 @@ export async function buildGroupedEmailFrom(d: GroupedDigest): Promise<{ subject
   const subject = d.period === "week" ? `דוח שבועי לקוחות לידרס · ${d.from} – ${d.to}`
     : d.from !== d.to ? `דוח סוף שבוע לקוחות לידרס · ${d.from} – ${d.to}`
     : `דוח יומי לקוחות לידרס · ${d.to}`;
-  return { subject, html: renderGroupedHtml(d, taskLinks), text: renderGroupedText(d) };
+  return { subject, html: renderGroupedHtml(d, taskLinks, reminder), text: renderGroupedText(d, reminder) };
 }
 
 export async function buildDigestEmail(alerts?: Alert[]): Promise<{ subject: string; html: string; text: string }> {
   return buildGroupedEmailFrom(await getGroupedDigest(alerts));
+}
+
+// A focused reminder email (no digest data) — used by the monthly cron so it fires reliably on the
+// 1st regardless of weekday. Same reminder callout the digest carries on Sundays.
+export function buildReminderEmail(kind: "week" | "month"): { subject: string; html: string; text: string } {
+  const subject = kind === "week" ? "תזכורת: סיכום שבועי ללקוחות — מלא ושלח" : "תזכורת: סיכום חודשי ללקוחות — מלא ושלח";
+  const header = `<tr><td style="padding:26px 24px 8px;background:linear-gradient(135deg,#efeaff 0%,#ffffff 72%);border-bottom:1px solid ${C.border}">
+    <div style="font:800 22px/1 ${FONT};letter-spacing:.16em;color:${C.text}">LEADERS</div>
+    <div style="margin-top:6px;font:400 13px/1 ${FONT};color:${C.muted}">${kind === "week" ? "תזכורת שבועית" : "תזכורת חודשית"}</div>
+  </td></tr>`;
+  const footer = `<tr><td style="padding:16px 24px 22px;border-top:1px solid ${C.border}"><div style="font:400 11px/1.5 ${FONT};color:${C.muted}">Leaders · Powered by People</div></td></tr>`;
+  const html = shell(`<div dir="rtl">${header}${reportReminderBlock(kind)}${footer}</div>`);
+  const ecomNames = BRANDS.filter((b) => reportGroupOf(b) === "ecommerce").map((b) => b.name).join(", ");
+  const text = `⏰ תזכורת: ${kind === "week" ? "סיכום שבועי" : "סיכום חודשי"} ללקוחות — מלאו מסקנות ושלחו בדשבורד: ${ecomNames}.`;
+  return { subject, html, text };
 }

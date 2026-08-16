@@ -7,6 +7,7 @@
     { "path": "/api/cron/clickup-poll", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/weekly", "schedule": "0 5 * * 4" },
     { "path": "/api/cron/monthly", "schedule": "0 5 1 * *" },
+    { "path": "/api/cron/report-reminder", "schedule": "0 7,8 1 * *" },
     { "path": "/api/cron/media-plan", "schedule": "0 5 24 * *" }
   ]
 }

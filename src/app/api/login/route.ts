@@ -25,10 +25,25 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json().catch(() => ({}))) as { identifier?: string; password?: string };
-  const identifier = String(body.identifier ?? "").trim().toLowerCase();
-  const password = String(body.password ?? "");
+  // Two callers: the JS form fetches JSON; a non-hydrated / pre-hydration native form submit
+  // arrives as application/x-www-form-urlencoded. We accept both, and reply in kind — JSON
+  // clients get {ok}, native form posts get a redirect (so login works even without JS).
+  const contentType = request.headers.get("content-type") ?? "";
+  const isForm = contentType.includes("form-urlencoded") || contentType.includes("multipart/form-data");
+  let identifier = "";
+  let password = "";
+  if (isForm) {
+    const form = await request.formData().catch(() => null);
+    identifier = String(form?.get("identifier") ?? "").trim().toLowerCase();
+    password = String(form?.get("password") ?? "");
+  } else {
+    const body = (await request.json().catch(() => ({}))) as { identifier?: string; password?: string };
+    identifier = String(body.identifier ?? "").trim().toLowerCase();
+    password = String(body.password ?? "");
+  }
   const now = Math.floor(Date.now() / 1000);
+  const nextParam = new URL(request.url).searchParams.get("next");
+  const safeNext = nextParam && nextParam.startsWith("/") ? nextParam : "/";
 
   let session: { role: Role; sub: string; brands: string[] } | null = null;
 
@@ -46,14 +61,24 @@ export async function POST(request: Request) {
   }
 
   if (!session) {
+    if (isForm) {
+      const back = new URL("/login", request.url);
+      if (safeNext !== "/") back.searchParams.set("next", safeNext);
+      back.searchParams.set("error", "1");
+      return NextResponse.redirect(back, { status: 303 });
+    }
     return NextResponse.json({ ok: false, error: "Incorrect username/email or password" }, { status: 401 });
   }
 
   const issued = await issueSession(session, now);
-  const res = NextResponse.json({ ok: true });
+  const res = isForm
+    ? NextResponse.redirect(new URL(safeNext, request.url), { status: 303 })
+    : NextResponse.json({ ok: true });
   res.cookies.set(SESSION_COOKIE, issued.value, {
     httpOnly: true,
-    secure: true,
+    // Secure only in production — over http://localhost a Secure cookie is silently
+    // dropped by the browser, which would bounce the user back to /login on every dev login.
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: issued.maxAge,
@@ -67,6 +92,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ ok: false, error: "Bad origin" }, { status: 403 });
   }
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(SESSION_COOKIE, "", { path: "/", secure: true, maxAge: 0 });
+  res.cookies.set(SESSION_COOKIE, "", { path: "/", secure: process.env.NODE_ENV === "production", maxAge: 0 });
   return res;
 }
