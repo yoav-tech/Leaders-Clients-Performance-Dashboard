@@ -147,13 +147,19 @@ function mono(headers: string[], rows: string[][], aligns: ("l" | "r")[]): strin
   return ["```", line(headers), ...rows.map(line), "```"].join("\n");
 }
 
-export function renderGroupedText(d: GroupedDigest): string {
+export function renderGroupedText(d: GroupedDigest, reminder: "week" | "month" | null = null): string {
   const title = d.period === "week"
     ? `🗓️ **דוח שבועי לקוחות לידרס** · ${d.from} – ${d.to}`
     : d.from !== d.to
       ? `☀️ **דוח סוף שבוע לקוחות לידרס** · ${d.from} – ${d.to}`
       : `☀️ **דוח יומי לקוחות לידרס** · ${d.to}`;
   const parts: string[] = [title];
+  if (reminder) {
+    const ecomNames = BRANDS.filter((b) => reportGroupOf(b) === "ecommerce").map((b) => b.name).join(", ");
+    parts.push(reminder === "week"
+      ? `⏰ **תזכורת: סיכום שבועי ללקוחות** — מלאו מסקנות ושלחו בדשבורד: ${ecomNames}.`
+      : `⏰ **תזכורת: סיכום חודשי ללקוחות** — תחילת חודש, מלאו מסקנות ושלחו בדשבורד: ${ecomNames}.`);
+  }
   if (d.ecom.length) {
     parts.push("🛒 **איקומרס**");
     parts.push(mono(["Brand", "Spend", "Revenue", "ROAS", "Orders", "Pace"],

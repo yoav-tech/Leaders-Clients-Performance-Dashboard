@@ -22,6 +22,9 @@ import SearchSnapshotView from "@/components/SearchSnapshotView";
 import CampaignBrandView from "@/components/CampaignBrandView";
 import { getCampaignBrandMetrics } from "@/lib/campaignMetrics";
 import ClientSummaryView from "@/components/ClientSummaryView";
+import ClientReportPanels from "@/components/ClientReportPanels";
+import { getClientReport } from "@/lib/clientReport";
+import { getReportNote } from "@/lib/clientReportStore";
 import AppShell from "@/components/AppShell";
 import DateRangeCalendar from "@/components/DateRangeCalendar";
 import ViewSkeleton from "@/components/ViewSkeleton";
@@ -31,6 +34,20 @@ import { getUserById } from "@/lib/users";
 export const dynamic = "force-dynamic";
 
 interface Range { key: RangeKey; from: string; to: string }
+
+// Placeholder while the report panels (Meta ad-level fetch) stream in — keeps the client view
+// from looking stuck on a cold cache.
+function ReportPanelsSkeleton() {
+  return (
+    <div className="space-y-4" dir="rtl">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-20 animate-pulse rounded-xl border border-[var(--card-border)] bg-[var(--background)]/40" />)}
+      </div>
+      <div className="h-40 animate-pulse rounded-xl border border-[var(--card-border)] bg-[var(--background)]/40" />
+      <div className="h-40 animate-pulse rounded-xl border border-[var(--card-border)] bg-[var(--background)]/40" />
+    </div>
+  );
+}
 
 // The heavy, per-brand report — rendered inside a Suspense boundary so the shell shows instantly
 // and only this streams in. SSR-heavy brands (conversion/app/media-plan) get a skeleton on switch;
@@ -83,21 +100,49 @@ async function BrandContent({ brand, range, isClient }: { brand: BrandConfig; ra
   ]);
   const metrics = allMetrics.find((m) => m.brandId === brandId)!;
   const emptySource: SourceDaily = { sources: [], rows: {} };
-  return isClient ? (
-    <ClientSummaryView brand={brand} metrics={metrics} breakdown={breakdownMap[brandId] ?? []} forecast={forecast} monthSpend={monthSpend} />
-  ) : (
-    <BrandView
-      brand={brand}
-      metrics={metrics}
-      breakdown={breakdownMap[brandId] ?? []}
-      sourceDaily={sourceMap[brandId] ?? emptySource}
-      forecast={forecast}
-      store={store}
-      monthSpend={monthSpend}
-      from={range.from}
-      to={range.to}
-      isClient={isClient}
-    />
+
+  // Client view (and admin previewing as client): ONE integrated view — the executive summary with
+  // paid ROAS + sign-ups in the top-level KPIs, the per-platform + top-ads tables, and the verbal
+  // summary (auto text + the manager's conclusions), all for the same period. Read-only.
+  if (isClient) {
+    const [report, note] = await Promise.all([
+      getClientReport(brand, range.from, range.to),
+      getReportNote(brandId, "custom", range.from, range.to),
+    ]);
+    return (
+      <ClientSummaryView
+        brand={brand}
+        metrics={metrics}
+        breakdown={breakdownMap[brandId] ?? []}
+        forecast={forecast}
+        monthSpend={monthSpend}
+        report={report}
+        note={note}
+        canEdit={false}
+      />
+    );
+  }
+
+  // Media-manager view: full drill-down + the report editor (conclusions + "send to client"),
+  // streamed in its own Suspense boundary since the Meta ad-level fetch can be slow on a cold cache.
+  return (
+    <div className="space-y-4">
+      <BrandView
+        brand={brand}
+        metrics={metrics}
+        breakdown={breakdownMap[brandId] ?? []}
+        sourceDaily={sourceMap[brandId] ?? emptySource}
+        forecast={forecast}
+        store={store}
+        monthSpend={monthSpend}
+        from={range.from}
+        to={range.to}
+        isClient={isClient}
+      />
+      <Suspense fallback={<ReportPanelsSkeleton />}>
+        <ClientReportPanels brand={brand} from={range.from} to={range.to} canEdit />
+      </Suspense>
+    </div>
   );
 }
 
