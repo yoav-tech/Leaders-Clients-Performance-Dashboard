@@ -39,7 +39,7 @@ export default async function ClientReportPanels({
   if (!report) return null;
 
   return (
-    <>
+    <div className="space-y-4 text-right" dir="rtl">
       {/* What the client sees in the top-level KPIs — surfaced here too so the manager reviews the
           same numbers before sending. */}
       <div className="grid grid-cols-2 gap-3">
@@ -61,6 +61,6 @@ export default async function ClientReportPanels({
         initialSentAt={note.sentAt}
         canEdit={canEdit}
       />
-    </>
+    </div>
   );
 }
