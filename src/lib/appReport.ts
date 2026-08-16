@@ -6,6 +6,11 @@
 import type { BrandConfig, AppSectionConfig } from "./brands";
 import { fetchWindsor, num } from "./windsor";
 import { monthProgress, shiftDate, today } from "./dates";
+import { classifyType, parseCity, aggregateRows, type AppRow, type AggRow } from "./appRows";
+
+export { classifyType } from "./appRows";
+export type { CampType, AppRow } from "./appRows";
+export type AppCampaign = AggRow; // aggregated table row (campaign / ad-group / ad share one shape)
 
 const toIls = (v: number, cur: string) => (cur === "USD" ? v * 3 : v);
 const normId = (v: unknown) => String(v ?? "").replace(/^act_/i, "").trim();
@@ -15,36 +20,6 @@ const F = {
   purch: "actions_omni_purchase",
   lead: "actions_lead",
 };
-
-export type CampType = "reach" | "install" | "registration" | "leads" | "other";
-export function classifyType(name: string): CampType {
-  const n = name.toLowerCase();
-  if (/reach/.test(n)) return "reach";
-  if (/install/.test(n)) return "install";
-  if (/registration|\breg\b/.test(n)) return "registration";
-  if (/lead/.test(n)) return "leads";
-  return "other";
-}
-
-export interface AppCampaign {
-  name: string;
-  type: CampType;
-  spend: number;
-  impressions: number;
-  clicks: number;
-  reach: number;
-  ctr: number | null;
-  cpc: number | null;
-  installs: number;
-  registrations: number;
-  purchases: number;
-  leads: number;
-  cpi: number | null;
-  cpReg: number | null;
-  cpPurch: number | null;
-  cpLead: number | null;
-  cpm: number | null;
-}
 export interface Totals {
   spend: number;
   impressions: number;
@@ -68,6 +43,7 @@ export interface AppSection {
   budget: number; // monthly (0 = no pacing)
   totals: Totals;
   campaigns: AppCampaign[];
+  rows: AppRow[]; // finest grain (Meta ad level) → regrouped client-side by campaign/ad-group/ad + city
   trend: { date: string; spend: number; conversions: number }[];
   pacing: { monthSpend: number; elapsed: number; daysInMonth: number; projectedSpend: number; projectedConversions: number } | null;
 }
@@ -93,13 +69,13 @@ function derive(t: {
 async function fetchSection(cfg: AppSectionConfig, brand: BrandConfig, from: string, to: string): Promise<AppSection> {
   const account = cfg.account;
   const acc = normId(account);
-  let cur = brand.nativeCurrency as string;
-  const zero = () => ({ spend: 0, impressions: 0, clicks: 0, reach: 0, installs: 0, registrations: 0, purchases: 0, leads: 0 });
-  const campMap = new Map<string, ReturnType<typeof zero>>();
+  const nativeCur = brand.nativeCurrency as string;
 
-  const rows = await fetchWindsor({
+  // Fetch at Meta AD level (campaign + adset + ad) so each table can regroup to campaign / ad-group
+  // / ad and filter by the campaign's city — mirroring the ecommerce campaign explorer.
+  const adRows = await fetchWindsor({
     connector: "facebook",
-    fields: ["account_id", "currency", "campaign", "spend", "impressions", "clicks", "reach", F.install, F.reg, F.purch, F.lead],
+    fields: ["account_id", "currency", "campaign", "adset_name", "ad_name", "spend", "impressions", "clicks", "reach", F.install, F.reg, F.purch, F.lead],
     dateFrom: from,
     dateTo: to,
     accounts: [account],
@@ -107,45 +83,30 @@ async function fetchSection(cfg: AppSectionConfig, brand: BrandConfig, from: str
     cacheSeconds: 60,
   }).catch(() => []);
 
-  for (const r of rows) {
+  const rows: AppRow[] = [];
+  for (const r of adRows) {
     if (normId(r.account_id) !== acc) continue;
     const name = String(r.campaign ?? "");
     if (!name.startsWith("LDRS")) continue; // LDRS-only
-    if (r.currency) cur = String(r.currency).toUpperCase();
-    const c = campMap.get(name) ?? zero();
-    c.spend += num(r.spend);
-    c.impressions += num(r.impressions);
-    c.clicks += num(r.clicks);
-    c.reach += num(r.reach);
-    c.installs += num(r[F.install]);
-    c.registrations += num(r[F.reg]);
-    c.purchases += num(r[F.purch]);
-    c.leads += num(r[F.lead]);
-    campMap.set(name, c);
+    const rcur = String(r.currency ?? nativeCur).toUpperCase();
+    rows.push({
+      campaign: name,
+      adgroup: String(r.adset_name ?? "").trim() || "—",
+      ad: String(r.ad_name ?? "").trim() || "—",
+      type: classifyType(name),
+      city: parseCity(name),
+      spend: toIls(num(r.spend), rcur), // keep unrounded so any-level aggregation stays accurate
+      impressions: num(r.impressions),
+      clicks: num(r.clicks),
+      reach: num(r.reach),
+      installs: num(r[F.install]),
+      registrations: num(r[F.reg]),
+      purchases: num(r[F.purch]),
+      leads: num(r[F.lead]),
+    });
   }
 
-  const campaigns: AppCampaign[] = [...campMap].map(([name, c]) => {
-    const spend = toIls(c.spend, cur);
-    return {
-      name,
-      type: classifyType(name),
-      spend: Math.round(spend),
-      impressions: Math.round(c.impressions),
-      clicks: Math.round(c.clicks),
-      reach: Math.round(c.reach),
-      ctr: c.impressions ? c.clicks / c.impressions : null,
-      cpc: c.clicks ? spend / c.clicks : null,
-      installs: Math.round(c.installs),
-      registrations: Math.round(c.registrations),
-      purchases: Math.round(c.purchases),
-      leads: Math.round(c.leads),
-      cpi: c.installs ? spend / c.installs : null,
-      cpReg: c.registrations ? spend / c.registrations : null,
-      cpPurch: c.purchases ? spend / c.purchases : null,
-      cpLead: c.leads ? spend / c.leads : null,
-      cpm: c.impressions ? (spend / c.impressions) * 1000 : null,
-    };
-  });
+  const campaigns = aggregateRows(rows, "campaign");
 
   const tSum = campaigns.reduce(
     (a, c) => {
@@ -153,12 +114,11 @@ async function fetchSection(cfg: AppSectionConfig, brand: BrandConfig, from: str
       a.installs += c.installs; a.registrations += c.registrations; a.purchases += c.purchases; a.leads += c.leads;
       return a;
     },
-    zero(),
+    { spend: 0, impressions: 0, clicks: 0, reach: 0, installs: 0, registrations: 0, purchases: 0, leads: 0 },
   );
   const totals = derive(tSum);
 
   // Trend (LDRS-only), daily spend + the section's main conversion.
-  const mainConv = (c: ReturnType<typeof zero>) => (cfg.kind === "leads" ? c.leads : c.installs + c.registrations);
   const trend: { date: string; spend: number; conversions: number }[] = [];
   try {
     const drows = await fetchWindsor({
@@ -176,7 +136,7 @@ async function fetchSection(cfg: AppSectionConfig, brand: BrandConfig, from: str
       const d = String(r.date ?? "").slice(0, 10);
       if (!d) continue;
       const e = byDate.get(d) ?? { spend: 0, conv: 0 };
-      e.spend += toIls(num(r.spend), cur);
+      e.spend += toIls(num(r.spend), nativeCur);
       e.conv += cfg.kind === "leads" ? num(r[F.lead]) : num(r[F.install]) + num(r[F.reg]);
       byDate.set(d, e);
     }
@@ -202,7 +162,7 @@ async function fetchSection(cfg: AppSectionConfig, brand: BrandConfig, from: str
     for (const r of mrows) {
       if (normId(r.account_id) !== acc) continue;
       if (!String(r.campaign ?? "").startsWith("LDRS")) continue;
-      mSpend += toIls(num(r.spend), cur);
+      mSpend += toIls(num(r.spend), nativeCur);
       mConv += cfg.kind === "leads" ? num(r[F.lead]) : num(r[F.install]) + num(r[F.reg]);
     }
     const elapsedComplete = Math.max(1, elapsed - 1);
@@ -218,7 +178,7 @@ async function fetchSection(cfg: AppSectionConfig, brand: BrandConfig, from: str
     /* optional */
   }
 
-  return { key: cfg.key, title: cfg.title, kind: cfg.kind, budget: cfg.budget ?? 0, totals, campaigns, trend, pacing };
+  return { key: cfg.key, title: cfg.title, kind: cfg.kind, budget: cfg.budget ?? 0, totals, campaigns, rows, trend, pacing };
 }
 
 export async function getAppReport(brand: BrandConfig, from: string, to: string): Promise<AppReport | null> {

@@ -1,7 +1,7 @@
 import type { BrandConfig } from "@/lib/brands";
 import type { AppReport, AppSection, Totals } from "@/lib/appReport";
 import { formatIls, formatNumber, formatPct } from "@/lib/metrics";
-import AppTypeTable, { type Col } from "./AppTypeTable";
+import AppLevelTable, { type Col } from "./AppLevelTable";
 
 const REACH_COLS: Col[] = [
   { label: "Spend", field: "spend", fmt: "ils" }, { label: "Impr", field: "impressions", fmt: "num" },
@@ -164,19 +164,19 @@ export default function AppReportView({ brand, report, from, to }: { brand: Bran
 
           {s.kind === "app" ? (
             <>
-              <Panel title="REACH · קמפיינים">
-                <AppTypeTable campaigns={s.campaigns.filter((c) => c.type === "reach")} cols={REACH_COLS} minWidth={560} />
+              <Panel title="REACH · לפי קמפיין / אד-גרופ / מודעה · פילטר עיר">
+                <AppLevelTable rows={s.rows.filter((r) => r.type === "reach")} cols={REACH_COLS} minWidth={560} />
               </Panel>
-              <Panel title="INSTALL · קמפיינים">
-                <AppTypeTable campaigns={s.campaigns.filter((c) => c.type === "install")} cols={INSTALL_COLS} />
+              <Panel title="INSTALL · לפי קמפיין / אד-גרופ / מודעה · פילטר עיר">
+                <AppLevelTable rows={s.rows.filter((r) => r.type === "install")} cols={INSTALL_COLS} />
               </Panel>
-              <Panel title="REG · קמפיינים">
-                <AppTypeTable campaigns={s.campaigns.filter((c) => c.type === "registration")} cols={REG_COLS} />
+              <Panel title="REG · לפי קמפיין / אד-גרופ / מודעה · פילטר עיר">
+                <AppLevelTable rows={s.rows.filter((r) => r.type === "registration")} cols={REG_COLS} />
               </Panel>
             </>
           ) : (
-            <Panel title="Leads · קמפיינים">
-              <AppTypeTable campaigns={s.campaigns} cols={LEADS_COLS} />
+            <Panel title="Leads · לפי קמפיין / אד-גרופ / מודעה · פילטר עיר">
+              <AppLevelTable rows={s.rows} cols={LEADS_COLS} />
             </Panel>
           )}
 
