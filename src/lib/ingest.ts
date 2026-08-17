@@ -326,6 +326,12 @@ async function replaceCampaignDaily(sb: Sb, brand: BrandConfig, channel: Channel
   return rows.length;
 }
 
+// Google conversion actions that are NOT leads (site visits / page views) — excluded from the lead
+// count. The LDRS account, e.g., only tracks "Page view …" / "Page load …" actions, which are
+// visits, not leads. A real lead action (form submit, call, etc.) would still count.
+const NON_LEAD_CONVERSION = /page\s*(view|load)|\bvisit\b|ביקור/i;
+const isLeadConversionAction = (name: string): boolean => !!name.trim() && !NON_LEAD_CONVERSION.test(name);
+
 // Ingest a views/leads brand: each explorer channel (a Windsor account + campaign-name filter),
 // per-day awareness/leads metrics → daily_metrics. Shared accounts are filtered by campaign name.
 async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to: string, usdIls: number, result: IngestResult): Promise<void> {
@@ -342,7 +348,9 @@ async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to:
             : ["video_views"]
         : ch.id === "meta"
           ? ["actions_lead"]
-          : ["conversions"];
+          : ch.id === "tiktok"
+            ? ["conversions"]
+            : []; // google leads: counted below from a per-conversion-action fetch (page views excluded)
     const fields = [...new Set(["date", "account_id", "currency", campField, "spend", "impressions", "clicks", ...metricFields])];
     try {
       const rows = await fetchWindsor({
@@ -380,10 +388,36 @@ async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to:
           if (ch.id === "meta") { a.views += sumAction(r.video_thruplay_watched_actions); a.completed += sumAction(r.video_p100_watched_actions); }
           else if (ch.id === "tiktok") { a.views += num(r.video_watched_6s); a.completed += num(r.video_views_p100); }
           else { a.views += num(r.video_views); }
-        } else {
-          a.leads += ch.id === "meta" ? sumAction(r.actions_lead) : num(r.conversions);
+        } else if (ch.id === "meta") {
+          a.leads += sumAction(r.actions_lead);
+        } else if (ch.id === "tiktok") {
+          a.leads += num(r.conversions);
+        }
+        // google leads are added after this loop from a per-conversion-action fetch (excludes visits)
+      }
+
+      // Google leads: break conversions down by conversion action and count only real leads —
+      // exclude "Page view"/site-visit actions (the LDRS account tracks visits as conversions).
+      if (profile === "leads" && ch.id === "google") {
+        const convRows = await fetchWindsor({
+          connector: "google_ads",
+          fields: ["date", "account_id", campField, "conversion_action_name", "conversions"],
+          dateFrom: from,
+          dateTo: to,
+          accounts: [ch.account],
+        }).catch(() => []);
+        for (const r of convRows) {
+          if (normId(r.account_id) !== acc) continue;
+          if (ch.filter && !String(r[campField] ?? "").toLowerCase().includes(ch.filter)) continue;
+          if (!isLeadConversionAction(String(r.conversion_action_name ?? ""))) continue;
+          const date = String(r.date ?? "").slice(0, 10);
+          if (!date) continue;
+          let a = byDate.get(date);
+          if (!a) { a = emptyCamp(); byDate.set(date, a); }
+          a.leads += num(r.conversions);
         }
       }
+
       result.upserts += await replaceCampaignDaily(sb, brand, ch.id, from, to, byDate, usdIls, currency);
     } catch (e) {
       result.ok = false;
