@@ -35,6 +35,23 @@ export async function brandManagers(brandId: string): Promise<string[]> {
   return [...new Set((data ?? []).map((r) => String(r.email ?? "").trim().toLowerCase()).filter(Boolean))];
 }
 
+// The brand's client(s) — onboarded users with role='client' whose brand list includes this brand
+// (e.g. the CEO for the Leaders command center). Used to notify the client that content is ready
+// for approval. EMAIL_CLIENT_<BRAND_ID> overrides for testing.
+export async function brandClients(brandId: string): Promise<string[]> {
+  const override = process.env[`EMAIL_CLIENT_${brandId.toUpperCase().replace(/-/g, "_")}`];
+  if (override) return override.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!hasDb()) return [];
+  const { data, error } = await getSupabase()
+    .from("dashboard_users")
+    .select("email,role,brand_ids")
+    .eq("role", "client")
+    .contains("brand_ids", [brandId])
+    .limit(50);
+  if (error) throw new Error(`brand clients lookup failed: ${error.message}`);
+  return [...new Set((data ?? []).map((r) => String(r.email ?? "").trim().toLowerCase()).filter(Boolean))];
+}
+
 // Same lookup for every brand at once — one round-trip for the whole console / cron run.
 export async function brandManagersByBrand(brandIds: string[]): Promise<Record<string, string[]>> {
   const out: Record<string, string[]> = Object.fromEntries(brandIds.map((b) => [b, []]));

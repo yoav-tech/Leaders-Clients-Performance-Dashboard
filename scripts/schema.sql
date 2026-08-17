@@ -198,3 +198,78 @@ CREATE TABLE IF NOT EXISTS brand_economics (
 ALTER TABLE brand_economics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE brand_economics FORCE  ROW LEVEL SECURITY;
 REVOKE ALL ON brand_economics FROM anon, authenticated;
+
+-- ---- Marketing command center (Leaders / Bestie) ----
+-- A native content Gantt the CEO approves. content_items = the calendar posts (organic, per
+-- platform); content_month_approvals = the monthly sign-off; briefs = creative briefs for moves.
+-- Uploaded assets live in the `content-assets` Storage bucket (same Supabase project); asset_path
+-- is a bucket path, or an external URL when asset_kind = 'link'.
+CREATE TABLE IF NOT EXISTS content_items (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  brand_id         text NOT NULL,
+  scheduled_date   date NOT NULL,
+  platform         text NOT NULL,                 -- instagram | facebook | linkedin
+  title            text NOT NULL DEFAULT '',
+  body             text NOT NULL DEFAULT '',
+  asset_path       text,                          -- Storage path, or external URL when kind='link'
+  asset_kind       text NOT NULL DEFAULT 'link',  -- image | video | link
+  brief_id         uuid,
+  status           text NOT NULL DEFAULT 'draft', -- draft|pending|approved|changes_requested|scheduled|published
+  client_feedback  text NOT NULL DEFAULT '',
+  created_by       text,
+  approved_by      text,
+  approved_at      timestamptz,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_content_items_brand_date ON content_items (brand_id, scheduled_date);
+ALTER TABLE content_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE content_items FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON content_items FROM anon, authenticated;
+
+CREATE TABLE IF NOT EXISTS content_month_approvals (
+  brand_id     text NOT NULL,
+  month        text NOT NULL,                     -- YYYY-MM
+  status       text NOT NULL DEFAULT 'draft',     -- draft|pending|approved
+  note         text NOT NULL DEFAULT '',
+  approved_by  text,
+  approved_at  timestamptz,
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (brand_id, month)
+);
+ALTER TABLE content_month_approvals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE content_month_approvals FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON content_month_approvals FROM anon, authenticated;
+
+CREATE TABLE IF NOT EXISTS briefs (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  brand_id      text NOT NULL,
+  title         text NOT NULL DEFAULT '',
+  objective     text NOT NULL DEFAULT '',
+  audience      text NOT NULL DEFAULT '',
+  key_message   text NOT NULL DEFAULT '',
+  channels      text[] NOT NULL DEFAULT '{}',
+  budget        numeric,
+  start_date    date,
+  end_date      date,
+  status        text NOT NULL DEFAULT 'draft',    -- draft|active|done
+  notes         text NOT NULL DEFAULT '',
+  created_by    text,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_briefs_brand ON briefs (brand_id);
+ALTER TABLE briefs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE briefs FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON briefs FROM anon, authenticated;
+
+-- ---- Automations on/off (super-admin console) ----
+-- One row per scheduled automation the owner has toggled. Missing row = enabled (default ON).
+CREATE TABLE IF NOT EXISTS automation_settings (
+  key         text PRIMARY KEY,               -- the cronAuth label, e.g. 'cron/digest'
+  enabled     boolean NOT NULL DEFAULT true,
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE automation_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE automation_settings FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON automation_settings FROM anon, authenticated;

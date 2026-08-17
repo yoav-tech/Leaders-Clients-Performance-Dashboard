@@ -1,5 +1,11 @@
 import type { NextConfig } from "next";
 
+// Next's dev Fast Refresh runtime uses eval() for HMR, which a strict script-src blocks — throwing
+// an EvalError that breaks client hydration (client components never mount / effects never run).
+// Allow 'unsafe-eval' in development ONLY; production (Vercel) has no Fast Refresh and keeps the
+// hardened CSP unchanged.
+const isDev = process.env.NODE_ENV !== "production";
+
 // Security headers applied to every response.
 const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
@@ -19,7 +25,7 @@ const securityHeaders = [
       "object-src 'none'",
       "frame-ancestors 'none'",
       "form-action 'self'",
-      "script-src 'self' 'unsafe-inline'",
+      `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
       "font-src 'self'",

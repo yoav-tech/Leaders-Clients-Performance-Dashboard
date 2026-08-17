@@ -24,6 +24,7 @@ import CampaignBrandView from "@/components/CampaignBrandView";
 import { getCampaignBrandMetrics } from "@/lib/campaignMetrics";
 import ClientSummaryView from "@/components/ClientSummaryView";
 import ClientReportPanels from "@/components/ClientReportPanels";
+import CommandCenterView from "@/components/CommandCenterView";
 import { getClientReport } from "@/lib/clientReport";
 import { getReportNote } from "@/lib/clientReportStore";
 import AppShell from "@/components/AppShell";
@@ -53,8 +54,15 @@ function ReportPanelsSkeleton() {
 // The heavy, per-brand report — rendered inside a Suspense boundary so the shell shows instantly
 // and only this streams in. SSR-heavy brands (conversion/app/media-plan) get a skeleton on switch;
 // client-fetch brands (awareness/snapshot/perf) return immediately and spin internally.
-async function BrandContent({ brand, range, isClient }: { brand: BrandConfig; range: Range; isClient: boolean }) {
+async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { brand: BrandConfig; range: Range; isClient: boolean; sub: string; tab: string; asParam: string }) {
   const brandId = brand.id;
+
+  // Marketing command center (Leaders): its own view with sub-section tabs (Leaders / Bestie),
+  // a native content calendar + approvals, and briefs — instead of the standard brand dashboard.
+  if (brand.commandCenter) {
+    return <CommandCenterView brand={brand} subId={sub} tab={tab} range={range} asParam={asParam} />;
+  }
+
   const isMediaPlan = !!brand.mediaPlan;
   const isAppInstall = !!brand.appInstall;
   const isSnapshot = !!brand.googleSnapshot;
@@ -154,7 +162,7 @@ export default async function ClientPage({
   searchParams,
 }: {
   params: Promise<{ client: string }>;
-  searchParams: Promise<{ range?: string; from?: string; to?: string; as?: string }>;
+  searchParams: Promise<{ range?: string; from?: string; to?: string; as?: string; sub?: string; tab?: string }>;
 }) {
   const [{ client }, sp] = await Promise.all([params, searchParams]);
   const range = resolveRange(sp);
@@ -181,9 +189,11 @@ export default async function ClientPage({
   const previewClient = isAdmin && sp.as === "client";
   const isClient = session.role === "client" || previewClient;
 
-  const me = isAdmin ? null : await getUserById(session.sub);
-  const accountLabel = previewClient ? "תצוגת לקוח" : isAdmin ? "מנהל מדיה" : me?.fullName || me?.username || "לקוח";
-  const accountSub = previewClient ? "Preview" : isAdmin ? "Admin" : me?.username ?? "";
+  // Look up the identity for every role. The shared "admin" login has no DB row (sub="admin"/"team")
+  // → falls back to Gal. A DB admin user (e.g. yoav, the owner) shows their own name/email.
+  const me = previewClient ? null : await getUserById(session.sub).catch(() => null);
+  const accountLabel = previewClient ? "תצוגת לקוח" : me?.fullName || me?.username || (isAdmin ? "גל" : "לקוח");
+  const accountSub = previewClient ? "Preview" : me?.email || me?.username || (isAdmin ? "gal.z@ldrsgroup.com" : "");
   const lastUpdated = await getLastUpdated();
   // Brand now lives in the PATH; only the date window + preview flag go in the query.
   const rangeQs = range.key === "custom" ? `range=custom&from=${range.from}&to=${range.to}` : `range=${range.key}`;
@@ -242,7 +252,7 @@ export default async function ClientPage({
         </div>
       )}
       <Suspense key={`${brandId}:${range.from}:${range.to}:${isClient ? "c" : "a"}`} fallback={<ViewSkeleton />}>
-        <BrandContent brand={brand} range={range} isClient={isClient} />
+        <BrandContent brand={brand} range={range} isClient={isClient} sub={sp.sub ?? ""} tab={sp.tab ?? ""} asParam={previewClient ? "&as=client" : ""} />
       </Suspense>
     </AppShell>
   );

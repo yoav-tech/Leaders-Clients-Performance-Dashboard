@@ -52,6 +52,12 @@ export interface BrandConfig {
   // General campaign-performance report across shared accounts, filtered by campaignFilter
   // (e.g. Leaders / Bestie inside the LEADERS Meta + LDRS Google accounts).
   perfSources?: PerfSourceConfig[];
+  // Marketing command center (Leaders): one view with sub-section tabs (each a brand id), a native
+  // content calendar + approvals + briefs. Sub-section brands are read for data but hidden from nav.
+  commandCenter?: { subSections: string[] };
+  // Hide from the sidebar (still accessible/authorized) — e.g. Bestie is a sub-section of the
+  // Leaders command center rather than its own nav entry.
+  navHidden?: boolean;
   // Which daily-digest table a client belongs to. Derived from the flags above by default
   // (reportGroupOf) — set explicitly only to override for a new client.
   reportGroup?: ReportGroup;
@@ -272,6 +278,8 @@ export const BRANDS: BrandConfig[] = [
       { platform: "meta", account: "638387658529372", title: "Meta · LEADERS" },
       { platform: "google", account: "566-212-3115", title: "Google · LDRS" },
     ],
+    // Command center: Leaders marketing + Bestie as two sub-sections in one place.
+    commandCenter: { subSections: ["leaders", "bestie"] },
   },
   {
     id: "bestie",
@@ -291,6 +299,8 @@ export const BRANDS: BrandConfig[] = [
       { platform: "meta", account: "638387658529372", title: "Meta · LEADERS" },
       { platform: "google", account: "566-212-3115", title: "Google · LDRS" },
     ],
+    // A sub-section of the Leaders command center — reached via Leaders, not its own nav entry.
+    navHidden: true,
   },
 ];
 
