@@ -48,14 +48,19 @@ export default function DateRangeCalendar({
   from,
   to,
   brand,
+  preview = false,
 }: {
   activeKey: RangeKey;
   from: string;
   to: string;
   brand?: string;
+  preview?: boolean;
 }) {
   const router = useRouter();
-  const brandQ = brand ? `&brand=${brand}` : "";
+  // Brand lives in the path now (/<brand>); the date window rides the query. Keep the
+  // client-preview flag (?as=client) across date changes.
+  const base = brand ? `/${brand}` : "";
+  const asQ = preview ? "&as=client" : "";
   const [open, setOpen] = useState(false);
   const [selStart, setSelStart] = useState(from);
   const [selEnd, setSelEnd] = useState(to);
@@ -75,16 +80,16 @@ export default function DateRangeCalendar({
   // Always show the actual date (range) we're viewing, not the preset name.
   const label = useMemo(() => (from === to ? fmt(from) : `${fmt(from)} – ${fmt(to)}`), [from, to]);
 
-  const goPreset = (key: RangeKey) => { setOpen(false); router.push(`/?range=${key}${brandQ}`); };
+  const goPreset = (key: RangeKey) => { setOpen(false); router.push(`${base}?range=${key}${asQ}`); };
   const applyCustom = (s: string, e: string) => {
     const lo = s <= e ? s : e, hi = s <= e ? e : s;
     setOpen(false);
-    router.push(`/?range=custom&from=${lo}&to=${hi}${brandQ}`);
+    router.push(`${base}?range=custom&from=${lo}&to=${hi}${asQ}`);
   };
   const step = (delta: number) => {
     const nextTo = shiftDays(to, delta);
     if (delta > 0 && nextTo > today) return;
-    router.push(`/?range=custom&from=${shiftDays(from, delta)}&to=${nextTo}${brandQ}`);
+    router.push(`${base}?range=custom&from=${shiftDays(from, delta)}&to=${nextTo}${asQ}`);
   };
 
   // Range-selection: first click sets start & clears end; second click sets the end.

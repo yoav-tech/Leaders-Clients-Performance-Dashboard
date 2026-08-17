@@ -46,7 +46,7 @@ export default function Sidebar({
             return (
               <li key={b.id}>
                 <Link
-                  href={`/?brand=${b.id}${rangeQuery}`}
+                  href={`/${b.id}${rangeQuery}`}
                   onClick={close}
                   aria-current={active ? "page" : undefined}
                   className={`nav-bubble ${active ? "nav-bubble-active" : ""}`}

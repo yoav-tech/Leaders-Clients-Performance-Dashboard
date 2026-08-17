@@ -124,7 +124,7 @@ function reportReminderBlock(kind: "week" | "month"): string {
     ? "הגיע הזמן להוציא דוח שבועי ללקוחות האיקומרס — מלאו את המסקנות ושלחו. הדוח לא נשלח אוטומטית."
     : "תחילת חודש — הוציאו את סיכום החודש הקודם ללקוחות האיקומרס: מלאו מסקנות ושלחו. הדוח לא נשלח אוטומטית.";
   const buttons = brands.map((b) =>
-    `<a href="${appBaseUrl()}/?brand=${b.id}" style="display:inline-block;margin:4px 4px 0 0;padding:8px 14px;border-radius:8px;background:${C.violet};color:#fff;font:600 13px/1 ${FONT};text-decoration:none">${esc(b.name)} — מלא ושלח ←</a>`,
+    `<a href="${appBaseUrl()}/${b.id}" style="display:inline-block;margin:4px 4px 0 0;padding:8px 14px;border-radius:8px;background:${C.violet};color:#fff;font:600 13px/1 ${FONT};text-decoration:none">${esc(b.name)} — מלא ושלח ←</a>`,
   ).join("");
   return `<tr><td style="padding:16px 18px 4px">
     <div style="padding:16px 18px;border:1px solid ${C.violetBorder};border-radius:14px;background:${C.violetSoft}">
