@@ -96,7 +96,7 @@ export default function BriefsPanel({ brandId }: { brandId: string }) {
 
       {edit && (
         <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/40" onMouseDown={() => setEdit(null)}>
-          <div className="h-full w-full max-w-md overflow-y-auto bg-[var(--panel)] p-5 shadow-2xl" dir="rtl" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="h-full w-full max-w-md overflow-y-auto bg-[var(--card)] p-5 shadow-2xl" dir="rtl" onMouseDown={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <div className="text-base font-bold">{edit.id ? "עריכת בריף" : "בריף חדש"}</div>
               <button onClick={() => setEdit(null)} className="text-[var(--muted)] hover:text-[var(--foreground)]">✕</button>

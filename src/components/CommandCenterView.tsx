@@ -80,7 +80,7 @@ async function DataTab({ brand, range }: { brand: BrandConfig; range: { from: st
   ]);
   return (
     <div dir="ltr">
-      <div className="mb-3 rounded-lg border border-[var(--panel-border)] bg-[var(--panel)] px-4 py-2.5 text-[13px] text-[var(--muted)]" dir="rtl">
+      <div className="mb-3 rounded-lg border border-[var(--panel-border)] bg-[var(--card)] px-4 py-2.5 text-[13px] text-[var(--muted)]" dir="rtl">
         נתוני מדיה <b className="text-[var(--foreground)]">ממומנת</b> (Meta + Google). נתוני אורגני (אינסטגרם/פייסבוק/לינקדאין) יתווספו בשלב הבא.
       </div>
       <CampaignBrandView
