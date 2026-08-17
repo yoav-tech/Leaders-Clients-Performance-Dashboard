@@ -4,27 +4,27 @@ import { useEffect, useState } from "react";
 import ContentCalendar from "./ContentCalendar";
 import BriefsPanel from "./BriefsPanel";
 
-type Tab = "data" | "reports" | "calendar" | "briefs";
+type Tab = "overview" | "calendar" | "briefs";
 const TABS: { id: Tab; label: string }[] = [
-  { id: "data", label: "מבט על ונתונים" },
-  { id: "reports", label: "דוחות" },
+  { id: "overview", label: "מבט על ודוח" },
   { id: "calendar", label: "לוח תוכן" },
   { id: "briefs", label: "בריפים" },
 ];
 
 // Client shell: sub-section (Leaders / Bestie) + tab switching is pure client state → INSTANT, no
-// server round-trip. Both sub-sections' data + report panels are rendered up front (server nodes)
-// and toggled with CSS; calendar/briefs (client) mount per active sub. Deep links honored on mount.
-export default function CommandCenterShell({ subs }: { subs: { id: string; label: string; data: React.ReactNode; report: React.ReactNode }[] }) {
+// server round-trip. The unified overview (data + report in one, Argania-style) for both
+// sub-sections is rendered up front (server node) and toggled with CSS; calendar/briefs mount per
+// active sub. Deep links (?sub=&tab=) honored on mount.
+export default function CommandCenterShell({ subs }: { subs: { id: string; label: string; view: React.ReactNode }[] }) {
   const [sub, setSub] = useState(subs[0]?.id ?? "");
-  const [tab, setTab] = useState<Tab>("data");
+  const [tab, setTab] = useState<Tab>("overview");
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const s = q.get("sub");
     const t = q.get("tab");
     if (s && subs.some((x) => x.id === s)) setSub(s);
-    if (t === "calendar" || t === "briefs" || t === "reports" || t === "data") setTab(t as Tab);
+    if (t === "calendar" || t === "briefs" || t === "overview") setTab(t as Tab);
   }, [subs]);
 
   return (
@@ -56,17 +56,9 @@ export default function CommandCenterShell({ subs }: { subs: { id: string; label
         ))}
       </div>
 
-      {/* Data: both sub-sections pre-rendered, CSS-toggled → instant sub-switch. */}
-      <div className={tab === "data" ? "" : "hidden"}>
-        <div className="mb-3 rounded-lg border border-[var(--panel-border)] bg-[var(--card)] px-4 py-2.5 text-[13px] text-[var(--muted)]">
-          נתוני מדיה <b className="text-[var(--foreground)]">ממומנת</b> (Meta + Google). נתוני אורגני (אינסטגרם/פייסבוק/לינקדאין) יתווספו בשלב הבא.
-        </div>
-        {subs.map((s) => <div key={s.id} className={s.id === sub ? "" : "hidden"} dir="ltr">{s.data}</div>)}
-      </div>
-
-      {/* Reports (data + manager conclusions + send to the CEO). */}
-      <div className={tab === "reports" ? "" : "hidden"}>
-        {subs.map((s) => <div key={s.id} className={s.id === sub ? "" : "hidden"}>{s.report}</div>)}
+      {/* Overview (data + report in one, Argania-style) — both sub-sections pre-rendered, CSS-toggled. */}
+      <div className={tab === "overview" ? "" : "hidden"}>
+        {subs.map((s) => <div key={s.id} className={s.id === sub ? "" : "hidden"}>{s.view}</div>)}
       </div>
 
       {/* Calendar / briefs (client) — mount per active sub. */}
