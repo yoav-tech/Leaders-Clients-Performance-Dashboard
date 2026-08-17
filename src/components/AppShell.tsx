@@ -27,7 +27,7 @@ export default function AppShell({
   return (
     <div className="app-shell" dir="rtl">
       <Sidebar
-        brands={allowed.map((b) => ({ id: b.id, name: b.name }))}
+        brands={allowed.filter((b) => !b.navHidden).map((b) => ({ id: b.id, name: b.name }))}
         activeBrand={activeBrand}
         activeSection={activeSection}
         isAdmin={isAdmin}
