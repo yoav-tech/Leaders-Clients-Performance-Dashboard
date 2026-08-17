@@ -102,7 +102,7 @@ export default function ContentItemDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/40" onMouseDown={onClose}>
-      <div className="h-full w-full max-w-md overflow-y-auto bg-[var(--panel)] p-5 shadow-2xl" dir="rtl" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="h-full w-full max-w-md overflow-y-auto bg-[var(--card)] p-5 shadow-2xl" dir="rtl" onMouseDown={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <div className="text-base font-bold">{item ? "פריט תוכן" : "תוכן חדש"}</div>
           <div className="flex items-center gap-2">

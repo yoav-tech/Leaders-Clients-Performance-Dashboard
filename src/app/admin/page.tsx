@@ -30,7 +30,7 @@ export default async function AdminPage() {
       topBar={<div className="pr-10 lg:pr-0"><h1 className="text-base font-bold">ניהול הרשאות</h1><p className="text-[11px] text-[var(--muted)]">יצירת גישה ללקוחות והזמנתם</p></div>}
     >
       {owner && (
-        <Link href="/admin/automations" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-[var(--panel-border)] bg-[var(--panel)] px-4 py-3 text-sm hover:border-[var(--muted)]" dir="rtl">
+        <Link href="/admin/automations" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-[var(--panel-border)] bg-[var(--card)] px-4 py-3 text-sm hover:border-[var(--muted)]" dir="rtl">
           <span className="text-[var(--foreground)]"><b>אוטומציות</b> · שליטה בתהליכים המתוזמנים (מנהל-על)</span>
           <span className="text-[var(--muted)]">←</span>
         </Link>

@@ -239,7 +239,7 @@ export default async function ClientPage({
       topBar={topBar}
     >
       {previewClient && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--panel-border)] bg-[var(--panel)] px-4 py-3 text-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--panel-border)] bg-[var(--card)] px-4 py-3 text-sm">
           <span className="text-[var(--foreground)]">מצב תצוגה · כך הלקוח רואה את הדשבורד (ללא ניהול, CAC וקודי הנחה).</span>
           <a href={`/${brandId}?${rangeQs}`} className="shrink-0 rounded-md border border-[var(--card-border)] bg-[var(--card)] px-3 py-1.5 font-medium text-[var(--foreground)] hover:border-[var(--muted)]">
             חזור לתצוגת אדמין
