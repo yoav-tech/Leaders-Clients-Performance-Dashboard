@@ -60,7 +60,7 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
   // Marketing command center (Leaders): its own view with sub-section tabs (Leaders / Bestie),
   // a native content calendar + approvals, and briefs — instead of the standard brand dashboard.
   if (brand.commandCenter) {
-    return <CommandCenterView brand={brand} subId={sub} tab={tab} range={range} asParam={asParam} />;
+    return <CommandCenterView brand={brand} range={range} />;
   }
 
   const isMediaPlan = !!brand.mediaPlan;
