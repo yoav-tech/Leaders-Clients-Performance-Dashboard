@@ -41,26 +41,16 @@ const nextConfig: NextConfig = {
   },
   // Move anyone still on the old vercel.app link to the custom domain, preserving the path.
   // Host-matched so per-deployment preview URLs and the custom domain itself are unaffected.
-  // 307 (permanent:false) keeps it reversible during the migration.
+  // 308 (permanent) — the migration is final, so browsers/bookmarks update to the canonical host.
   async redirects() {
     return [
       {
         source: "/:path*",
         has: [{ type: "host", value: "leaders-clients-performance-dashboa.vercel.app" }],
         destination: "https://performance.ldrsgroup.com/:path*",
-        permanent: false,
+        permanent: true,
       },
     ];
-  },
-  // Clean per-client URLs: dashboard.ldrsgroup.com/<client> loads that brand. `afterFiles` runs
-  // only when no real route matched, so /login, /admin, /account, /api/* keep priority; an unknown
-  // single segment (a brand id like "argania" / "la-beaute" / "haat") maps to ?brand=<client>.
-  async rewrites() {
-    return {
-      afterFiles: [{ source: "/:client", destination: "/?brand=:client" }],
-      beforeFiles: [],
-      fallback: [],
-    };
   },
 };
 
