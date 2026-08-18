@@ -238,9 +238,13 @@ export const BRANDS: BrandConfig[] = [
     targetCpv: 0.03, // TODO: confirm SCJ's vertical and set from CPV15_BENCHMARK (₪0.03–0.16)
     monthlyBudget: 84000,
     campaignFilter: "scj",
+    // TikTok bills in USD in the LDRS Group account → converted to ILS (×3) on ingest + in the
+    // live explorer, both of which key off the currency Windsor returns for the account.
+    channelCurrency: { tiktok: "USD" },
     awarenessSources: [
       { platform: "meta", account: "638387658529372", title: "Meta · LEADERS" },
       { platform: "google", account: "566-212-3115", title: "Google · LDRS" },
+      { platform: "tiktok", account: "7153540276647133185", title: "TikTok · LDRS Group" }, // campaign "SCJ - Video Views"
     ],
   },
   {
