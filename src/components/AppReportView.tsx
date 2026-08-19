@@ -2,6 +2,8 @@ import type { BrandConfig } from "@/lib/brands";
 import type { AppReport, AppSection, Totals } from "@/lib/appReport";
 import { formatIls, formatNumber, formatPct } from "@/lib/metrics";
 import AppLevelTable, { type Col } from "./AppLevelTable";
+import RegionCostPanel from "./RegionCostPanel";
+import type { RegionCostReport } from "@/lib/regionCost";
 
 const REACH_COLS: Col[] = [
   { label: "Spend", field: "spend", fmt: "ils" }, { label: "Impr", field: "impressions", fmt: "num" },
@@ -64,12 +66,23 @@ function Header({ t }: { t: Totals }) {
 
 function Projection({ s }: { s: AppSection }) {
   const p = s.pacing!;
-  const convLabel = s.kind === "leads" ? "leads" : "installs+reg";
+  if (s.kind === "app") {
+    // Client's ask: only installs, budget, and cost-per-install.
+    const cpi = p.installs ? p.monthSpend / p.installs : null;
+    return (
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Stat label="התקנות (MTD)" value={formatNumber(p.installs)} />
+        <Stat label={`הוצאה (MTD, ${p.elapsed}d)`} value={formatIls(p.monthSpend)} />
+        <Stat label="עלות התקנה (CPI)" value={formatIls(cpi)} />
+        <Stat label="תקציב חודשי" value={s.budget > 0 ? formatIls(s.budget) : "— (set for pacing)"} />
+      </div>
+    );
+  }
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       <Stat label={`Spent (MTD, ${p.elapsed}d)`} value={formatIls(p.monthSpend)} />
       <Stat label="Projected spend (EOM)" value={formatIls(p.projectedSpend)} />
-      <Stat label={`Projected ${convLabel} (EOM)`} value={formatNumber(p.projectedConversions)} />
+      <Stat label="Projected leads (EOM)" value={formatNumber(p.projectedConversions)} />
       {s.budget > 0 ? (
         <Stat label="Budget / pace" value={`${formatIls(s.budget)} · ${Math.round((p.projectedSpend / s.budget) * 100)}%`} />
       ) : (
@@ -107,7 +120,7 @@ function Trend({ s }: { s: AppSection }) {
   );
 }
 
-export default function AppReportView({ brand, report, from, to }: { brand: BrandConfig; report: AppReport; from: string; to: string }) {
+export default function AppReportView({ brand, report, regionReport, from, to, isClient = false }: { brand: BrandConfig; report: AppReport; regionReport?: RegionCostReport | null; from: string; to: string; isClient?: boolean }) {
   const budget = brand.monthlyBudget;
   const mtdSpend = report.sections.reduce((a, s) => a + (s.pacing?.monthSpend ?? 0), 0);
   const projSpend = report.sections.reduce((a, s) => a + (s.pacing?.projectedSpend ?? 0), 0);
@@ -136,9 +149,14 @@ export default function AppReportView({ brand, report, from, to }: { brand: Bran
 
           <Panel title="Overview">
             <Header t={s.totals} />
+            {s.kind === "leads" && (
+              <div className="mt-2 flex flex-col items-stretch gap-2 sm:flex-row">
+                <Stage label="לידים · Leads" count={s.totals.leads} cpaLabel="Cost/lead" cpa={s.totals.cpLead} />
+              </div>
+            )}
           </Panel>
 
-          {s.kind === "app" ? (
+          {s.kind === "app" && (
             <Panel title="Funnel · הורדות → הרשמות → רכישות">
               <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
                 <Stage label="הורדות · Downloads" count={s.totals.installs} cpaLabel="CPI" cpa={s.totals.cpi} />
@@ -148,13 +166,10 @@ export default function AppReportView({ brand, report, from, to }: { brand: Bran
                 <Stage label="רכישות · Purchases" count={s.totals.purchases} cpaLabel="Cost/purchase" cpa={s.totals.cpPurch} />
               </div>
             </Panel>
-          ) : (
-            <Panel title="Leads · לידים">
-              <div className="flex flex-col items-stretch gap-2 sm:flex-row">
-                <Stage label="לידים · Leads" count={s.totals.leads} cpaLabel="Cost/lead" cpa={s.totals.cpLead} />
-              </div>
-            </Panel>
           )}
+
+          {/* Cost per registration by region (last 3 days vs start of month) — the client's ask. */}
+          {s.kind === "app" && regionReport && regionReport.rows.length > 0 && <RegionCostPanel report={regionReport} />}
 
           {s.pacing && (
             <Panel title="Budget pacing & projection · from ads">
@@ -180,7 +195,7 @@ export default function AppReportView({ brand, report, from, to }: { brand: Bran
             </Panel>
           )}
 
-          {s.trend.length > 0 && (
+          {s.trend.length > 0 && !isClient && (
             <Panel title="Trend · spend & conversions">
               <Trend s={s} />
             </Panel>

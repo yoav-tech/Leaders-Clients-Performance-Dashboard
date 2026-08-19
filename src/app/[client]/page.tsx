@@ -19,6 +19,7 @@ import MediaPlanView from "@/components/MediaPlanView";
 import { getMediaPlanExecution } from "@/lib/mediaPlan";
 import AppReportView from "@/components/AppReportView";
 import { getAppReport } from "@/lib/appReport";
+import { getRegionCostReport } from "@/lib/regionCost";
 import SearchSnapshotView from "@/components/SearchSnapshotView";
 import CampaignBrandView from "@/components/CampaignBrandView";
 import { getCampaignBrandMetrics } from "@/lib/campaignMetrics";
@@ -93,8 +94,8 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
     return exec ? <MediaPlanView brand={brand} exec={exec} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No plan data.</div>;
   }
   if (isAppInstall) {
-    const appReport = await getAppReport(brand, range.from, range.to);
-    return appReport ? <AppReportView brand={brand} report={appReport} from={range.from} to={range.to} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No app data for this range.</div>;
+    const [appReport, regionReport] = await Promise.all([getAppReport(brand, range.from, range.to), getRegionCostReport(brand)]);
+    return appReport ? <AppReportView brand={brand} report={appReport} regionReport={regionReport} from={range.from} to={range.to} isClient={isClient} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No app data for this range.</div>;
   }
   if (isSnapshot) return <SearchSnapshotView brandId={brandId} brandName={brand.name} from={range.from} to={range.to} />;
 
