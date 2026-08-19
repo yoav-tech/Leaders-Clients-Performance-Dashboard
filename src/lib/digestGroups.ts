@@ -18,7 +18,7 @@ export interface ViewsRow { name: string; spend: number; impressions: number; vi
 export interface LeadsRow { name: string; spend: number; leads: number; cpl: number | null }
 // App clients (Haat) — the KPI is installs/CPI (app registrations & downloads), NOT leads; the HR
 // recruitment section keeps its own leads/CPL. Kept separate from the leads table.
-export interface AppRow { name: string; spend: number; installs: number; cpi: number | null; leads: number; cpl: number | null }
+export interface AppRow { name: string; spend: number; installs: number; registrations: number; cpi: number | null; cpr: number | null; leads: number; cpl: number | null }
 export interface ImpShareRow { name: string; impShare: number | null; spend: number; clicks: number; cpc: number | null }
 
 export interface GroupedDigest {
@@ -94,10 +94,11 @@ export async function getGroupedDigest(alerts?: Alert[]): Promise<GroupedDigest>
         const totalSpend = r.sections.reduce((s, x) => s + x.totals.spend, 0);
         const appSpend = appSecs.reduce((s, x) => s + x.totals.spend, 0);
         const installs = appSecs.reduce((s, x) => s + x.totals.installs, 0);
+        const registrations = appSecs.reduce((s, x) => s + x.totals.registrations, 0);
         const hrSpend = leadSecs.reduce((s, x) => s + x.totals.spend, 0);
         const hrLeads = leadSecs.reduce((s, x) => s + x.totals.leads, 0);
-        if (totalSpend > 0 || installs > 0 || hrLeads > 0) {
-          app.push({ name: brand.name, spend: totalSpend, installs: Math.round(installs), cpi: installs ? appSpend / installs : null, leads: Math.round(hrLeads), cpl: hrLeads ? hrSpend / hrLeads : null });
+        if (totalSpend > 0 || installs > 0 || registrations > 0 || hrLeads > 0) {
+          app.push({ name: brand.name, spend: totalSpend, installs: Math.round(installs), registrations: Math.round(registrations), cpi: installs ? appSpend / installs : null, cpr: registrations ? appSpend / registrations : null, leads: Math.round(hrLeads), cpl: hrLeads ? hrSpend / hrLeads : null });
         }
       }).catch(() => {}));
     } else if (group === "leads") {
@@ -180,9 +181,9 @@ export function renderGroupedText(d: GroupedDigest, reminder: "week" | "month" |
   }
   if (d.app.length) {
     parts.push("📱 **אפליקציה**");
-    parts.push(mono(["Brand", "Spend", "Installs", "CPI", "Leads (HR)", "CPL"],
-      d.app.map((r) => [r.name, ils(r.spend), n0(r.installs), ils(r.cpi), n0(r.leads), ils(r.cpl)]),
-      ["l", "r", "r", "r", "r", "r"]));
+    parts.push(mono(["Brand", "Spend", "Installs", "Reg", "Leads (HR)", "CPI", "CPR", "CPL"],
+      d.app.map((r) => [r.name, ils(r.spend), n0(r.installs), n0(r.registrations), n0(r.leads), ils(r.cpi), ils(r.cpr), ils(r.cpl)]),
+      ["l", "r", "r", "r", "r", "r", "r", "r"]));
   }
   if (d.impshare.length) {
     parts.push("📊 **Impression Share** (לפי סוג קמפיין)");
