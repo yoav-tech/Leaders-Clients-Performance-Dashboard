@@ -45,7 +45,7 @@ export interface AppSection {
   campaigns: AppCampaign[];
   rows: AppRow[]; // finest grain (Meta ad level) → regrouped client-side by campaign/ad-group/ad + city
   trend: { date: string; spend: number; conversions: number }[];
-  pacing: { monthSpend: number; elapsed: number; daysInMonth: number; projectedSpend: number; projectedConversions: number } | null;
+  pacing: { monthSpend: number; elapsed: number; daysInMonth: number; projectedSpend: number; projectedConversions: number; installs: number } | null;
 }
 export interface AppReport {
   sections: AppSection[];
@@ -158,11 +158,12 @@ async function fetchSection(cfg: AppSectionConfig, brand: BrandConfig, from: str
       accounts: [account],
       cacheSeconds: 300,
     });
-    let mSpend = 0, mConv = 0;
+    let mSpend = 0, mConv = 0, mInstalls = 0;
     for (const r of mrows) {
       if (normId(r.account_id) !== acc) continue;
       if (!String(r.campaign ?? "").startsWith("LDRS")) continue;
       mSpend += toIls(num(r.spend), nativeCur);
+      mInstalls += num(r[F.install]);
       mConv += cfg.kind === "leads" ? num(r[F.lead]) : num(r[F.install]) + num(r[F.reg]);
     }
     const elapsedComplete = Math.max(1, elapsed - 1);
@@ -173,6 +174,7 @@ async function fetchSection(cfg: AppSectionConfig, brand: BrandConfig, from: str
       daysInMonth,
       projectedSpend: Math.round(mSpend * factor),
       projectedConversions: Math.round(mConv * factor),
+      installs: Math.round(mInstalls),
     };
   } catch {
     /* optional */
