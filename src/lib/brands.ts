@@ -207,6 +207,25 @@ export const BRANDS: BrandConfig[] = [
     ],
   },
   {
+    id: "protein-max",
+    name: "Protein Max",
+    nameHe: "פרוטאין מקס",
+    metaAccountId: "5226039734085481", // Meta: Citi · תוספי מזון בע"מ (Protein Max)
+    googleAccountId: null,
+    tiktokAccountId: "7375940512374882321", // TikTok: pending connection in Windsor
+    storePlatform: "quickshop", // no store — video-views awareness only (storeId null ⇒ skipped)
+    storeId: null,
+    nativeCurrency: "ILS",
+    targetRoas: 0,
+    targetCpv: 0.03, // supplements → beauty/personal-care end of the ₪0.03–0.16 CPV range
+    monthlyBudget: 6000, // fixed monthly awareness budget; pace computed over the picked range
+    // Video-views awareness (like Style/SCJ). Dedicated accounts → no campaign-name filter.
+    awarenessSources: [
+      { platform: "meta", account: "5226039734085481", title: "Meta · Protein Max" },
+      { platform: "tiktok", account: "7375940512374882321", title: "TikTok · Protein Max" },
+    ],
+  },
+  {
     id: "haat",
     name: "Haat Delivery",
     nameHe: "האט",
