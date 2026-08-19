@@ -74,6 +74,7 @@ export default function CampaignBrandView({
   from,
   to,
   channels,
+  isClient = false,
 }: {
   brand: BrandConfig;
   metrics: CampBrandMetrics;
@@ -81,6 +82,7 @@ export default function CampaignBrandView({
   from: string;
   to: string;
   channels: { id: "meta" | "google" | "tiktok"; label: string }[];
+  isClient?: boolean;
 }) {
   const { profile, total, channels: chs, daily, previous } = metrics;
   const target = campaignTargetOf(brand);
@@ -181,7 +183,8 @@ export default function CampaignBrandView({
       {/* 5 · Breakdown explorer */}
       <CampaignExplorer brandId={brand.id} from={from} to={to} profile={profile} channels={channels} target={target} />
 
-      {/* 6 · Daily */}
+      {/* 6 · Daily — hidden in the client view (too technical / not relevant to clients) */}
+      {!isClient && (
       <Panel title="Daily">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] border-collapse text-sm">
@@ -230,6 +233,7 @@ export default function CampaignBrandView({
           </table>
         </div>
       </Panel>
+      )}
     </div>
   );
 }

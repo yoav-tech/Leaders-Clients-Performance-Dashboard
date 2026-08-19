@@ -84,6 +84,7 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
         from={range.from}
         to={range.to}
         channels={explorerChannels(brand).map((c) => ({ id: c.id, label: c.label }))}
+        isClient={isClient}
       />
     );
   }
