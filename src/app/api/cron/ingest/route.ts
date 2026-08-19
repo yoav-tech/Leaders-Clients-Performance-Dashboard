@@ -36,9 +36,12 @@ export async function GET(request: Request) {
   const fromParam = url.searchParams.get("from");
   const to = toParam && DATE_RE.test(toParam) ? toParam : today();
   const from = fromParam && DATE_RE.test(fromParam) ? fromParam : shiftDate(to, -(ROLLING_DAYS - 1));
+  // Optional: backfill a single brand on demand (e.g. after adding a new client). Slug only.
+  const brandParam = url.searchParams.get("brand");
+  const brandId = brandParam && /^[a-z0-9-]+$/.test(brandParam) ? brandParam : undefined;
 
   try {
-    const result = await runIngest({ from, to });
+    const result = await runIngest({ from, to, brandId });
     revalidateTag("metrics"); // surface freshly-ingested rows immediately
     if (!result.ok) console.error(`[cron] ingest completed with errors:`, JSON.stringify(result.errors));
     return NextResponse.json(result, { status: result.ok ? 200 : 207 });
