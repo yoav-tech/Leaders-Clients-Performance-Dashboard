@@ -166,8 +166,8 @@ export function renderGroupedHtml(d: GroupedDigest, taskLinks: Record<string, st
     d.leads.map((r) => [[`<b>${esc(r.name)}</b>`, "left"], [ils(r.spend), "right"], [n0(r.leads), "right"], [ils(r.cpl), "right"]]),
   ));
   const app = card("אפליקציה", d.app.length, table(
-    [["Brand", "left"], ["Spend", "right"], ["Installs", "right"], ["CPI", "right"], ["Leads (HR)", "right"], ["CPL", "right"]],
-    d.app.map((r) => [[`<b>${esc(r.name)}</b>`, "left"], [ils(r.spend), "right"], [n0(r.installs), "right"], [ils(r.cpi), "right"], [n0(r.leads), "right"], [ils(r.cpl), "right"]]),
+    [["Brand", "left"], ["Spend", "right"], ["Installs", "right"], ["Reg", "right"], ["Leads (HR)", "right"], ["CPI", "right"], ["CPR", "right"], ["CPL", "right"]],
+    d.app.map((r) => [[`<b>${esc(r.name)}</b>`, "left"], [ils(r.spend), "right"], [n0(r.installs), "right"], [n0(r.registrations), "right"], [n0(r.leads), "right"], [ils(r.cpi), "right"], [ils(r.cpr), "right"], [ils(r.cpl), "right"]]),
   ));
   const impshare = card("Impression Share · לפי סוג קמפיין", d.impshare.length, table(
     [["Account · Type", "left"], ["Imp Share", "right"], ["Spend", "right"], ["Clicks", "right"]],
