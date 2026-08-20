@@ -102,16 +102,19 @@ async function fetchYouTube(brand: BrandConfig, from: string, to: string, filter
   const acc = normId(brand.googleAccountId);
   const rows = await fetchWindsor({
     connector: "google_ads",
-    fields: ["account_id", "currency", "campaign", "spend", "impressions", "video_views", "video_quartile_p100_rate"],
+    fields: ["account_id", "currency", "campaign", "spend", "impressions", "video_views", "video_quartile_p25_rate", "video_quartile_p100_rate"],
     dateFrom: from, dateTo: to, accounts: [brand.googleAccountId], cacheSeconds: 120,
   }).catch(() => []);
   for (const r of rows) {
     if (normId(r.account_id) !== acc) continue;
     if (filter && !String(r.campaign ?? "").toLowerCase().includes(filter)) continue;
+    const impr = num(r.impressions);
     a.spend += toIls(num(r.spend), String(r.currency ?? brand.nativeCurrency).toUpperCase(), usdIls);
-    a.impressions += num(r.impressions);
-    a.views += num(r.video_views);
-    a.completedViews += num(r.video_views) * num(r.video_quartile_p100_rate); // rate → count
+    a.impressions += impr;
+    // Google reports quartiles as rates (share of impressions), and video_views is often null on
+    // YouTube video campaigns — derive counts from the rates.
+    a.views += num(r.video_views) || impr * num(r.video_quartile_p25_rate);
+    a.completedViews += impr * num(r.video_quartile_p100_rate);
   }
   return a;
 }
