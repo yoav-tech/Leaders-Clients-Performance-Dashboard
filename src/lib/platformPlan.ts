@@ -129,8 +129,10 @@ async function fetchYouTube(brand: BrandConfig, from: string, to: string, filter
     out.push({
       platform: "youtube", creatorId: cr.id, creatorName: cr.name, content: cleanContent(String(r.ad_name ?? r.campaign ?? "")),
       spend: toIls(num(r.spend), String(r.currency ?? brand.nativeCurrency).toUpperCase(), usdIls),
+      // Google video_views is null on these (awareness/bumper) campaigns — derive watch counts from
+      // the quartile rates. Use 25%+ watched as the qualified "view" for CPV (no 15s metric exists).
       impressions: impr, views: num(r.video_views) || impr * num(r.video_quartile_p25_rate),
-      thruplay: 0, completedViews: impr * num(r.video_quartile_p100_rate),
+      thruplay: impr * num(r.video_quartile_p25_rate), completedViews: impr * num(r.video_quartile_p100_rate),
     });
   }
   return out;
@@ -197,8 +199,16 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
 
   const sum = (f: (l: PlatformLineExecution) => number) => lines.reduce((s, l) => s + f(l), 0);
   const budget = sum((l) => l.line.budget), spend = sum((l) => l.actual.spend);
-  const thruplayTarget = sum((l) => l.line.thruplay), thruplay = sum((l) => l.actual.thruplay);
-  const completedTarget = sum((l) => l.line.completedViews), completedViews = sum((l) => l.actual.completedViews);
+  const thruplayTarget = sum((l) => l.line.thruplay);
+  const completedTarget = sum((l) => l.line.completedViews);
+  // Attainment / CPV totals count only lines that carry a plan target (Meta/TikTok) — YouTube has no
+  // 15s/100% targets and a different "view" definition, so it would distort the % and blended CPV.
+  // Its spend still counts in the overview budget/spend above.
+  const att = lines.filter((l) => l.line.thruplay > 0 || l.line.completedViews > 0);
+  const asum = (f: (l: PlatformLineExecution) => number) => att.reduce((s, l) => s + f(l), 0);
+  const thruplay = asum((l) => l.actual.thruplay);
+  const completedViews = asum((l) => l.actual.completedViews);
+  const attSpend = asum((l) => l.actual.spend), attBudget = asum((l) => l.line.budget);
 
   return {
     flightStart: plan.flightStart, flightEnd: plan.flightEnd, asOf,
@@ -207,7 +217,7 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
     totals: {
       budget, spend, thruplayTarget, thruplay, completedTarget, completedViews,
       spendPct: pct(spend, budget), thruplayPct: pct(thruplay, thruplayTarget), completedPct: pct(completedViews, completedTarget),
-      cpv: thruplay ? spend / thruplay : null, planCpv: thruplayTarget ? budget / thruplayTarget : null,
+      cpv: thruplay ? attSpend / thruplay : null, planCpv: thruplayTarget ? attBudget / thruplayTarget : null,
     },
   };
 }

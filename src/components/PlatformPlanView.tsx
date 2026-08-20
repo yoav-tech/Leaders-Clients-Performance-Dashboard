@@ -131,7 +131,7 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
             </tbody>
           </table>
         </div>
-        <div className="mt-2 text-[11px] text-[var(--muted)]">15ש׳ = צפיית 15 שניות (Meta ThruPlay · TikTok 6ש׳) · 100% = צפייה מלאה · הוצאה בדולרים הומרה לשקלים.</div>
+        <div className="mt-2 text-[11px] text-[var(--muted)]">15ש׳ = צפיית 15 שניות (Meta ThruPlay · TikTok 6ש׳ · YouTube 25%+ צפייה) · 100% = צפייה מלאה · הוצאה בדולרים הומרה לשקלים. ל-YouTube אין יעד מוגדר, לכן אינו נכלל ב-% העמידה וב-CPV הכולל.</div>
       </Panel>
 
       {/* By influencer */}
