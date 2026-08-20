@@ -42,6 +42,8 @@ export interface BrandConfig {
   // Per-platform media plan (automotive awareness: Chery, Xpeng) — planned budget + 15s-view
   // (thruplay) + 100%-view targets per platform, compared to live actuals (leaders campaigns only).
   platformPlan?: PlatformPlan;
+  // Creator/influencer attribution (for the per-influencer / per-content breakdown).
+  creators?: CreatorConfig[];
   // App-install brands (e.g. Haat) — KPI is installs/CPI, get the app-install view; excluded
   // from the conversion digest/alerts.
   appInstall?: boolean;
@@ -138,6 +140,15 @@ export interface PlatformPlan {
   flightStart: string;
   flightEnd: string;
   lines: PlatformPlanLine[];
+}
+
+// Creator/influencer attribution for platform-plan brands. An ad row is attributed to the first
+// creator whose `match` token appears in its campaign/adset/ad name (case-insensitive). Order
+// matters — put more specific tokens first.
+export interface CreatorConfig {
+  id: string;
+  name: string; // display (Hebrew)
+  match: string[]; // lowercase substrings to look for in campaign+adset+ad names
 }
 
 export const BRANDS: BrandConfig[] = [
@@ -276,6 +287,12 @@ export const BRANDS: BrandConfig[] = [
         { platform: "youtube", title: "YouTube · עינת נתן", budget: 20000, thruplay: 0, completedViews: 0 },
       ],
     },
+    creators: [
+      { id: "einat", name: "עינת נתן", match: ["einat", "עינת"] },
+      { id: "ori", name: "אורי", match: ["ori_laizer", "ori_", "אורי"] },
+      { id: "meshi", name: "משי", match: ["meshi", "משי"] },
+      { id: "omer", name: "עומר", match: ["omer", "עומר"] },
+    ],
   },
   {
     id: "xpeng",
@@ -306,6 +323,12 @@ export const BRANDS: BrandConfig[] = [
         { platform: "tiktok", title: "TikTok", budget: 90000, thruplay: 409091, completedViews: 105882, views: 1182857, impressions: 3214286, reach: 1461039 },
       ],
     },
+    creators: [
+      // Content themes belong to a creator even when the ad/adset name drops the creator prefix:
+      // Marina = reels / jam / imperfect / master; Asi = the real draft / sisters / sharing.
+      { id: "marina", name: "מרינה", match: ["marina", "מרינה", "reels", "jam", "imperfect", "master", "dynaudio", "מהאפס", "0 ל-100"] },
+      { id: "asi", name: "אסי", match: ["asi", "אסי", "real draft", "draft", "sisters", "האחיות", "sharing", "מי שמבין"] },
+    ],
   },
   {
     id: "haat",

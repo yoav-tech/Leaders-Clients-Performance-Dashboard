@@ -133,6 +133,72 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
         </div>
         <div className="mt-2 text-[11px] text-[var(--muted)]">15ש׳ = צפיית 15 שניות (Meta ThruPlay · TikTok 6ש׳) · 100% = צפייה מלאה · הוצאה בדולרים הומרה לשקלים.</div>
       </Panel>
+
+      {/* By influencer */}
+      {exec.creators.length > 0 && (
+        <Panel title="לפי משפיען">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse text-sm">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
+                  <th className="px-2 py-1.5 text-right">משפיען</th>
+                  <th className="px-2 py-1.5 text-left">הוצאה</th>
+                  <th className="px-2 py-1.5 text-left">% מההוצאה</th>
+                  <th className="px-2 py-1.5 text-left">CPV 15ש׳</th>
+                  <th className="px-2 py-1.5 text-left">צפיות 15ש׳</th>
+                  <th className="px-2 py-1.5 text-left">צפיות 100%</th>
+                </tr>
+              </thead>
+              <tbody className="tabular-nums">
+                {exec.creators.map((c) => (
+                  <tr key={c.id} className="border-t border-[var(--card-border)]">
+                    <td className="px-2 py-1.5 text-right font-medium">{c.name}</td>
+                    <td className="px-2 py-1.5 text-left font-semibold">{formatIls(c.spend)}</td>
+                    <td className="px-2 py-1.5 text-left text-[var(--muted)]">{pct1(T.spend ? c.spend / T.spend : null)}</td>
+                    <td className="px-2 py-1.5 text-left">{ils2(c.cpv)}</td>
+                    <td className="px-2 py-1.5 text-left">{formatNumber(c.thruplay)}</td>
+                    <td className="px-2 py-1.5 text-left">{formatNumber(c.completedViews)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
+
+      {/* By content */}
+      {exec.contents.length > 0 && (
+        <Panel title="לפי תוכן" note={`${exec.contents.length} יצירות`}>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse text-sm">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
+                  <th className="px-2 py-1.5 text-right">תוכן</th>
+                  <th className="px-2 py-1.5 text-right">משפיען</th>
+                  <th className="px-2 py-1.5 text-left">פלטפורמה</th>
+                  <th className="px-2 py-1.5 text-left">הוצאה</th>
+                  <th className="px-2 py-1.5 text-left">CPV 15ש׳</th>
+                  <th className="px-2 py-1.5 text-left">צפיות 15ש׳</th>
+                  <th className="px-2 py-1.5 text-left">צפיות 100%</th>
+                </tr>
+              </thead>
+              <tbody className="tabular-nums">
+                {exec.contents.map((c, i) => (
+                  <tr key={i} className="border-t border-[var(--card-border)]">
+                    <td className="px-2 py-1.5 text-right font-medium">{c.content}</td>
+                    <td className="px-2 py-1.5 text-right text-[var(--muted)]">{c.creatorName}</td>
+                    <td className="px-2 py-1.5 text-left text-[var(--muted)]" dir="ltr">{c.platforms}</td>
+                    <td className="px-2 py-1.5 text-left font-semibold">{formatIls(c.spend)}</td>
+                    <td className="px-2 py-1.5 text-left">{ils2(c.cpv)}</td>
+                    <td className="px-2 py-1.5 text-left">{formatNumber(c.thruplay)}</td>
+                    <td className="px-2 py-1.5 text-left">{formatNumber(c.completedViews)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }
