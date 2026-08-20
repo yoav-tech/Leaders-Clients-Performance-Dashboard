@@ -39,6 +39,9 @@ export interface BrandConfig {
   // Awareness/media-plan brands (no store, no ROAS) — get the plan-vs-execution view instead
   // of the conversion dashboard, and are excluded from digest/alerts.
   mediaPlan?: MediaPlan;
+  // Per-platform media plan (automotive awareness: Chery, Xpeng) — planned budget + 15s-view
+  // (thruplay) + 100%-view targets per platform, compared to live actuals (leaders campaigns only).
+  platformPlan?: PlatformPlan;
   // App-install brands (e.g. Haat) — KPI is installs/CPI, get the app-install view; excluded
   // from the conversion digest/alerts.
   appInstall?: boolean;
@@ -117,6 +120,24 @@ export interface MediaPlan {
   flightStart: string; // overall flight window
   flightEnd: string;
   lines: MediaPlanLine[];
+}
+
+// Per-platform media plan (Chery / Xpeng). Each line is one platform's planned commitment for the
+// whole flight; actuals are pulled live from Windsor (leaders campaigns only) and compared.
+export interface PlatformPlanLine {
+  platform: "meta" | "tiktok" | "youtube";
+  title: string; // display label, e.g. "Meta", "YouTube · עינת נתן"
+  budget: number; // ILS, whole flight
+  thruplay: number; // 15s-view target (Meta ThruPlay / TikTok 6s). 0 = not planned
+  completedViews: number; // 100%-view target. 0 = not planned
+  views?: number; // shorter-view target (Meta 3s / TikTok 2s)
+  impressions?: number;
+  reach?: number;
+}
+export interface PlatformPlan {
+  flightStart: string;
+  flightEnd: string;
+  lines: PlatformPlanLine[];
 }
 
 export const BRANDS: BrandConfig[] = [
@@ -224,6 +245,67 @@ export const BRANDS: BrandConfig[] = [
       { platform: "meta", account: "5226039734085481", title: "Meta · Protein Max" },
       { platform: "tiktok", account: "7375940512374882321", title: "TikTok · Protein Max" },
     ],
+  },
+  {
+    id: "chery",
+    name: "Chery",
+    nameHe: "צ'רי",
+    metaAccountId: "425581286160751", // Meta: Chery (shared acct — leaders campaigns only)
+    googleAccountId: "2582931615", // YouTube via Google Ads (עינת נתן ₪20k — pending connection)
+    tiktokAccountId: "7196963878691995650", // TikTok: Chery - Auction (bills USD)
+    storePlatform: "quickshop",
+    storeId: null,
+    nativeCurrency: "ILS",
+    channelCurrency: { tiktok: "USD" }, // Chery - Auction TikTok bills in USD → ×rate to ILS
+    targetRoas: 0,
+    targetCpv: 0.16, // planned blended CPV (15s) across Meta ₪0.18 / TikTok ₪0.15
+    monthlyBudget: 0, // pacing is plan-based (see platformPlan)
+    campaignFilter: "leaders", // ONLY LDRS-managed campaigns (name contains "Leaders")
+    awarenessSources: [
+      { platform: "meta", account: "425581286160751", title: "Meta · Chery" },
+      { platform: "tiktok", account: "7196963878691995650", title: "TikTok · Chery" },
+      { platform: "google", account: "2582931615", title: "YouTube · Chery" },
+    ],
+    // Media plan — צ'רי 2026. Meta ₪270k + TikTok ₪270k + YouTube ₪20k (עינת נתן) = ₪560k.
+    platformPlan: {
+      flightStart: "2026-06-01",
+      flightEnd: "2026-10-05",
+      lines: [
+        { platform: "meta", title: "Meta", budget: 270000, thruplay: 1495305, completedViews: 314014, views: 3604000, impressions: 9642857, reach: 4383117 },
+        { platform: "tiktok", title: "TikTok", budget: 270000, thruplay: 1801695, completedViews: 378356, views: 4496000, impressions: 13500000, reach: 6136364 },
+        { platform: "youtube", title: "YouTube · עינת נתן", budget: 20000, thruplay: 0, completedViews: 0 },
+      ],
+    },
+  },
+  {
+    id: "xpeng",
+    name: "Xpeng",
+    nameHe: "אקספנג",
+    metaAccountId: "942726420794582", // Meta: Xpeng (bills USD)
+    googleAccountId: null,
+    tiktokAccountId: "7286440555192778753", // TikTok: Xpeng - Auction (bills USD)
+    storePlatform: "quickshop",
+    storeId: null,
+    nativeCurrency: "ILS",
+    channelCurrency: { meta: "USD", tiktok: "USD" }, // both accounts bill in USD → ×rate to ILS
+    targetRoas: 0,
+    targetCpv: 0.2, // planned CPV (15s): Meta ₪0.18 / TikTok ₪0.22
+    monthlyBudget: 0, // pacing is plan-based (see platformPlan)
+    campaignFilter: "leaders",
+    awarenessSources: [
+      { platform: "meta", account: "942726420794582", title: "Meta · Xpeng" },
+      { platform: "tiktok", account: "7286440555192778753", title: "TikTok · Xpeng" },
+    ],
+    // Media plan — אקספנג. ₪180k total, 50/50 Meta/TikTok. Per-platform targets from each
+    // platform's planned CPV (Meta ₪0.18/₪0.68, TikTok ₪0.22/₪0.85); totals reconcile to the plan.
+    platformPlan: {
+      flightStart: "2026-07-26",
+      flightEnd: "2026-10-05",
+      lines: [
+        { platform: "meta", title: "Meta", budget: 90000, thruplay: 500000, completedViews: 132353, views: 1182857, impressions: 3214286, reach: 1461039 },
+        { platform: "tiktok", title: "TikTok", budget: 90000, thruplay: 409091, completedViews: 105882, views: 1182857, impressions: 3214286, reach: 1461039 },
+      ],
+    },
   },
   {
     id: "haat",
