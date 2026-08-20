@@ -251,7 +251,7 @@ export const BRANDS: BrandConfig[] = [
     name: "Chery",
     nameHe: "צ'רי",
     metaAccountId: "425581286160751", // Meta: Chery (shared acct — leaders campaigns only)
-    googleAccountId: "2582931615", // YouTube via Google Ads (עינת נתן ₪20k — pending connection)
+    googleAccountId: "258-293-1615", // YouTube via Google Ads (Chery - צ'רי); dashed = Windsor's account_id
     tiktokAccountId: "7196963878691995650", // TikTok: Chery - Auction (bills USD)
     storePlatform: "quickshop",
     storeId: null,
@@ -264,7 +264,7 @@ export const BRANDS: BrandConfig[] = [
     awarenessSources: [
       { platform: "meta", account: "425581286160751", title: "Meta · Chery" },
       { platform: "tiktok", account: "7196963878691995650", title: "TikTok · Chery" },
-      { platform: "google", account: "2582931615", title: "YouTube · Chery" },
+      { platform: "google", account: "258-293-1615", title: "YouTube · Chery" },
     ],
     // Media plan — צ'רי 2026. Meta ₪270k + TikTok ₪270k + YouTube ₪20k (עינת נתן) = ₪560k.
     platformPlan: {
