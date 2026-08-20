@@ -17,6 +17,8 @@ import BrandView from "@/components/BrandView";
 import LiveRefresher from "@/components/LiveRefresher";
 import MediaPlanView from "@/components/MediaPlanView";
 import { getMediaPlanExecution } from "@/lib/mediaPlan";
+import PlatformPlanView from "@/components/PlatformPlanView";
+import { getPlatformPlanExecution } from "@/lib/platformPlan";
 import AppReportView from "@/components/AppReportView";
 import { getAppReport } from "@/lib/appReport";
 import { getRegionCostReport } from "@/lib/regionCost";
@@ -62,6 +64,14 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
   // a native content calendar + approvals, and briefs — instead of the standard brand dashboard.
   if (brand.commandCenter) {
     return <CommandCenterView brand={brand} range={range} canEdit={!isClient} />;
+  }
+
+  // Per-platform media plan (Chery / Xpeng): plan-vs-execution across Meta/TikTok/YouTube, leaders
+  // campaigns only. Wins over the standard views layout (these brands also carry awarenessSources
+  // for ingest + the digest).
+  if (brand.platformPlan) {
+    const exec = await getPlatformPlanExecution(brand);
+    return <PlatformPlanView brand={brand} exec={exec} isClient={isClient} />;
   }
 
   const isMediaPlan = !!brand.mediaPlan;
