@@ -45,6 +45,11 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
   const T = exec.totals;
   const elapsedFrac = exec.totalDays > 0 ? exec.elapsedDays / exec.totalDays : 0;
   const fmtD = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
+  // Leadgen totals (campaigns attributed to leaders) — surfaced as overview bubbles.
+  const totalLeads = exec.leads.reduce((s, l) => s + l.leads, 0);
+  const totalLeadSpend = exec.leads.reduce((s, l) => s + l.spend, 0);
+  const cplTotal = totalLeads ? totalLeadSpend / totalLeads : null;
+  const hasLeads = totalLeads > 0;
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -55,11 +60,13 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
 
       {/* Overview — spend vs media plan */}
       <Panel title="מבט על · הוצאה מול פריסת המדיה">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className={`grid grid-cols-2 gap-2 ${hasLeads ? "sm:grid-cols-3 lg:grid-cols-6" : "sm:grid-cols-4"}`}>
           <Stat label="תקציב פריסה" value={formatIls(T.budget)} />
           <Stat label="הוצאה בפועל" value={formatIls(T.spend)} sub={`${pct1(T.spendPct)} מהתקציב`} />
           <Stat label="נותר" value={formatIls(Math.max(0, T.budget - T.spend))} />
           <Stat label="קצב זמן" value={pct1(elapsedFrac)} sub={`${exec.elapsedDays} מתוך ${exec.totalDays} ימים`} />
+          {hasLeads && <Stat label="סה״כ לידים · Leadgen" value={formatNumber(totalLeads)} sub={`הוצאה ${formatIls(totalLeadSpend)}`} />}
+          {hasLeads && <Stat label="עלות לליד · CPL" value={cplTotal == null ? "—" : formatIls(cplTotal)} />}
         </div>
         <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[var(--background)]">
           <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, (T.spendPct ?? 0) * 100)}%` }} />
