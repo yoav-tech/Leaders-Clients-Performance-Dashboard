@@ -131,8 +131,36 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
             </tbody>
           </table>
         </div>
-        <div className="mt-2 text-[11px] text-[var(--muted)]">15ש׳ = צפיית 15 שניות (Meta ThruPlay · TikTok 6ש׳ · YouTube 25%+ צפייה) · 100% = צפייה מלאה · הוצאה בדולרים הומרה לשקלים. ל-YouTube אין יעד מוגדר, לכן אינו נכלל ב-% העמידה וב-CPV הכולל.</div>
+        <div className="mt-2 text-[11px] text-[var(--muted)]">15ש׳ = צפיית 15 שניות (Meta ThruPlay · TikTok 6ש׳ · YouTube ≈TrueView/75% צפייה) · 100% = צפייה מלאה · הוצאה בדולרים הומרה לשקלים. ל-YouTube אין יעד מוגדר, לכן אינו נכלל ב-% העמידה וב-CPV הכולל. קמפייני לידים (Leadgen) מופרדים מטה ואינם משוקללים במדדי הצפיות.</div>
       </Panel>
+
+      {/* Leadgen — separate objective */}
+      {exec.leads.length > 0 && (
+        <Panel title="לידים · Leadgen" note="קמפייני לידים · מופרד ממדדי הצפיות">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[420px] border-collapse text-sm">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
+                  <th className="px-2 py-1.5 text-right">פלטפורמה</th>
+                  <th className="px-2 py-1.5 text-left">הוצאה</th>
+                  <th className="px-2 py-1.5 text-left">לידים</th>
+                  <th className="px-2 py-1.5 text-left">עלות לליד (CPL)</th>
+                </tr>
+              </thead>
+              <tbody className="tabular-nums">
+                {exec.leads.map((l) => (
+                  <tr key={l.platform} className="border-t border-[var(--card-border)]">
+                    <td className="px-2 py-1.5 text-right font-medium">{l.title}</td>
+                    <td className="px-2 py-1.5 text-left font-semibold">{formatIls(l.spend)}</td>
+                    <td className="px-2 py-1.5 text-left">{formatNumber(l.leads)}</td>
+                    <td className="px-2 py-1.5 text-left">{l.cpl == null ? "—" : formatIls(l.cpl)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
 
       {/* By influencer */}
       {exec.creators.length > 0 && (

@@ -24,11 +24,15 @@ export interface CreatorRow {
 export interface ContentRow {
   content: string; creatorName: string; platforms: string; spend: number; thruplay: number; completedViews: number; cpv: number | null;
 }
+export interface LeadRow {
+  platform: string; title: string; spend: number; leads: number; cpl: number | null;
+}
 export interface PlatformPlanExecution {
   flightStart: string; flightEnd: string; asOf: string; elapsedDays: number; totalDays: number;
   lines: PlatformLineExecution[];
   creators: CreatorRow[];
   contents: ContentRow[];
+  leads: LeadRow[]; // leadgen campaigns (separate objective, kept out of the views metrics)
   totals: {
     budget: number; spend: number; thruplayTarget: number; thruplay: number; completedTarget: number; completedViews: number;
     spendPct: number | null; thruplayPct: number | null; completedPct: number | null; cpv: number | null; planCpv: number | null;
@@ -36,7 +40,10 @@ export interface PlatformPlanExecution {
 }
 
 type Platform = "meta" | "tiktok" | "youtube";
-interface AdActual { platform: Platform; creatorId: string; creatorName: string; content: string; spend: number; impressions: number; views: number; thruplay: number; completedViews: number; }
+interface AdActual { platform: Platform; creatorId: string; creatorName: string; content: string; spend: number; impressions: number; views: number; thruplay: number; completedViews: number; isLead: boolean; leads: number; }
+// Lead-gen campaigns have a different objective than the views plan; detect by name ("leadgen").
+// Note "leaders" also contains "lead" — match the full "leadgen" token so the filter isn't tripped.
+const isLeadgen = (name: string) => /leadgen/i.test(name);
 
 const normId = (v: unknown) => String(v ?? "").replace(/^act_/i, "").trim();
 function sumAction(v: unknown): number {
@@ -71,19 +78,22 @@ async function fetchMeta(brand: BrandConfig, from: string, to: string, filter: s
   const acc = normId(brand.metaAccountId);
   const rows = await fetchWindsor({
     connector: "facebook",
-    fields: ["account_id", "currency", "campaign", "adset_name", "ad_name", "spend", "impressions", "reach", "actions_video_view", "video_thruplay_watched_actions", "video_p100_watched_actions"],
+    fields: ["account_id", "currency", "campaign", "adset_name", "ad_name", "spend", "impressions", "reach", "actions_video_view", "video_thruplay_watched_actions", "video_p100_watched_actions", "actions_lead"],
     dateFrom: from, dateTo: to, accounts: [brand.metaAccountId], options: { attribution_window: "7d_click,1d_view" }, cacheSeconds: 120,
   }).catch(() => []);
   const out: AdActual[] = [];
   for (const r of rows) {
     if (normId(r.account_id) !== acc) continue;
-    if (filter && !String(r.campaign ?? "").toLowerCase().includes(filter)) continue;
+    const campaign = String(r.campaign ?? "");
+    if (filter && !campaign.toLowerCase().includes(filter)) continue;
     const cr = classifyCreator(brand.creators, r.campaign, r.adset_name, r.ad_name);
+    const lead = isLeadgen(campaign);
     out.push({
       platform: "meta", creatorId: cr.id, creatorName: cr.name, content: cleanContent(String(r.ad_name ?? "")),
       spend: toIls(num(r.spend), String(r.currency ?? brand.nativeCurrency).toUpperCase(), usdIls),
       impressions: num(r.impressions), views: num(r.actions_video_view),
       thruplay: sumAction(r.video_thruplay_watched_actions), completedViews: sumAction(r.video_p100_watched_actions),
+      isLead: lead, leads: lead ? sumAction(r.actions_lead) : 0,
     });
   }
   return out;
@@ -94,19 +104,22 @@ async function fetchTikTok(brand: BrandConfig, from: string, to: string, filter:
   const acc = normId(brand.tiktokAccountId);
   const rows = await fetchWindsor({
     connector: "tiktok",
-    fields: ["account_id", "currency", "campaign_name", "adgroup_name", "ad_name", "spend", "impressions", "reach", "video_watched_2s", "video_watched_6s", "video_views_p100"],
+    fields: ["account_id", "currency", "campaign_name", "adgroup_name", "ad_name", "spend", "impressions", "reach", "video_watched_2s", "video_watched_6s", "video_views_p100", "leads", "conversions"],
     dateFrom: from, dateTo: to, accounts: [brand.tiktokAccountId], cacheSeconds: 120,
   }).catch(() => []);
   const out: AdActual[] = [];
   for (const r of rows) {
     if (normId(r.account_id) !== acc) continue;
-    if (filter && !String(r.campaign_name ?? "").toLowerCase().includes(filter)) continue;
+    const campaign = String(r.campaign_name ?? "");
+    if (filter && !campaign.toLowerCase().includes(filter)) continue;
     const cr = classifyCreator(brand.creators, r.campaign_name, r.adgroup_name, r.ad_name);
+    const lead = isLeadgen(campaign);
     out.push({
       platform: "tiktok", creatorId: cr.id, creatorName: cr.name, content: cleanContent(String(r.ad_name ?? "")),
       spend: toIls(num(r.spend), String(r.currency ?? brand.nativeCurrency).toUpperCase(), usdIls),
       impressions: num(r.impressions), views: num(r.video_watched_2s),
       thruplay: num(r.video_watched_6s), completedViews: num(r.video_views_p100),
+      isLead: lead, leads: lead ? (num(r.leads) || num(r.conversions)) : 0,
     });
   }
   return out;
@@ -117,22 +130,26 @@ async function fetchYouTube(brand: BrandConfig, from: string, to: string, filter
   const acc = normId(brand.googleAccountId);
   const rows = await fetchWindsor({
     connector: "google_ads",
-    fields: ["account_id", "currency", "campaign", "ad_name", "spend", "impressions", "video_views", "video_quartile_p25_rate", "video_quartile_p100_rate"],
+    fields: ["account_id", "currency", "campaign", "ad_name", "spend", "impressions", "video_quartile_p75_rate", "video_quartile_p100_rate", "conversions"],
     dateFrom: from, dateTo: to, accounts: [brand.googleAccountId], cacheSeconds: 120,
   }).catch(() => []);
   const out: AdActual[] = [];
   for (const r of rows) {
     if (normId(r.account_id) !== acc) continue;
-    if (filter && !String(r.campaign ?? "").toLowerCase().includes(filter)) continue;
+    const campaign = String(r.campaign ?? "");
+    if (filter && !campaign.toLowerCase().includes(filter)) continue;
     const impr = num(r.impressions);
     const cr = classifyCreator(brand.creators, r.campaign, r.ad_name);
+    const lead = isLeadgen(campaign);
+    // Windsor's Google Ads connector has no TrueView "video_views" metric — only quartile rates.
+    // 75%-watched (impressions × p75) is the closest match to Google's TrueView view count; use it
+    // as the YouTube "view" for the count + CPV, and p100 for the 100% (full) view.
     out.push({
       platform: "youtube", creatorId: cr.id, creatorName: cr.name, content: cleanContent(String(r.ad_name ?? r.campaign ?? "")),
       spend: toIls(num(r.spend), String(r.currency ?? brand.nativeCurrency).toUpperCase(), usdIls),
-      // Google video_views is null on these (awareness/bumper) campaigns — derive watch counts from
-      // the quartile rates. Use 25%+ watched as the qualified "view" for CPV (no 15s metric exists).
-      impressions: impr, views: num(r.video_views) || impr * num(r.video_quartile_p25_rate),
-      thruplay: impr * num(r.video_quartile_p25_rate), completedViews: impr * num(r.video_quartile_p100_rate),
+      impressions: impr, views: impr * num(r.video_quartile_p75_rate),
+      thruplay: impr * num(r.video_quartile_p75_rate), completedViews: impr * num(r.video_quartile_p100_rate),
+      isLead: lead, leads: lead ? num(r.conversions) : 0,
     });
   }
   return out;
@@ -153,14 +170,27 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
     platforms.has("tiktok") ? fetchTikTok(brand, from, asOf, filter, usdIls) : Promise.resolve([]),
     platforms.has("youtube") ? fetchYouTube(brand, from, asOf, filter, usdIls) : Promise.resolve([]),
   ]);
-  const ads = [...metaAds, ...tiktokAds, ...ytAds];
+  const allAds = [...metaAds, ...tiktokAds, ...ytAds];
+  // The media plan is a VIEWS plan — leadgen campaigns (different objective) are split out into their
+  // own leads summary and kept out of the views metrics so CPV / attainment aren't distorted.
+  const ads = allAds.filter((a) => !a.isLead);
+  const leadAds = allAds.filter((a) => a.isLead);
 
-  // Per-platform totals.
+  // Per-platform totals (views only).
   const byPlatform: Record<Platform, PlatformActual> = { meta: empty(), tiktok: empty(), youtube: empty() };
   for (const a of ads) {
     const p = byPlatform[a.platform];
     p.spend += a.spend; p.impressions += a.impressions; p.views += a.views; p.thruplay += a.thruplay; p.completedViews += a.completedViews;
   }
+
+  // Lead-gen summary (per platform).
+  const platLabelAll: Record<string, string> = { meta: "Meta", tiktok: "TikTok", youtube: "YouTube" };
+  const leadMap = new Map<string, { spend: number; leads: number }>();
+  for (const a of leadAds) {
+    const e = leadMap.get(a.platform) ?? { spend: 0, leads: 0 };
+    e.spend += a.spend; e.leads += a.leads; leadMap.set(a.platform, e);
+  }
+  const leads: LeadRow[] = [...leadMap].map(([platform, e]) => ({ platform, title: platLabelAll[platform] ?? platform, spend: e.spend, leads: e.leads, cpl: e.leads ? e.spend / e.leads : null })).sort((a, b) => b.spend - a.spend);
 
   const lines: PlatformLineExecution[] = plan.lines.map((line) => {
     const a = byPlatform[line.platform] ?? empty();
@@ -213,7 +243,7 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
   return {
     flightStart: plan.flightStart, flightEnd: plan.flightEnd, asOf,
     elapsedDays: daysInclusive(plan.flightStart, asOf), totalDays: daysInclusive(plan.flightStart, plan.flightEnd),
-    lines, creators, contents,
+    lines, creators, contents, leads,
     totals: {
       budget, spend, thruplayTarget, thruplay, completedTarget, completedViews,
       spendPct: pct(spend, budget), thruplayPct: pct(thruplay, thruplayTarget), completedPct: pct(completedViews, completedTarget),

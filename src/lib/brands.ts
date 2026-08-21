@@ -284,7 +284,7 @@ export const BRANDS: BrandConfig[] = [
       lines: [
         { platform: "meta", title: "Meta", budget: 270000, thruplay: 1495305, completedViews: 314014, views: 3604000, impressions: 9642857, reach: 4383117 },
         { platform: "tiktok", title: "TikTok", budget: 270000, thruplay: 1801695, completedViews: 378356, views: 4496000, impressions: 13500000, reach: 6136364 },
-        { platform: "youtube", title: "YouTube · עינת נתן", budget: 20000, thruplay: 0, completedViews: 0 },
+        { platform: "youtube", title: "YouTube", budget: 20000, thruplay: 0, completedViews: 0 },
       ],
     },
     creators: [
