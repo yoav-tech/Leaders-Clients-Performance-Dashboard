@@ -69,7 +69,7 @@ async function fetchSource(cfg: AwarenessSourceConfig, brand: BrandConfig, from:
     dateTo: to,
     accounts: [cfg.account],
     ...(cfg.platform === "meta" ? { options: { attribution_window: "7d_click,1d_view" } } : {}),
-    cacheSeconds: 60,
+    cacheSeconds: 1800,
   }).catch(() => []);
 
   for (const r of rows) {
@@ -138,7 +138,7 @@ async function fetchTrend(cfg: AwarenessSourceConfig, from: string, to: string, 
     : cfg.platform === "tiktok"
       ? ["date", "account_id", "campaign_name", "spend", "video_watched_2s"]
       : ["date", "account_id", "campaign", "spend", "video_views"];
-  const rows = await fetchWindsor({ connector: cfg.platform === "meta" ? "facebook" : cfg.platform === "tiktok" ? "tiktok" : "google_ads", fields, dateFrom: from, dateTo: to, accounts: [cfg.account], cacheSeconds: 60 }).catch(() => []);
+  const rows = await fetchWindsor({ connector: cfg.platform === "meta" ? "facebook" : cfg.platform === "tiktok" ? "tiktok" : "google_ads", fields, dateFrom: from, dateTo: to, accounts: [cfg.account], cacheSeconds: 1800 }).catch(() => []);
   const m = new Map<string, { spend: number; views: number }>();
   for (const r of rows) {
     if (normId(r.account_id) !== acc) continue;

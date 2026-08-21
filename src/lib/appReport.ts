@@ -71,17 +71,33 @@ async function fetchSection(cfg: AppSectionConfig, brand: BrandConfig, from: str
   const acc = normId(account);
   const nativeCur = brand.nativeCurrency as string;
 
-  // Fetch at Meta AD level (campaign + adset + ad) so each table can regroup to campaign / ad-group
-  // / ad and filter by the campaign's city — mirroring the ecommerce campaign explorer.
-  const adRows = await fetchWindsor({
-    connector: "facebook",
-    fields: ["account_id", "currency", "campaign", "adset_name", "ad_name", "spend", "impressions", "clicks", "reach", F.install, F.reg, F.purch, F.lead],
-    dateFrom: from,
-    dateTo: to,
-    accounts: [account],
-    options: { attribution_window: "7d_click,1d_view" },
-    cacheSeconds: 60,
-  }).catch(() => []);
+  // Three independent Windsor pulls — ad-level (for the tables), daily trend, and MTD pacing. They
+  // don't depend on each other, so fire them in parallel: a section costs one round-trip instead of
+  // three (this alone cut Haat's cold render from ~135s to ~45s). 30-min cache keeps repeats instant.
+  const { monthStart, elapsed, daysInMonth } = monthProgress();
+  const lastComplete = shiftDate(today(), -1);
+  const [adRows, drows, mrows] = await Promise.all([
+    // Ad level (campaign + adset + ad) so each table can regroup and filter by the campaign's city.
+    fetchWindsor({
+      connector: "facebook",
+      fields: ["account_id", "currency", "campaign", "adset_name", "ad_name", "spend", "impressions", "clicks", "reach", F.install, F.reg, F.purch, F.lead],
+      dateFrom: from, dateTo: to, accounts: [account],
+      options: { attribution_window: "7d_click,1d_view" }, cacheSeconds: 1800,
+    }).catch(() => []),
+    // Daily trend (LDRS-only), spend + the section's main conversion.
+    fetchWindsor({
+      connector: "facebook",
+      fields: ["date", "account_id", "campaign", "spend", F.install, F.reg, F.lead],
+      dateFrom: from, dateTo: to, accounts: [account], cacheSeconds: 1800,
+    }).catch(() => []),
+    // MTD pacing / projection (ads only).
+    fetchWindsor({
+      connector: "facebook",
+      fields: ["account_id", "campaign", "spend", F.install, F.reg, F.lead],
+      dateFrom: monthStart, dateTo: lastComplete >= monthStart ? lastComplete : monthStart,
+      accounts: [account], cacheSeconds: 1800,
+    }).catch(() => []),
+  ]);
 
   const rows: AppRow[] = [];
   for (const r of adRows) {
@@ -120,44 +136,22 @@ async function fetchSection(cfg: AppSectionConfig, brand: BrandConfig, from: str
 
   // Trend (LDRS-only), daily spend + the section's main conversion.
   const trend: { date: string; spend: number; conversions: number }[] = [];
-  try {
-    const drows = await fetchWindsor({
-      connector: "facebook",
-      fields: ["date", "account_id", "campaign", "spend", F.install, F.reg, F.lead],
-      dateFrom: from,
-      dateTo: to,
-      accounts: [account],
-      cacheSeconds: 60,
-    });
-    const byDate = new Map<string, { spend: number; conv: number }>();
-    for (const r of drows) {
-      if (normId(r.account_id) !== acc) continue;
-      if (!String(r.campaign ?? "").startsWith("LDRS")) continue;
-      const d = String(r.date ?? "").slice(0, 10);
-      if (!d) continue;
-      const e = byDate.get(d) ?? { spend: 0, conv: 0 };
-      e.spend += toIls(num(r.spend), nativeCur);
-      e.conv += cfg.kind === "leads" ? num(r[F.lead]) : num(r[F.install]) + num(r[F.reg]);
-      byDate.set(d, e);
-    }
-    for (const [date, e] of [...byDate].sort((a, b) => (a[0] < b[0] ? -1 : 1))) trend.push({ date, spend: Math.round(e.spend), conversions: Math.round(e.conv) });
-  } catch {
-    /* optional */
+  const byDate = new Map<string, { spend: number; conv: number }>();
+  for (const r of drows) {
+    if (normId(r.account_id) !== acc) continue;
+    if (!String(r.campaign ?? "").startsWith("LDRS")) continue;
+    const d = String(r.date ?? "").slice(0, 10);
+    if (!d) continue;
+    const e = byDate.get(d) ?? { spend: 0, conv: 0 };
+    e.spend += toIls(num(r.spend), nativeCur);
+    e.conv += cfg.kind === "leads" ? num(r[F.lead]) : num(r[F.install]) + num(r[F.reg]);
+    byDate.set(d, e);
   }
+  for (const [date, e] of [...byDate].sort((a, b) => (a[0] < b[0] ? -1 : 1))) trend.push({ date, spend: Math.round(e.spend), conversions: Math.round(e.conv) });
 
   // Pacing / projection (ads only) — MTD run-rate to end of month.
   let pacing: AppSection["pacing"] = null;
-  try {
-    const { monthStart, elapsed, daysInMonth } = monthProgress();
-    const lastComplete = shiftDate(today(), -1);
-    const mrows = await fetchWindsor({
-      connector: "facebook",
-      fields: ["account_id", "campaign", "spend", F.install, F.reg, F.lead],
-      dateFrom: monthStart,
-      dateTo: lastComplete >= monthStart ? lastComplete : monthStart,
-      accounts: [account],
-      cacheSeconds: 300,
-    });
+  if (mrows.length) {
     let mSpend = 0, mConv = 0, mInstalls = 0;
     for (const r of mrows) {
       if (normId(r.account_id) !== acc) continue;
@@ -176,8 +170,6 @@ async function fetchSection(cfg: AppSectionConfig, brand: BrandConfig, from: str
       projectedConversions: Math.round(mConv * factor),
       installs: Math.round(mInstalls),
     };
-  } catch {
-    /* optional */
   }
 
   return { key: cfg.key, title: cfg.title, kind: cfg.kind, budget: cfg.budget ?? 0, totals, campaigns, rows, trend, pacing };

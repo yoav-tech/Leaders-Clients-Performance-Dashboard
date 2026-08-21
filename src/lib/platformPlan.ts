@@ -83,7 +83,7 @@ async function fetchMeta(brand: BrandConfig, from: string, to: string, filter: s
   const rows = await fetchWindsor({
     connector: "facebook",
     fields: ["account_id", "currency", "campaign", "adset_name", "ad_name", "spend", "impressions", "reach", "actions_video_view", "video_thruplay_watched_actions", "video_p100_watched_actions", "actions_lead"],
-    dateFrom: from, dateTo: to, accounts: [brand.metaAccountId], options: { attribution_window: "7d_click,1d_view" }, cacheSeconds: 120,
+    dateFrom: from, dateTo: to, accounts: [brand.metaAccountId], options: { attribution_window: "7d_click,1d_view" }, cacheSeconds: 1800,
   }).catch(() => []);
   const out: AdActual[] = [];
   for (const r of rows) {
@@ -111,7 +111,7 @@ async function fetchTikTok(brand: BrandConfig, from: string, to: string, filter:
   const rows = await fetchWindsor({
     connector: "tiktok",
     fields: ["account_id", "currency", "campaign_name", "adgroup_name", "ad_name", "spend", "impressions", "reach", "video_watched_2s", "video_watched_6s", "video_views_p100", "leads", "conversions"],
-    dateFrom: from, dateTo: to, accounts: [brand.tiktokAccountId], cacheSeconds: 120,
+    dateFrom: from, dateTo: to, accounts: [brand.tiktokAccountId], cacheSeconds: 1800,
   }).catch(() => []);
   const out: AdActual[] = [];
   for (const r of rows) {
@@ -137,7 +137,7 @@ async function fetchYouTube(brand: BrandConfig, from: string, to: string, filter
   const rows = await fetchWindsor({
     connector: "google_ads",
     fields: ["account_id", "currency", "campaign", "ad_name", "spend", "impressions", "video_quartile_p75_rate", "video_quartile_p100_rate", "conversions"],
-    dateFrom: from, dateTo: to, accounts: [brand.googleAccountId], cacheSeconds: 120,
+    dateFrom: from, dateTo: to, accounts: [brand.googleAccountId], cacheSeconds: 1800,
   }).catch(() => []);
   const out: AdActual[] = [];
   for (const r of rows) {
