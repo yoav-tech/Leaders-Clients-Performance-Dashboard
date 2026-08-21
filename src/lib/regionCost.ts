@@ -45,7 +45,7 @@ export async function getRegionCostReport(brand: BrandConfig): Promise<RegionCos
     dateTo: recentTo,
     accounts: [appSec.account],
     options: { attribution_window: "7d_click,1d_view" },
-    cacheSeconds: 120,
+    cacheSeconds: 1800,
   }).catch(() => []);
 
   const acc = normId(appSec.account);

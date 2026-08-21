@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { safeEqual } from "@/lib/auth";
-import { warmBreakdowns } from "@/lib/breakdownData";
+import { warmBreakdowns, warmLiveReports } from "@/lib/breakdownData";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // slow shared-account brands (Windsor) — runs in the background
@@ -19,8 +19,8 @@ export async function GET(request: Request) {
   }
   try {
     revalidateTag("breakdown");
-    const res = await warmBreakdowns();
-    return NextResponse.json({ ok: true, ...res });
+    const [breakdowns, liveReports] = await Promise.all([warmBreakdowns(), warmLiveReports()]);
+    return NextResponse.json({ ok: true, breakdowns, liveReports });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }

@@ -358,6 +358,28 @@ function explorerBrands(): { brand: BrandConfig; channel: Channel }[] {
   return out;
 }
 
+// Pre-warm the live-Windsor report pages (Haat app + region cost, Chery/Xpeng platform plan) whose
+// first render does several slow Windsor pulls, so the first real visitor hits a hot cache. Lazily
+// imported to avoid a static cycle. Best-effort.
+export async function warmLiveReports(): Promise<{ warmed: number; ms: number }> {
+  const start = Date.now();
+  const t = today();
+  const from = t.slice(0, 8) + "01";
+  const [{ getAppReport }, { getRegionCostReport }, { getPlatformPlanExecution }] = await Promise.all([
+    import("./appReport"), import("./regionCost"), import("./platformPlan"),
+  ]);
+  const jobs: Promise<unknown>[] = [];
+  for (const b of BRANDS) {
+    if (b.appInstall) {
+      jobs.push(getAppReport(b, from, t).catch(() => {}));
+      jobs.push(getRegionCostReport(b).catch(() => {}));
+    }
+    if (b.platformPlan) jobs.push(getPlatformPlanExecution(b).catch(() => {}));
+  }
+  await Promise.all(jobs);
+  return { warmed: jobs.length, ms: Date.now() - start };
+}
+
 // Pre-warm the landing breakdown (first channel · campaign · this-month) for every explorer brand,
 // so the first real visitor hits a hot cache instead of a cold Windsor fetch. Best-effort, limited
 // concurrency. Called from the warm cron just under the cache TTL.
