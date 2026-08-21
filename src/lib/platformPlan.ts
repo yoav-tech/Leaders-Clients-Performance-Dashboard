@@ -93,7 +93,9 @@ async function fetchMeta(brand: BrandConfig, from: string, to: string, filter: s
       spend: toIls(num(r.spend), String(r.currency ?? brand.nativeCurrency).toUpperCase(), usdIls),
       impressions: num(r.impressions), views: num(r.actions_video_view),
       thruplay: sumAction(r.video_thruplay_watched_actions), completedViews: sumAction(r.video_p100_watched_actions),
-      isLead: lead, leads: lead ? sumAction(r.actions_lead) : 0,
+      // Count leads on EVERY leaders campaign (views campaigns also drive lead-form / conversions),
+      // not only dedicated leadgen ones. isLead only controls the views-metric exclusion below.
+      isLead: lead, leads: sumAction(r.actions_lead),
     });
   }
   return out;
@@ -119,7 +121,7 @@ async function fetchTikTok(brand: BrandConfig, from: string, to: string, filter:
       spend: toIls(num(r.spend), String(r.currency ?? brand.nativeCurrency).toUpperCase(), usdIls),
       impressions: num(r.impressions), views: num(r.video_watched_2s),
       thruplay: num(r.video_watched_6s), completedViews: num(r.video_views_p100),
-      isLead: lead, leads: lead ? (num(r.leads) || num(r.conversions)) : 0,
+      isLead: lead, leads: num(r.leads) || num(r.conversions),
     });
   }
   return out;
@@ -149,7 +151,7 @@ async function fetchYouTube(brand: BrandConfig, from: string, to: string, filter
       spend: toIls(num(r.spend), String(r.currency ?? brand.nativeCurrency).toUpperCase(), usdIls),
       impressions: impr, views: impr * num(r.video_quartile_p75_rate),
       thruplay: impr * num(r.video_quartile_p75_rate), completedViews: impr * num(r.video_quartile_p100_rate),
-      isLead: lead, leads: lead ? num(r.conversions) : 0,
+      isLead: lead, leads: num(r.conversions),
     });
   }
   return out;
@@ -171,10 +173,10 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
     platforms.has("youtube") ? fetchYouTube(brand, from, asOf, filter, usdIls) : Promise.resolve([]),
   ]);
   const allAds = [...metaAds, ...tiktokAds, ...ytAds];
-  // The media plan is a VIEWS plan — leadgen campaigns (different objective) are split out into their
-  // own leads summary and kept out of the views metrics so CPV / attainment aren't distorted.
+  // The media plan is a VIEWS plan — leadgen campaigns (different objective) are kept out of the
+  // views metrics so CPV / attainment aren't distorted. Leads/conversions, however, are counted from
+  // EVERY leaders campaign (awareness campaigns also produce conversions).
   const ads = allAds.filter((a) => !a.isLead);
-  const leadAds = allAds.filter((a) => a.isLead);
 
   // Per-platform totals (views only).
   const byPlatform: Record<Platform, PlatformActual> = { meta: empty(), tiktok: empty(), youtube: empty() };
@@ -183,14 +185,18 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
     p.spend += a.spend; p.impressions += a.impressions; p.views += a.views; p.thruplay += a.thruplay; p.completedViews += a.completedViews;
   }
 
-  // Lead-gen summary (per platform).
+  // Leads / conversions summary (per platform) — over ALL leaders campaigns. Spend is that platform's
+  // total leaders spend, so CPL is the blended cost per conversion across the leaders activity.
   const platLabelAll: Record<string, string> = { meta: "Meta", tiktok: "TikTok", youtube: "YouTube" };
   const leadMap = new Map<string, { spend: number; leads: number }>();
-  for (const a of leadAds) {
+  for (const a of allAds) {
     const e = leadMap.get(a.platform) ?? { spend: 0, leads: 0 };
     e.spend += a.spend; e.leads += a.leads; leadMap.set(a.platform, e);
   }
-  const leads: LeadRow[] = [...leadMap].map(([platform, e]) => ({ platform, title: platLabelAll[platform] ?? platform, spend: e.spend, leads: e.leads, cpl: e.leads ? e.spend / e.leads : null })).sort((a, b) => b.spend - a.spend);
+  const leads: LeadRow[] = [...leadMap]
+    .filter(([, e]) => e.leads > 0)
+    .map(([platform, e]) => ({ platform, title: platLabelAll[platform] ?? platform, spend: e.spend, leads: e.leads, cpl: e.leads ? e.spend / e.leads : null }))
+    .sort((a, b) => b.leads - a.leads);
 
   const lines: PlatformLineExecution[] = plan.lines.map((line) => {
     const a = byPlatform[line.platform] ?? empty();

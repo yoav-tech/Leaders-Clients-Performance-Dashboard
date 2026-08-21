@@ -65,8 +65,8 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
           <Stat label="הוצאה בפועל" value={formatIls(T.spend)} sub={`${pct1(T.spendPct)} מהתקציב`} />
           <Stat label="נותר" value={formatIls(Math.max(0, T.budget - T.spend))} />
           <Stat label="קצב זמן" value={pct1(elapsedFrac)} sub={`${exec.elapsedDays} מתוך ${exec.totalDays} ימים`} />
-          {hasLeads && <Stat label="סה״כ לידים · Leadgen" value={formatNumber(totalLeads)} sub={`הוצאה ${formatIls(totalLeadSpend)}`} />}
-          {hasLeads && <Stat label="עלות לליד · CPL" value={cplTotal == null ? "—" : formatIls(cplTotal)} />}
+          {hasLeads && <Stat label="סה״כ לידים / המרות" value={formatNumber(totalLeads)} sub="בקמפייני Leaders" />}
+          {hasLeads && <Stat label="עלות להמרה · CPL" value={cplTotal == null ? "—" : formatIls(cplTotal)} sub="מסך הוצאת Leaders" />}
         </div>
         <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[var(--background)]">
           <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, (T.spendPct ?? 0) * 100)}%` }} />
@@ -141,31 +141,32 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
         <div className="mt-2 text-[11px] text-[var(--muted)]">15ש׳ = צפיית 15 שניות (Meta ThruPlay · TikTok 6ש׳ · YouTube ≈TrueView/75% צפייה) · 100% = צפייה מלאה · הוצאה בדולרים הומרה לשקלים. ל-YouTube אין יעד מוגדר, לכן אינו נכלל ב-% העמידה וב-CPV הכולל. קמפייני לידים (Leadgen) מופרדים מטה ואינם משוקללים במדדי הצפיות.</div>
       </Panel>
 
-      {/* Leadgen — separate objective */}
+      {/* Leads / conversions from all leaders campaigns (views campaigns convert too) */}
       {exec.leads.length > 0 && (
-        <Panel title="לידים · Leadgen" note="קמפייני לידים · מופרד ממדדי הצפיות">
+        <Panel title="לידים / המרות · קמפייני Leaders" note="Meta = לידים (טפסים) · TikTok/Google = המרות">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[420px] border-collapse text-sm">
+            <table className="w-full min-w-[460px] border-collapse text-sm">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
                   <th className="px-2 py-1.5 text-right">פלטפורמה</th>
-                  <th className="px-2 py-1.5 text-left">הוצאה</th>
-                  <th className="px-2 py-1.5 text-left">לידים</th>
-                  <th className="px-2 py-1.5 text-left">עלות לליד (CPL)</th>
+                  <th className="px-2 py-1.5 text-left">לידים / המרות</th>
+                  <th className="px-2 py-1.5 text-left">הוצאת Leaders</th>
+                  <th className="px-2 py-1.5 text-left">עלות להמרה (CPL)</th>
                 </tr>
               </thead>
               <tbody className="tabular-nums">
                 {exec.leads.map((l) => (
                   <tr key={l.platform} className="border-t border-[var(--card-border)]">
                     <td className="px-2 py-1.5 text-right font-medium">{l.title}</td>
-                    <td className="px-2 py-1.5 text-left font-semibold">{formatIls(l.spend)}</td>
-                    <td className="px-2 py-1.5 text-left">{formatNumber(l.leads)}</td>
+                    <td className="px-2 py-1.5 text-left font-semibold">{formatNumber(l.leads)}</td>
+                    <td className="px-2 py-1.5 text-left text-[var(--muted)]">{formatIls(l.spend)}</td>
                     <td className="px-2 py-1.5 text-left">{l.cpl == null ? "—" : formatIls(l.cpl)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          <div className="mt-2 text-[11px] text-[var(--muted)]">כולל המרות מקמפייני צפיות (Awareness) — לצ׳רי אין קמפיין Leadgen ייעודי, אך הקמפיינים הניבו המרות. CPL מחושב מסך הוצאת קמפייני Leaders בפלטפורמה.</div>
         </Panel>
       )}
 
