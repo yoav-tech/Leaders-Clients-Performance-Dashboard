@@ -4,7 +4,8 @@
 // data); only the compute is cached. Keyed by (brand, channel, dimension, range, source).
 
 import { unstable_cache } from "next/cache";
-import { getBrand, campaignProfileOf, explorerChannels, campaignTargetOf, type BrandConfig } from "./brands";
+import { getBrand, campaignProfileOf, explorerChannels, campaignTargetOf, BRANDS, type BrandConfig } from "./brands";
+import { today } from "./dates";
 import { CHANNEL_FIELDS } from "./channelFields";
 import { DIMENSION_FIELDS, UTM_DIMENSIONS, type Dimension } from "./breakdowns";
 import { campaignFieldFor } from "./adLevel";
@@ -338,3 +339,46 @@ async function _getBreakdownData(brandId: string, channel: Channel, dimension: D
 // Shared, cross-user cache. from/to are in the key, so each range is cached independently. 30-min
 // TTL — breakdown data updates only a few times a day, so mild staleness is fine and keeps it hot.
 export const getBreakdownData = unstable_cache(_getBreakdownData, ["breakdown-v2"], { revalidate: 1800, tags: ["breakdown"] });
+
+// Which brands render the breakdown explorer (everyone except platform-plan / app / snapshot /
+// media-plan / command-center layouts), and the channel a visitor lands on first.
+function explorerBrands(): { brand: BrandConfig; channel: Channel }[] {
+  const out: { brand: BrandConfig; channel: Channel }[] = [];
+  for (const b of BRANDS) {
+    if (b.platformPlan || b.appInstall || b.googleSnapshot || b.commandCenter || b.navHidden) continue;
+    const profile = campaignProfileOf(b);
+    let channel: Channel | null = null;
+    // Profile first: a views/leads brand renders CampaignBrandView (with the explorer) even when it
+    // also carries a mediaPlan (e.g. Style). A pure media-plan brand renders MediaPlanView (no explorer).
+    if (profile === "views" || profile === "leads") channel = (explorerChannels(b)[0]?.id as Channel) ?? null;
+    else if (b.mediaPlan) continue;
+    else channel = b.metaAccountId ? "meta" : b.googleAccountId ? "google" : b.tiktokAccountId ? "tiktok" : null;
+    if (channel) out.push({ brand: b, channel });
+  }
+  return out;
+}
+
+// Pre-warm the landing breakdown (first channel · campaign · this-month) for every explorer brand,
+// so the first real visitor hits a hot cache instead of a cold Windsor fetch. Best-effort, limited
+// concurrency. Called from the warm cron just under the cache TTL.
+export async function warmBreakdowns(): Promise<{ warmed: number; ms: number }> {
+  const start = Date.now();
+  const t = today();
+  const from = t.slice(0, 8) + "01";
+  const targets = explorerBrands();
+  let warmed = 0;
+  const CONCURRENCY = 3;
+  for (let i = 0; i < targets.length; i += CONCURRENCY) {
+    await Promise.all(
+      targets.slice(i, i + CONCURRENCY).map(async ({ brand, channel }) => {
+        try {
+          await getBreakdownData(brand.id, channel, "campaign", from, t, "");
+          warmed++;
+        } catch {
+          /* best-effort */
+        }
+      }),
+    );
+  }
+  return { warmed, ms: Date.now() - start };
+}
