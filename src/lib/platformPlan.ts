@@ -25,7 +25,11 @@ export interface ContentRow {
   content: string; creatorName: string; platforms: string; spend: number; thruplay: number; completedViews: number; cpv: number | null;
 }
 export interface LeadRow {
-  platform: string; title: string; spend: number; leads: number; cpl: number | null;
+  platform: string; title: string;
+  leads: number; // total conversions across all leaders campaigns (leadgen + bonus)
+  leadgenLeads: number; // from dedicated leadgen campaigns only
+  leadgenSpend: number; // spend of dedicated leadgen campaigns only
+  cpl: number | null; // leadgenSpend ÷ leadgenLeads — dedicated lead cost only (bonus excluded)
 }
 export interface PlatformPlanExecution {
   flightStart: string; flightEnd: string; asOf: string; elapsedDays: number; totalDays: number;
@@ -185,17 +189,20 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
     p.spend += a.spend; p.impressions += a.impressions; p.views += a.views; p.thruplay += a.thruplay; p.completedViews += a.completedViews;
   }
 
-  // Leads / conversions summary (per platform) — over ALL leaders campaigns. Spend is that platform's
-  // total leaders spend, so CPL is the blended cost per conversion across the leaders activity.
+  // Leads / conversions summary (per platform). Total conversions come from ALL leaders campaigns,
+  // but CPL is charged ONLY to dedicated leadgen campaigns — conversions that arrive from views
+  // campaigns are a bonus and must not inflate the cost per lead.
   const platLabelAll: Record<string, string> = { meta: "Meta", tiktok: "TikTok", youtube: "YouTube" };
-  const leadMap = new Map<string, { spend: number; leads: number }>();
+  const leadMap = new Map<string, { leads: number; leadgenLeads: number; leadgenSpend: number }>();
   for (const a of allAds) {
-    const e = leadMap.get(a.platform) ?? { spend: 0, leads: 0 };
-    e.spend += a.spend; e.leads += a.leads; leadMap.set(a.platform, e);
+    const e = leadMap.get(a.platform) ?? { leads: 0, leadgenLeads: 0, leadgenSpend: 0 };
+    e.leads += a.leads;
+    if (a.isLead) { e.leadgenLeads += a.leads; e.leadgenSpend += a.spend; }
+    leadMap.set(a.platform, e);
   }
   const leads: LeadRow[] = [...leadMap]
     .filter(([, e]) => e.leads > 0)
-    .map(([platform, e]) => ({ platform, title: platLabelAll[platform] ?? platform, spend: e.spend, leads: e.leads, cpl: e.leads ? e.spend / e.leads : null }))
+    .map(([platform, e]) => ({ platform, title: platLabelAll[platform] ?? platform, leads: e.leads, leadgenLeads: e.leadgenLeads, leadgenSpend: e.leadgenSpend, cpl: e.leadgenLeads ? e.leadgenSpend / e.leadgenLeads : null }))
     .sort((a, b) => b.leads - a.leads);
 
   const lines: PlatformLineExecution[] = plan.lines.map((line) => {

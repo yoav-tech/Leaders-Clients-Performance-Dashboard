@@ -45,11 +45,17 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
   const T = exec.totals;
   const elapsedFrac = exec.totalDays > 0 ? exec.elapsedDays / exec.totalDays : 0;
   const fmtD = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
-  // Leadgen totals (campaigns attributed to leaders) — surfaced as overview bubbles.
+  // Conversions from all leaders campaigns; CPL charged only to dedicated leadgen campaigns (bonus
+  // conversions from views campaigns don't inflate it).
   const totalLeads = exec.leads.reduce((s, l) => s + l.leads, 0);
-  const totalLeadSpend = exec.leads.reduce((s, l) => s + l.spend, 0);
-  const cplTotal = totalLeads ? totalLeadSpend / totalLeads : null;
+  const totalLeadgenLeads = exec.leads.reduce((s, l) => s + l.leadgenLeads, 0);
+  const totalLeadgenSpend = exec.leads.reduce((s, l) => s + l.leadgenSpend, 0);
+  const cplTotal = totalLeadgenLeads ? totalLeadgenSpend / totalLeadgenLeads : null;
+  const bonusLeads = totalLeads - totalLeadgenLeads;
   const hasLeads = totalLeads > 0;
+  const hasLeadgen = totalLeadgenLeads > 0;
+  const extraBubbles = (hasLeads ? 1 : 0) + (hasLeadgen ? 1 : 0);
+  const overviewCols = extraBubbles === 2 ? "sm:grid-cols-3 lg:grid-cols-6" : extraBubbles === 1 ? "sm:grid-cols-3 lg:grid-cols-5" : "sm:grid-cols-4";
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -60,13 +66,13 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
 
       {/* Overview — spend vs media plan */}
       <Panel title="מבט על · הוצאה מול פריסת המדיה">
-        <div className={`grid grid-cols-2 gap-2 ${hasLeads ? "sm:grid-cols-3 lg:grid-cols-6" : "sm:grid-cols-4"}`}>
+        <div className={`grid grid-cols-2 gap-2 ${overviewCols}`}>
           <Stat label="תקציב פריסה" value={formatIls(T.budget)} />
           <Stat label="הוצאה בפועל" value={formatIls(T.spend)} sub={`${pct1(T.spendPct)} מהתקציב`} />
           <Stat label="נותר" value={formatIls(Math.max(0, T.budget - T.spend))} />
           <Stat label="קצב זמן" value={pct1(elapsedFrac)} sub={`${exec.elapsedDays} מתוך ${exec.totalDays} ימים`} />
-          {hasLeads && <Stat label="סה״כ לידים / המרות" value={formatNumber(totalLeads)} sub="בקמפייני Leaders" />}
-          {hasLeads && <Stat label="עלות להמרה · CPL" value={cplTotal == null ? "—" : formatIls(cplTotal)} sub="מסך הוצאת Leaders" />}
+          {hasLeads && <Stat label="סה״כ לידים / המרות" value={formatNumber(totalLeads)} sub={hasLeadgen ? `${formatNumber(totalLeadgenLeads)} Leadgen · ${formatNumber(bonusLeads)} בונוס` : "בונוס מקמפייני צפיות"} />}
+          {hasLeadgen && <Stat label="עלות לליד · CPL" value={cplTotal == null ? "—" : formatIls(cplTotal)} sub="קמפייני Leadgen בלבד" />}
         </div>
         <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[var(--background)]">
           <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, (T.spendPct ?? 0) * 100)}%` }} />
@@ -145,13 +151,15 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
       {exec.leads.length > 0 && (
         <Panel title="לידים / המרות · קמפייני Leaders" note="Meta = לידים (טפסים) · TikTok/Google = המרות">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[460px] border-collapse text-sm">
+            <table className="w-full min-w-[560px] border-collapse text-sm">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
                   <th className="px-2 py-1.5 text-right">פלטפורמה</th>
-                  <th className="px-2 py-1.5 text-left">לידים / המרות</th>
-                  <th className="px-2 py-1.5 text-left">הוצאת Leaders</th>
-                  <th className="px-2 py-1.5 text-left">עלות להמרה (CPL)</th>
+                  <th className="px-2 py-1.5 text-left">סה״כ המרות</th>
+                  <th className="px-2 py-1.5 text-left">מתוכם Leadgen</th>
+                  <th className="px-2 py-1.5 text-left">בונוס (צפיות)</th>
+                  <th className="px-2 py-1.5 text-left">הוצאת Leadgen</th>
+                  <th className="px-2 py-1.5 text-left">CPL</th>
                 </tr>
               </thead>
               <tbody className="tabular-nums">
@@ -159,14 +167,16 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
                   <tr key={l.platform} className="border-t border-[var(--card-border)]">
                     <td className="px-2 py-1.5 text-right font-medium">{l.title}</td>
                     <td className="px-2 py-1.5 text-left font-semibold">{formatNumber(l.leads)}</td>
-                    <td className="px-2 py-1.5 text-left text-[var(--muted)]">{formatIls(l.spend)}</td>
-                    <td className="px-2 py-1.5 text-left">{l.cpl == null ? "—" : formatIls(l.cpl)}</td>
+                    <td className="px-2 py-1.5 text-left">{l.leadgenLeads ? formatNumber(l.leadgenLeads) : "—"}</td>
+                    <td className="px-2 py-1.5 text-left text-[var(--muted)]">{formatNumber(l.leads - l.leadgenLeads)}</td>
+                    <td className="px-2 py-1.5 text-left text-[var(--muted)]">{l.leadgenSpend ? formatIls(l.leadgenSpend) : "—"}</td>
+                    <td className="px-2 py-1.5 text-left font-medium">{l.cpl == null ? "—" : formatIls(l.cpl)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div className="mt-2 text-[11px] text-[var(--muted)]">כולל המרות מקמפייני צפיות (Awareness) — לצ׳רי אין קמפיין Leadgen ייעודי, אך הקמפיינים הניבו המרות. CPL מחושב מסך הוצאת קמפייני Leaders בפלטפורמה.</div>
+          <div className="mt-2 text-[11px] text-[var(--muted)]">CPL מחושב מהוצאת קמפייני ה-Leadgen בלבד. המרות מקמפייני צפיות (Awareness) הן בונוס ואינן מייקרות את העלות לליד. לצ׳רי אין קמפיין Leadgen ייעודי, לכן כל ההמרות שלה בונוס.</div>
         </Panel>
       )}
 
