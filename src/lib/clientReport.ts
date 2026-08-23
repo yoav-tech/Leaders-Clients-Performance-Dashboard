@@ -4,6 +4,8 @@
 import { reportGroupOf, type BrandConfig } from "./brands";
 import { getBrandMetrics } from "./queries";
 import { fetchWindsor, num } from "./windsor";
+import { fetchQuickShopPaidOrders } from "./quickshop";
+import { fetchShopifyPaidOrders } from "./shopify";
 import { toIls } from "./fx";
 
 const normId = (v: unknown) => String(v ?? "").replace(/^act_/i, "").trim();
@@ -13,7 +15,27 @@ function sumAction(v: unknown): number {
 }
 
 export interface PlatformRow { platform: string; spend: number; revenue: number; roas: number | null; cvr: number | null; aov: number | null }
-export interface TopAd { name: string; spend: number; revenue: number; roas: number | null; previewUrl: string | null }
+export interface TopAd {
+  name: string; spend: number; revenue: number; roas: number | null; previewUrl: string | null;
+  storeRevenue: number | null; // REAL store revenue attributed to this ad (QuickShop/Shopify utm_content = ad name)
+  storeRoas: number | null; // storeRevenue ÷ spend
+}
+
+// Real store revenue per ad, matched by utm_content (= ad name) from the store's paid orders.
+async function storeRevByAd(brand: BrandConfig, from: string, to: string): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  try {
+    const orders = brand.storePlatform === "shopify" ? (await fetchShopifyPaidOrders(brand, from, to)).orders : await fetchQuickShopPaidOrders(brand, from, to);
+    for (const o of orders) {
+      const c = (o.utmContent ?? "").trim().toLowerCase();
+      if (!c) continue;
+      map.set(c, (map.get(c) ?? 0) + o.total);
+    }
+  } catch {
+    /* store revenue optional — falls back to Meta-only ROAS */
+  }
+  return map;
+}
 
 // A public, clickable preview of the ad creative for the client. Prefer the Instagram post permalink;
 // fall back to the Facebook page-post permalink built from effective_object_story_id (page_post).
@@ -80,7 +102,7 @@ async function metaAdsAndRegs(brand: BrandConfig, from: string, to: string): Pro
     }
     const topAds = [...map]
       .filter(([, e]) => e.spend >= 100) // ignore tiny-spend outliers so ROAS is meaningful
-      .map(([name, e]) => ({ name, spend: Math.round(e.spend), revenue: Math.round(e.rev), roas: e.spend ? e.rev / e.spend : null, previewUrl: adPreviewUrl(e.ig, e.story) }))
+      .map(([name, e]) => ({ name, spend: Math.round(e.spend), revenue: Math.round(e.rev), roas: e.spend ? e.rev / e.spend : null, previewUrl: adPreviewUrl(e.ig, e.story), storeRevenue: null as number | null, storeRoas: null as number | null }))
       .sort((a, b) => (b.roas ?? 0) - (a.roas ?? 0))
       .slice(0, brand.topAdsCount ?? 5);
     return { topAds, registrations: Math.round(registrations) };
@@ -94,9 +116,15 @@ const pctStr = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(1
 
 export async function getClientReport(brand: BrandConfig, from: string, to: string): Promise<ClientReport | null> {
   if (reportGroupOf(brand) !== "ecommerce") return null;
-  const [all, meta] = await Promise.all([getBrandMetrics(from, to), metaAdsAndRegs(brand, from, to)]);
+  const [all, meta, storeByAd] = await Promise.all([getBrandMetrics(from, to), metaAdsAndRegs(brand, from, to), storeRevByAd(brand, from, to)]);
   const m = all.find((x) => x.brandId === brand.id);
   if (!m) return null;
+
+  // Attach REAL store revenue + store ROAS to each top ad (matched by utm_content = ad name).
+  const topAds: TopAd[] = meta.topAds.map((a) => {
+    const sr = storeByAd.get(a.name.trim().toLowerCase());
+    return { ...a, storeRevenue: sr != null ? Math.round(sr) : null, storeRoas: sr != null && a.spend ? sr / a.spend : null };
+  });
 
   const platforms: PlatformRow[] = (["meta", "google", "tiktok"] as const)
     .map((ch) => {
@@ -111,7 +139,7 @@ export async function getClientReport(brand: BrandConfig, from: string, to: stri
   const paidRoas = m.total.roas;
 
   const label = periodLabel(from, to);
-  const top = meta.topAds[0];
+  const top = topAds[0];
   const bestPlatform = [...platforms].sort((a, b) => (b.roas ?? 0) - (a.roas ?? 0))[0];
   const summary =
     `סיכום לתקופה ${label}: רואס אתר כולל ${roasStr(siteRoas)}, רואס ממומן ${roasStr(paidRoas)}, אחוז המרה ${pctStr(cvr)}. ` +
@@ -128,7 +156,7 @@ export async function getClientReport(brand: BrandConfig, from: string, to: stri
     topLevel: { siteRoas, paidRoas, cvr, cvrPrev, storeRevenue: Math.round(m.channels.site.revenue), totalSpend: Math.round(m.total.spend), orders: Math.round(m.channels.site.purchases) },
     platforms,
     registrations: meta.registrations,
-    topAds: meta.topAds,
+    topAds,
     summary,
   };
 }
