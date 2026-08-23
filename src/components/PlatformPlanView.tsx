@@ -54,6 +54,10 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
   const bonusLeads = totalLeads - totalLeadgenLeads;
   const hasLeads = totalLeads > 0;
   const hasLeadgen = totalLeadgenLeads > 0;
+  // Optional lead goal (Xpeng): 470 leads @ ₪153 CPA — % attainment against the flight, CPL vs target.
+  const leadTarget = brand.platformPlan?.leadTarget ?? null;
+  const leadsPct = leadTarget && leadTarget.leads ? totalLeads / leadTarget.leads : null;
+  const cplTone = cplTotal != null && leadTarget ? (cplTotal <= leadTarget.cpa ? "text-[var(--good)]" : cplTotal <= leadTarget.cpa * 1.15 ? "text-[var(--warn)]" : "text-[var(--bad)]") : "";
   const extraBubbles = (hasLeads ? 1 : 0) + (hasLeadgen ? 1 : 0);
   const overviewCols = extraBubbles === 2 ? "sm:grid-cols-3 lg:grid-cols-6" : extraBubbles === 1 ? "sm:grid-cols-3 lg:grid-cols-5" : "sm:grid-cols-4";
 
@@ -71,8 +75,12 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
           <Stat label="הוצאה בפועל" value={formatIls(T.spend)} sub={`${pct1(T.spendPct)} מהתקציב`} />
           <Stat label="נותר" value={formatIls(Math.max(0, T.budget - T.spend))} />
           <Stat label="קצב זמן" value={pct1(elapsedFrac)} sub={`${exec.elapsedDays} מתוך ${exec.totalDays} ימים`} />
-          {hasLeads && <Stat label="סה״כ לידים / המרות" value={formatNumber(totalLeads)} sub={hasLeadgen ? `${formatNumber(totalLeadgenLeads)} Leadgen · ${formatNumber(bonusLeads)} בונוס` : "בונוס מקמפייני צפיות"} />}
-          {hasLeadgen && <Stat label="עלות לליד · CPL" value={cplTotal == null ? "—" : formatIls(cplTotal)} sub="קמפייני Leadgen בלבד" />}
+          {hasLeads && leadTarget ? (
+            <Stat label={`לידים · יעד ${formatNumber(leadTarget.leads)}`} value={`${formatNumber(totalLeads)} / ${formatNumber(leadTarget.leads)}`} sub={`${pct1(leadsPct)} מהיעד · ${formatNumber(bonusLeads)} בונוס`} tone={paceTone(leadsPct, elapsedFrac)} />
+          ) : hasLeads ? (
+            <Stat label="סה״כ לידים / המרות" value={formatNumber(totalLeads)} sub={hasLeadgen ? `${formatNumber(totalLeadgenLeads)} Leadgen · ${formatNumber(bonusLeads)} בונוס` : "בונוס מקמפייני צפיות"} />
+          ) : null}
+          {hasLeadgen && <Stat label="עלות לליד · CPL" value={cplTotal == null ? "—" : formatIls(cplTotal)} sub={leadTarget ? `יעד ₪${formatNumber(leadTarget.cpa)}` : "קמפייני Leadgen בלבד"} tone={cplTone} />}
         </div>
         <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[var(--background)]">
           <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, (T.spendPct ?? 0) * 100)}%` }} />
