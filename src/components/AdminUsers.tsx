@@ -143,7 +143,7 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
 
         {inviteUrl && (
           <div className="mt-3 rounded-lg border border-[var(--card-border)] bg-[var(--background)]/50 p-3">
-            <div className="mb-1 text-xs text-[var(--muted)]">קישור הזמנה (שלח למשתמש — הוא ישלים שם/מייל/טלפון ויקבע סיסמה, תקף 7 ימים. המייל שהוא ימלא הוא הכתובת שאליה יישלחו הדוחות):</div>
+            <div className="mb-1 text-xs text-[var(--muted)]">קישור הזמנה (שלח למשתמש — הוא ישלים שם/מייל/טלפון ויקבע סיסמה, תקף 48 שעות. המייל שהוא ימלא הוא הכתובת שאליה יישלחו הדוחות):</div>
             <div className="flex items-center gap-2">
               <input readOnly value={inviteUrl} onFocus={(e) => e.currentTarget.select()}
                 className="flex-1 rounded-md border border-[var(--card-border)] bg-[var(--background)] px-2 py-1 text-xs" dir="ltr" />
