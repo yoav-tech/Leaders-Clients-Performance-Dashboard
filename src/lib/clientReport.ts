@@ -1,7 +1,8 @@
 // Client-facing performance report (ecommerce brands: Argania, La Beaute, Studio Pasha).
 // Assembles the numbers Gal reviews before sending to the client: top-level ROAS, per-platform
 // table, newsletter sign-ups (Meta complete_registration), top ads by ROAS, and an auto summary.
-import { reportGroupOf, type BrandConfig } from "./brands";
+import { unstable_cache } from "next/cache";
+import { reportGroupOf, getBrand, type BrandConfig } from "./brands";
 import { getBrandMetrics } from "./queries";
 import { fetchWindsor, num } from "./windsor";
 import { fetchQuickShopPaidOrders } from "./quickshop";
@@ -22,19 +23,30 @@ export interface TopAd {
 }
 
 // Real store revenue per ad, matched by utm_content (= ad name) from the store's paid orders.
-async function storeRevByAd(brand: BrandConfig, from: string, to: string): Promise<Map<string, number>> {
-  const map = new Map<string, number>();
-  try {
-    const orders = brand.storePlatform === "shopify" ? (await fetchShopifyPaidOrders(brand, from, to)).orders : await fetchQuickShopPaidOrders(brand, from, to);
-    for (const o of orders) {
-      const c = (o.utmContent ?? "").trim().toLowerCase();
-      if (!c) continue;
-      map.set(c, (map.get(c) ?? 0) + o.total);
+// Cached (30 min, shared) — the store order pull is heavy and unchanged intraday. Returns a plain
+// record (Maps don't survive unstable_cache); the caller rebuilds the Map.
+const _storeRevByAd = unstable_cache(
+  async (brandId: string, from: string, to: string): Promise<Record<string, number>> => {
+    const brand = getBrand(brandId);
+    const out: Record<string, number> = {};
+    if (!brand) return out;
+    try {
+      const orders = brand.storePlatform === "shopify" ? (await fetchShopifyPaidOrders(brand, from, to)).orders : await fetchQuickShopPaidOrders(brand, from, to);
+      for (const o of orders) {
+        const c = (o.utmContent ?? "").trim().toLowerCase();
+        if (!c) continue;
+        out[c] = (out[c] ?? 0) + o.total;
+      }
+    } catch {
+      /* store revenue optional — falls back to Meta-only ROAS */
     }
-  } catch {
-    /* store revenue optional — falls back to Meta-only ROAS */
-  }
-  return map;
+    return out;
+  },
+  ["store-rev-by-ad-v1"],
+  { revalidate: 1800, tags: ["metrics"] },
+);
+async function storeRevByAd(brand: BrandConfig, from: string, to: string): Promise<Map<string, number>> {
+  return new Map(Object.entries(await _storeRevByAd(brand.id, from, to)));
 }
 
 // A public, clickable preview of the ad creative for the client. Prefer the Instagram post permalink;
