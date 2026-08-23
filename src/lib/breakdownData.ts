@@ -365,8 +365,8 @@ export async function warmLiveReports(): Promise<{ warmed: number; ms: number }>
   const start = Date.now();
   const t = today();
   const from = t.slice(0, 8) + "01";
-  const [{ getAppReport }, { getRegionCostReport }, { getPlatformPlanExecution }] = await Promise.all([
-    import("./appReport"), import("./regionCost"), import("./platformPlan"),
+  const [{ getAppReport }, { getRegionCostReport }, { getPlatformPlanExecution }, { getClientReport }, { reportGroupOf }] = await Promise.all([
+    import("./appReport"), import("./regionCost"), import("./platformPlan"), import("./clientReport"), import("./brands"),
   ]);
   const jobs: Promise<unknown>[] = [];
   for (const b of BRANDS) {
@@ -375,6 +375,8 @@ export async function warmLiveReports(): Promise<{ warmed: number; ms: number }>
       jobs.push(getRegionCostReport(b).catch(() => {}));
     }
     if (b.platformPlan) jobs.push(getPlatformPlanExecution(b).catch(() => {}));
+    // Ecommerce client report (heavy store + Meta + per-ad store attribution pull).
+    if (reportGroupOf(b) === "ecommerce") jobs.push(getClientReport(b, from, t).catch(() => {}));
   }
   await Promise.all(jobs);
   return { warmed: jobs.length, ms: Date.now() - start };
