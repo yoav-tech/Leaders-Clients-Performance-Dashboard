@@ -13,7 +13,15 @@ function sumAction(v: unknown): number {
 }
 
 export interface PlatformRow { platform: string; spend: number; revenue: number; roas: number | null; cvr: number | null; aov: number | null }
-export interface TopAd { name: string; spend: number; revenue: number; roas: number | null }
+export interface TopAd { name: string; spend: number; revenue: number; roas: number | null; previewUrl: string | null }
+
+// A public, clickable preview of the ad creative for the client. Prefer the Instagram post permalink;
+// fall back to the Facebook page-post permalink built from effective_object_story_id (page_post).
+function adPreviewUrl(ig: string, story: string): string | null {
+  if (ig) return ig;
+  if (story && story.includes("_")) { const [page, post] = story.split("_"); if (page && post) return `https://www.facebook.com/${page}/posts/${post}`; }
+  return null;
+}
 export interface ClientReport {
   brandId: string;
   brandName: string;
@@ -49,11 +57,13 @@ async function metaAdsAndRegs(brand: BrandConfig, from: string, to: string): Pro
   try {
     const rows = await fetchWindsor({
       connector: "facebook",
-      fields: ["account_id", "currency", "ad_name", "spend", "actions_purchase", "action_values_purchase", "actions_complete_registration"],
+      fields: ["account_id", "currency", "ad_name", "spend", "actions_purchase", "action_values_purchase", "actions_complete_registration", "instagram_permalink_url", "effective_object_story_id"],
       dateFrom: from, dateTo: to, accounts: [brand.metaAccountId], cacheSeconds: 1800,
     });
     const acc = normId(brand.metaAccountId);
-    const map = new Map<string, { spend: number; rev: number }>();
+    // Track the creative's post links from the highest-spend row under each ad name (best) so the
+    // preview points at the dominant creative when several ads share a name.
+    const map = new Map<string, { spend: number; rev: number; best: number; ig: string; story: string }>();
     let registrations = 0;
     for (const r of rows) {
       if (normId(r.account_id) !== acc) continue;
@@ -61,14 +71,16 @@ async function metaAdsAndRegs(brand: BrandConfig, from: string, to: string): Pro
       registrations += sumAction(r.actions_complete_registration);
       const name = String(r.ad_name ?? "").trim();
       if (!name) continue;
-      const e = map.get(name) ?? { spend: 0, rev: 0 };
-      e.spend += toIls(num(r.spend), cur, 3);
+      const rowSpend = toIls(num(r.spend), cur, 3);
+      const e = map.get(name) ?? { spend: 0, rev: 0, best: -1, ig: "", story: "" };
+      e.spend += rowSpend;
       e.rev += toIls(sumAction(r.action_values_purchase), cur, 3);
+      if (rowSpend > e.best) { e.best = rowSpend; e.ig = String(r.instagram_permalink_url ?? "").trim(); e.story = String(r.effective_object_story_id ?? "").trim(); }
       map.set(name, e);
     }
     const topAds = [...map]
       .filter(([, e]) => e.spend >= 100) // ignore tiny-spend outliers so ROAS is meaningful
-      .map(([name, e]) => ({ name, spend: Math.round(e.spend), revenue: Math.round(e.rev), roas: e.spend ? e.rev / e.spend : null }))
+      .map(([name, e]) => ({ name, spend: Math.round(e.spend), revenue: Math.round(e.rev), roas: e.spend ? e.rev / e.spend : null, previewUrl: adPreviewUrl(e.ig, e.story) }))
       .sort((a, b) => (b.roas ?? 0) - (a.roas ?? 0))
       .slice(0, 5);
     return { topAds, registrations: Math.round(registrations) };
