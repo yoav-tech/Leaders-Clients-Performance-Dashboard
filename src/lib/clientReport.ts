@@ -29,7 +29,7 @@ export interface ClientReport {
   to: string;
   periodLabel: string; // human-readable Hebrew period the report covers (so the מלל is unambiguous)
   target: number;
-  topLevel: { siteRoas: number | null; paidRoas: number | null; cvr: number | null; cvrPrev: number | null };
+  topLevel: { siteRoas: number | null; paidRoas: number | null; cvr: number | null; cvrPrev: number | null; storeRevenue: number; totalSpend: number; orders: number };
   platforms: PlatformRow[];
   registrations: number;
   topAds: TopAd[];
@@ -125,7 +125,7 @@ export async function getClientReport(brand: BrandConfig, from: string, to: stri
     from, to,
     periodLabel: label,
     target: brand.targetRoas,
-    topLevel: { siteRoas, paidRoas, cvr, cvrPrev },
+    topLevel: { siteRoas, paidRoas, cvr, cvrPrev, storeRevenue: Math.round(m.channels.site.revenue), totalSpend: Math.round(m.total.spend), orders: Math.round(m.channels.site.purchases) },
     platforms,
     registrations: meta.registrations,
     topAds: meta.topAds,
