@@ -97,6 +97,7 @@ export async function fetchQuickShopPaidOrders(
     for (const o of json.data ?? []) {
       if (o.financial_status !== "paid") continue; // paid/completed only
       if (String(o.status ?? "").toLowerCase() === "cancelled") continue; // paid-then-cancelled = returned/refunded
+      if (String(o.utm_source ?? "").toLowerCase() === "pos") continue; // in-store POS sales — not online/marketing revenue
       if (!o.created_at) continue;
       const d = localDate(o.created_at);
       if (d < from || d > to) continue; // keep only the requested local-date window
