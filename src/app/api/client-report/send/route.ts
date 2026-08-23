@@ -19,7 +19,12 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 function renderEmail(r: ClientReport, note: string): string {
   const F = "-apple-system,Segoe UI,Roboto,Arial,sans-serif";
   const row = (a: string, b: string) => `<tr><td style="padding:6px 8px;border-bottom:1px solid #ececf3;font:400 13px/1.3 ${F};color:#1a1d26">${a}</td><td style="padding:6px 8px;border-bottom:1px solid #ececf3;font:600 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${b}</td></tr>`;
-  const platforms = r.platforms.map((p) => row(esc(p.platform), `${ils(p.spend)} · ${ils(p.revenue)} · ROAS ${roas(p.roas)} · ${pct(p.cvr)} · ${ils(p.aov)}`)).join("");
+  // Per-platform as a real multi-column table (was one crammed cell). Numbers LTR, platform RTL.
+  const pth = (t: string, right = false) => `<th style="padding:7px 8px;border-bottom:1px solid #ececf3;font:600 11px/1.2 ${F};color:#6b7280;text-align:${right ? "right" : "left"};white-space:nowrap"${right ? "" : ' dir="ltr"'}>${t}</th>`;
+  const ptd = (t: string, b = false) => `<td style="padding:7px 8px;border-bottom:1px solid #ececf3;font:${b ? 600 : 400} 13px/1.3 ${F};color:#1a1d26;text-align:left;white-space:nowrap" dir="ltr">${t}</td>`;
+  const platforms =
+    `<tr>${pth("פלטפורמה", true)}${pth("הוצאה")}${pth("הכנסות")}${pth("ROAS")}${pth("CVR")}${pth("AOV")}</tr>` +
+    r.platforms.map((p) => `<tr><td style="padding:7px 8px;border-bottom:1px solid #ececf3;font:600 13px/1.3 ${F};color:#1a1d26;text-align:right;white-space:nowrap">${esc(p.platform)}</td>${ptd(ils(p.spend))}${ptd(ils(p.revenue), true)}${ptd(roas(p.roas))}${ptd(pct(p.cvr))}${ptd(ils(p.aov))}</tr>`).join("");
   const adName = (a: ClientReport["topAds"][number], i: number) =>
     a.previewUrl
       ? `${i + 1}. <a href="${esc(a.previewUrl)}" style="color:#4f46e5;text-decoration:none" target="_blank" rel="noopener">${esc(a.name)} ↗</a>`
@@ -32,13 +37,16 @@ function renderEmail(r: ClientReport, note: string): string {
     </div>
     <div style="padding:18px 24px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <span style="padding:8px 12px;border:1px solid #d9d3f5;background:#f4f1ff;border-radius:999px;font-size:12px;color:#6b7280">הכנסות חנות <b style="color:#4f46e5">${ils(r.topLevel.storeRevenue)}</b></span>
+        <span style="padding:8px 12px;border:1px solid #ececf3;border-radius:999px;font-size:12px;color:#6b7280">הזמנות <b style="color:#1a1d26">${r.topLevel.orders.toLocaleString("en-US")}</b></span>
+        <span style="padding:8px 12px;border:1px solid #ececf3;border-radius:999px;font-size:12px;color:#6b7280">הוצאה <b style="color:#1a1d26">${ils(r.topLevel.totalSpend)}</b></span>
         <span style="padding:8px 12px;border:1px solid #ececf3;border-radius:999px;font-size:12px;color:#6b7280">רואס אתר <b style="color:#1a1d26">${roas(r.topLevel.siteRoas)}</b></span>
         <span style="padding:8px 12px;border:1px solid #ececf3;border-radius:999px;font-size:12px;color:#6b7280">רואס ממומן <b style="color:#1a1d26">${roas(r.topLevel.paidRoas)}</b></span>
         <span style="padding:8px 12px;border:1px solid #ececf3;border-radius:999px;font-size:12px;color:#6b7280">אחוז המרה <b style="color:#1a1d26">${pct(r.topLevel.cvr)}</b></span>
         <span style="padding:8px 12px;border:1px solid #ececf3;border-radius:999px;font-size:12px;color:#6b7280">הרשמות <b style="color:#1a1d26">${r.registrations.toLocaleString("en-US")}</b></span>
       </div>
       ${note ? `<div style="padding:12px 14px;border:1px solid rgba(124,58,237,.18);border-radius:12px;background:#f4f1ff;margin-bottom:14px;font-size:14px;line-height:1.6;white-space:pre-wrap">${esc(note)}</div>` : ""}
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin:6px 0">לפי פלטפורמה · Spend · Revenue · ROAS · CVR · AOV</div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin:6px 0">לפי פלטפורמה</div>
       <table role="presentation" width="100%" style="border-collapse:collapse">${platforms}</table>
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin:14px 0 6px">${r.topAds.length || 5} מודעות מובילות ברואס</div>
       <table role="presentation" width="100%" style="border-collapse:collapse">${ads}</table>
