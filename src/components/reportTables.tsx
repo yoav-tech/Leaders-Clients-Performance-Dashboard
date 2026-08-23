@@ -53,7 +53,11 @@ export function TopAdsTable({ report }: { report: ClientReport }) {
             {report.topAds.map((a, i) => (
               <tr key={a.name} className="border-t border-[var(--card-border)]">
                 <td className="px-2 py-1.5 text-right text-[var(--muted)]">{i + 1}</td>
-                <td className="max-w-[280px] truncate px-2 py-1.5 text-right font-medium" title={a.name} dir="ltr">{a.name}</td>
+                <td className="max-w-[280px] truncate px-2 py-1.5 text-right font-medium" title={a.name} dir="ltr">
+                  {a.previewUrl ? (
+                    <a href={a.previewUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{a.name} <span aria-hidden>↗</span></a>
+                  ) : a.name}
+                </td>
                 <td className="px-2 py-1.5 text-left">{formatIls(a.spend)}</td>
                 <td className="px-2 py-1.5 text-left">{formatIls(a.revenue)}</td>
                 <td className={`px-2 py-1.5 text-left ${TONE[roasTone(a.roas, report.target)]}`}>{formatRoas(a.roas)}</td>

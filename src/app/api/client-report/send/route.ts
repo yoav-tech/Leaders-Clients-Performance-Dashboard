@@ -20,7 +20,11 @@ function renderEmail(r: ClientReport, note: string): string {
   const F = "-apple-system,Segoe UI,Roboto,Arial,sans-serif";
   const row = (a: string, b: string) => `<tr><td style="padding:6px 8px;border-bottom:1px solid #ececf3;font:400 13px/1.3 ${F};color:#1a1d26">${a}</td><td style="padding:6px 8px;border-bottom:1px solid #ececf3;font:600 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${b}</td></tr>`;
   const platforms = r.platforms.map((p) => row(esc(p.platform), `${ils(p.spend)} · ${ils(p.revenue)} · ROAS ${roas(p.roas)} · ${pct(p.cvr)} · ${ils(p.aov)}`)).join("");
-  const ads = r.topAds.map((a, i) => row(`${i + 1}. ${esc(a.name)}`, `ROAS ${roas(a.roas)} · ${ils(a.revenue)}`)).join("");
+  const adName = (a: ClientReport["topAds"][number], i: number) =>
+    a.previewUrl
+      ? `${i + 1}. <a href="${esc(a.previewUrl)}" style="color:#4f46e5;text-decoration:none" target="_blank" rel="noopener">${esc(a.name)} ↗</a>`
+      : `${i + 1}. ${esc(a.name)}`;
+  const ads = r.topAds.map((a, i) => row(adName(a, i), `ROAS ${roas(a.roas)} · ${ils(a.revenue)}`)).join("");
   return `<!doctype html><html><body style="margin:0;background:#f5f4fb"><div dir="rtl" style="max-width:640px;margin:0 auto;background:#fff;border:1px solid #ececf3;border-radius:16px;overflow:hidden;font-family:${F}">
     <div style="padding:24px;background:linear-gradient(135deg,#efeaff,#fff);border-bottom:1px solid #ececf3">
       <div style="font:800 22px/1 ${F};letter-spacing:.16em">LEADERS</div>
