@@ -82,7 +82,7 @@ async function metaAdsAndRegs(brand: BrandConfig, from: string, to: string): Pro
       .filter(([, e]) => e.spend >= 100) // ignore tiny-spend outliers so ROAS is meaningful
       .map(([name, e]) => ({ name, spend: Math.round(e.spend), revenue: Math.round(e.rev), roas: e.spend ? e.rev / e.spend : null, previewUrl: adPreviewUrl(e.ig, e.story) }))
       .sort((a, b) => (b.roas ?? 0) - (a.roas ?? 0))
-      .slice(0, 5);
+      .slice(0, brand.topAdsCount ?? 5);
     return { topAds, registrations: Math.round(registrations) };
   } catch {
     return { topAds: [], registrations: 0 };

@@ -40,7 +40,7 @@ export function PlatformTable({ report }: { report: ClientReport }) {
 export function TopAdsTable({ report }: { report: ClientReport }) {
   return (
     <div className="panel p-4">
-      <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">5 המודעות המובילות ברואס · מטא</div>
+      <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">{report.topAds.length || 5} המודעות המובילות ברואס · מטא</div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[520px] border-collapse text-sm">
           <thead>

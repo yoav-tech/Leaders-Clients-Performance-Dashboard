@@ -66,6 +66,8 @@ export interface BrandConfig {
   // Which daily-digest table a client belongs to. Derived from the flags above by default
   // (reportGroupOf) — set explicitly only to override for a new client.
   reportGroup?: ReportGroup;
+  // How many "top ads by ROAS" to show in the client report (view + email). Default 5.
+  topAdsCount?: number;
 }
 
 // Daily-digest client categories.
@@ -167,6 +169,7 @@ export const BRANDS: BrandConfig[] = [
     nativeCurrency: "ILS",
     targetRoas: 3,
     monthlyBudget: 100000,
+    topAdsCount: 10,
   },
   {
     id: "la-beaute",
@@ -180,6 +183,7 @@ export const BRANDS: BrandConfig[] = [
     nativeCurrency: "ILS",
     targetRoas: 3,
     monthlyBudget: 100000,
+    topAdsCount: 10,
   },
   {
     id: "studio-pasha",
@@ -193,6 +197,7 @@ export const BRANDS: BrandConfig[] = [
     nativeCurrency: "ILS",
     targetRoas: 3,
     monthlyBudget: 50000,
+    topAdsCount: 10,
   },
   {
     id: "seacret",
