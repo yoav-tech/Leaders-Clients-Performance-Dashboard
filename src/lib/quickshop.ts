@@ -82,6 +82,7 @@ export async function fetchQuickShopPaidOrders(
         created_at?: string;
         total?: number | string;
         financial_status?: string;
+        status?: string; // order status — "cancelled" = returned/refunded, exclude from revenue
         customer_id?: string;
         discount_code?: string | null;
         discount_amount?: number | string | null;
@@ -95,6 +96,7 @@ export async function fetchQuickShopPaidOrders(
     };
     for (const o of json.data ?? []) {
       if (o.financial_status !== "paid") continue; // paid/completed only
+      if (String(o.status ?? "").toLowerCase() === "cancelled") continue; // paid-then-cancelled = returned/refunded
       if (!o.created_at) continue;
       const d = localDate(o.created_at);
       if (d < from || d > to) continue; // keep only the requested local-date window

@@ -14,7 +14,7 @@ import type { PaidOrder } from "./quickshop";
 const API_VERSION = "2026-07";
 const PAGE_LIMIT = 250; // Admin REST caps page size at 250
 const FIELDS =
-  "created_at,total_price,currency,financial_status,customer,discount_codes,landing_site,referring_site";
+  "created_at,total_price,current_total_price,currency,financial_status,customer,discount_codes,landing_site,referring_site";
 
 // Pull utm_source/utm_medium from a Shopify landing_site (a path+query like "/?utm_source=ig&…").
 function parseUtm(landingSite: string | undefined): { source?: string; medium?: string; campaign?: string; content?: string; term?: string } {
@@ -162,7 +162,8 @@ export async function fetchShopifyPaidOrders(
 
   const params = new URLSearchParams({
     status: "any", // include closed/archived, not just open
-    financial_status: "paid",
+    // No financial_status filter: we want paid AND partially_refunded orders (netted below via
+    // current_total_price). Filtering to "paid" alone would drop partial-refund orders entirely.
     created_at_min: min,
     created_at_max: max,
     limit: String(PAGE_LIMIT),
@@ -182,6 +183,7 @@ export async function fetchShopifyPaidOrders(
       orders?: Array<{
         created_at?: string;
         total_price?: number | string;
+        current_total_price?: number | string; // total after refunds/edits — the net kept
         currency?: string;
         financial_status?: string;
         customer?: { id?: number | string } | null;
@@ -191,11 +193,12 @@ export async function fetchShopifyPaidOrders(
       }>;
     };
     for (const o of json.orders ?? []) {
-      if (o.financial_status !== "paid") continue;
+      // Money actually collected & kept: fully paid, or partially refunded (net via current_total_price).
+      if (o.financial_status !== "paid" && o.financial_status !== "partially_refunded") continue;
       if (!o.created_at) continue;
       const d = localDate(o.created_at);
       if (d < from || d > to) continue; // keep only the requested local-date window
-      const total = Number(o.total_price ?? 0);
+      const total = Number(o.current_total_price ?? o.total_price ?? 0);
       if (!currency && o.currency) currency = String(o.currency).toUpperCase();
       const utm = parseUtm(o.landing_site ?? undefined);
       orders.push({
