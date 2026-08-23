@@ -40,7 +40,7 @@ function renderEmail(r: ClientReport, note: string): string {
       ${note ? `<div style="padding:12px 14px;border:1px solid rgba(124,58,237,.18);border-radius:12px;background:#f4f1ff;margin-bottom:14px;font-size:14px;line-height:1.6;white-space:pre-wrap">${esc(note)}</div>` : ""}
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin:6px 0">לפי פלטפורמה · Spend · Revenue · ROAS · CVR · AOV</div>
       <table role="presentation" width="100%" style="border-collapse:collapse">${platforms}</table>
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin:14px 0 6px">5 מודעות מובילות ברואס</div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin:14px 0 6px">${r.topAds.length || 5} מודעות מובילות ברואס</div>
       <table role="presentation" width="100%" style="border-collapse:collapse">${ads}</table>
       <div style="margin-top:16px;color:#6b7280;font-size:13px;line-height:1.6">${esc(r.summary)}</div>
     </div>
