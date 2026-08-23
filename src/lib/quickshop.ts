@@ -96,7 +96,8 @@ export async function fetchQuickShopPaidOrders(
     };
     for (const o of json.data ?? []) {
       if (o.financial_status !== "paid") continue; // paid/completed only
-      if (String(o.status ?? "").toLowerCase() === "cancelled") continue; // paid-then-cancelled = returned/refunded
+      // NOTE: cancelled-but-paid orders are KEPT — QuickShop's own revenue dashboard counts them
+      // (gross, returns not deducted), and we reconcile to that dashboard per the user's decision.
       if (String(o.utm_source ?? "").toLowerCase() === "pos") continue; // in-store POS sales — not online/marketing revenue
       if (!o.created_at) continue;
       const d = localDate(o.created_at);
