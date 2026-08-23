@@ -140,6 +140,9 @@ export interface PlatformPlan {
   flightStart: string;
   flightEnd: string;
   lines: PlatformPlanLine[];
+  // Optional lead-generation goal for the flight (dedicated leadgen + bonus conversions count toward
+  // the leads total; cpa is the acceptable cost per lead, compared to the leadgen CPL).
+  leadTarget?: { leads: number; cpa: number };
 }
 
 // Creator/influencer attribution for platform-plan brands. An ad row is attributed to the first
@@ -322,6 +325,7 @@ export const BRANDS: BrandConfig[] = [
         { platform: "meta", title: "Meta", budget: 90000, thruplay: 500000, completedViews: 132353, views: 1182857, impressions: 3214286, reach: 1461039 },
         { platform: "tiktok", title: "TikTok", budget: 90000, thruplay: 409091, completedViews: 105882, views: 1182857, impressions: 3214286, reach: 1461039 },
       ],
+      leadTarget: { leads: 470, cpa: 153 }, // flight goal: 470 leads @ ₪153 CPA
     },
     creators: [
       // Content themes belong to a creator even when the ad/adset name drops the creator prefix:
