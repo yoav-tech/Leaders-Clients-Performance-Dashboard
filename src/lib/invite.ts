@@ -3,7 +3,7 @@
 // admin with a null password) is activated when the client sets their password via the token.
 import { hmacHex, safeEqual } from "./auth";
 
-export const INVITE_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
+export const INVITE_TTL_SECONDS = 60 * 60 * 48; // 48 hours
 
 function b64urlEncode(s: string): string {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");

@@ -127,7 +127,7 @@ export default function AccountPanel({
             {tMsg && <div className="mt-2 text-xs text-[var(--bad)]">{tMsg}</div>}
             {tLink && (
               <div className="mt-3 rounded-lg border border-[var(--card-border)] bg-[var(--background)]/50 p-3">
-                <div className="mb-1 text-xs text-[var(--muted)]">קישור הזמנה (שלח לחבר הצוות, תקף 7 ימים):</div>
+                <div className="mb-1 text-xs text-[var(--muted)]">קישור הזמנה (שלח לחבר הצוות, תקף 48 שעות):</div>
                 <div className="flex items-center gap-2">
                   <input readOnly value={tLink} onFocus={(e) => e.currentTarget.select()} className="flex-1 rounded-md border border-[var(--card-border)] bg-[var(--background)] px-2 py-1 text-xs" dir="ltr" />
                   <button onClick={copy} className="shrink-0 rounded-md bg-blue-600 px-3 py-1 text-xs text-white">{copied ? "הועתק ✓" : "העתק"}</button>
