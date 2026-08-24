@@ -68,6 +68,22 @@ export function TopAdsTable({ report }: { report: ClientReport }) {
               </tr>
             ))}
             {report.topAds.length === 0 && <tr><td colSpan={7} className="px-2 py-3 text-center text-[var(--muted)]">אין מודעות עם מספיק הוצאה בטווח.</td></tr>}
+            {report.topAds.length > 0 && (() => {
+              const t = report.topAds.reduce((a, x) => ({ spend: a.spend + x.spend, metaRev: a.metaRev + x.revenue, storeRev: a.storeRev + (x.storeRevenue ?? 0) }), { spend: 0, metaRev: 0, storeRev: 0 });
+              const metaRoas = t.spend ? t.metaRev / t.spend : null;
+              const storeRoas = t.spend && t.storeRev ? t.storeRev / t.spend : null;
+              return (
+                <tr className="border-t-2 border-[var(--card-border)] font-semibold">
+                  <td className="px-2 py-1.5 text-right text-[var(--muted)]"></td>
+                  <td className="px-2 py-1.5 text-right">סה״כ</td>
+                  <td className="px-2 py-1.5 text-left">{formatIls(t.spend)}</td>
+                  <td className="px-2 py-1.5 text-left text-[var(--muted)]">{formatIls(t.metaRev)}</td>
+                  <td className={`px-2 py-1.5 text-left ${TONE[roasTone(metaRoas, report.target)]}`}>{formatRoas(metaRoas)}</td>
+                  <td className="px-2 py-1.5 text-left border-r border-[var(--card-border)]">{t.storeRev ? formatIls(t.storeRev) : "—"}</td>
+                  <td className={`px-2 py-1.5 text-left ${storeRoas == null ? "" : TONE[roasTone(storeRoas, report.target)]}`}>{storeRoas == null ? "—" : formatRoas(storeRoas)}</td>
+                </tr>
+              );
+            })()}
           </tbody>
         </table>
       </div>
