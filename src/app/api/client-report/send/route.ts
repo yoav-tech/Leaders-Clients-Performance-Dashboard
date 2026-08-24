@@ -29,9 +29,14 @@ function renderEmail(r: ClientReport, note: string): string {
     a.previewUrl
       ? `${i + 1}. <a href="${esc(a.previewUrl)}" style="color:#4f46e5;text-decoration:none" target="_blank" rel="noopener">${esc(a.name)} ↗</a>`
       : `${i + 1}. ${esc(a.name)}`;
+  const at = r.topAds.reduce((a, x) => ({ spend: a.spend + x.spend, metaRev: a.metaRev + x.revenue, storeRev: a.storeRev + (x.storeRevenue ?? 0) }), { spend: 0, metaRev: 0, storeRev: 0 });
+  const adsTotal = r.topAds.length
+    ? `<tr><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:right">סה״כ</td>${ptd(ils(at.spend), true)}${ptd(at.spend ? roas(at.metaRev / at.spend) : "—", true)}${ptd(at.storeRev ? ils(at.storeRev) : "—", true)}${ptd(at.spend && at.storeRev ? roas(at.storeRev / at.spend) : "—", true)}</tr>`
+    : "";
   const ads =
     `<tr>${pth("מודעה", true)}${pth("הוצאה")}${pth("רואס מטא")}${pth("הכנסות חנות")}${pth("רואס חנות")}</tr>` +
-    r.topAds.map((a, i) => `<tr><td style="padding:7px 8px;border-bottom:1px solid #ececf3;font:400 13px/1.3 ${F};color:#1a1d26;text-align:right">${adName(a, i)}</td>${ptd(ils(a.spend))}${ptd(roas(a.roas))}${ptd(a.storeRevenue == null ? "—" : ils(a.storeRevenue), true)}${ptd(a.storeRoas == null ? "—" : roas(a.storeRoas), true)}</tr>`).join("");
+    r.topAds.map((a, i) => `<tr><td style="padding:7px 8px;border-bottom:1px solid #ececf3;font:400 13px/1.3 ${F};color:#1a1d26;text-align:right">${adName(a, i)}</td>${ptd(ils(a.spend))}${ptd(roas(a.roas))}${ptd(a.storeRevenue == null ? "—" : ils(a.storeRevenue), true)}${ptd(a.storeRoas == null ? "—" : roas(a.storeRoas), true)}</tr>`).join("") +
+    adsTotal;
   return `<!doctype html><html><body style="margin:0;background:#f5f4fb"><div dir="rtl" style="max-width:640px;margin:0 auto;background:#fff;border:1px solid #ececf3;border-radius:16px;overflow:hidden;font-family:${F}">
     <div style="padding:24px;background:linear-gradient(135deg,#efeaff,#fff);border-bottom:1px solid #ececf3">
       <div style="font:800 22px/1 ${F};letter-spacing:.16em">LEADERS</div>
