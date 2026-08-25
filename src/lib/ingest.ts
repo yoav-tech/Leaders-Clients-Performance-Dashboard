@@ -345,7 +345,7 @@ async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to:
           ? ["reach", "video_thruplay_watched_actions", "video_p100_watched_actions"]
           : ch.id === "tiktok"
             ? ["reach", "video_watched_6s", "video_views_p100"]
-            : ["video_views", "video_quartile_p75_rate", "video_quartile_p100_rate"] // google/YouTube: video_views is null in Windsor
+            : ["unique_users", "video_views", "video_quartile_p75_rate", "video_quartile_p100_rate"] // google/YouTube: reach=unique_users; video_views is null in Windsor
         : ch.id === "meta"
           ? ["actions_lead"]
           : ch.id === "tiktok"
@@ -388,9 +388,10 @@ async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to:
           if (ch.id === "meta") { a.views += sumAction(r.video_thruplay_watched_actions); a.completed += sumAction(r.video_p100_watched_actions); }
           else if (ch.id === "tiktok") { a.views += num(r.video_watched_6s); a.completed += num(r.video_views_p100); }
           else {
-            // Google/YouTube: video_views is null in Windsor — derive from quartile rates.
-            // views ≈ TrueView (75%+ watched); completed = 100% watched. (impressions × rate)
+            // Google/YouTube: reach = unique_users (Google's "reach" field is null); video_views is
+            // null too — derive views ≈ TrueView (75%+ watched) and completed = 100%, impressions × rate.
             const impr = num(r.impressions);
+            a.reach += num(r.unique_users);
             a.views += num(r.video_views) || impr * num(r.video_quartile_p75_rate);
             a.completed += impr * num(r.video_quartile_p100_rate);
           }
