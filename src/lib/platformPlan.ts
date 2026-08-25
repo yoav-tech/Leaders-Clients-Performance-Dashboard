@@ -240,18 +240,15 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
     .filter((c) => c.spend > 0)
     .sort((a, b) => b.spend - a.spend);
 
+  // Totals are straight sums of EVERY platform (YouTube included), so the total row equals the sum of
+  // the rows above it. % attainment = total actual ÷ total target; YouTube carries actuals but a 0
+  // target, so it adds to delivery without adding to the target (bonus delivery over the plan).
   const sum = (f: (l: PlatformLineExecution) => number) => lines.reduce((s, l) => s + f(l), 0);
   const budget = sum((l) => l.line.budget), spend = sum((l) => l.actual.spend);
   const thruplayTarget = sum((l) => l.line.thruplay);
   const completedTarget = sum((l) => l.line.completedViews);
-  // Attainment / CPV totals count only lines that carry a plan target (Meta/TikTok) — YouTube has no
-  // 15s/100% targets and a different "view" definition, so it would distort the % and blended CPV.
-  // Its spend still counts in the overview budget/spend above.
-  const att = lines.filter((l) => l.line.thruplay > 0 || l.line.completedViews > 0);
-  const asum = (f: (l: PlatformLineExecution) => number) => att.reduce((s, l) => s + f(l), 0);
-  const thruplay = asum((l) => l.actual.thruplay);
-  const completedViews = asum((l) => l.actual.completedViews);
-  const attSpend = asum((l) => l.actual.spend), attBudget = asum((l) => l.line.budget);
+  const thruplay = sum((l) => l.actual.thruplay);
+  const completedViews = sum((l) => l.actual.completedViews);
 
   return {
     flightStart: plan.flightStart, flightEnd: plan.flightEnd, asOf,
@@ -260,7 +257,7 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
     totals: {
       budget, spend, thruplayTarget, thruplay, completedTarget, completedViews,
       spendPct: pct(spend, budget), thruplayPct: pct(thruplay, thruplayTarget), completedPct: pct(completedViews, completedTarget),
-      cpv: thruplay ? attSpend / thruplay : null, planCpv: thruplayTarget ? attBudget / thruplayTarget : null,
+      cpv: thruplay ? spend / thruplay : null, planCpv: thruplayTarget ? budget / thruplayTarget : null,
     },
   };
 }
