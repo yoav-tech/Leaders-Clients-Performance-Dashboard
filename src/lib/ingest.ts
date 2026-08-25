@@ -345,7 +345,7 @@ async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to:
           ? ["reach", "video_thruplay_watched_actions", "video_p100_watched_actions"]
           : ch.id === "tiktok"
             ? ["reach", "video_watched_6s", "video_views_p100"]
-            : ["video_views"]
+            : ["video_views", "video_quartile_p75_rate", "video_quartile_p100_rate"] // google/YouTube: video_views is null in Windsor
         : ch.id === "meta"
           ? ["actions_lead"]
           : ch.id === "tiktok"
@@ -387,7 +387,13 @@ async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to:
           a.reach += num(r.reach);
           if (ch.id === "meta") { a.views += sumAction(r.video_thruplay_watched_actions); a.completed += sumAction(r.video_p100_watched_actions); }
           else if (ch.id === "tiktok") { a.views += num(r.video_watched_6s); a.completed += num(r.video_views_p100); }
-          else { a.views += num(r.video_views); }
+          else {
+            // Google/YouTube: video_views is null in Windsor — derive from quartile rates.
+            // views ≈ TrueView (75%+ watched); completed = 100% watched. (impressions × rate)
+            const impr = num(r.impressions);
+            a.views += num(r.video_views) || impr * num(r.video_quartile_p75_rate);
+            a.completed += impr * num(r.video_quartile_p100_rate);
+          }
         } else if (ch.id === "meta") {
           a.leads += sumAction(r.actions_lead);
         } else if (ch.id === "tiktok") {
