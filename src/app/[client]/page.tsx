@@ -15,6 +15,7 @@ import { resolveRange, today, type RangeKey } from "@/lib/dates";
 import { hasDb } from "@/lib/db";
 import BrandView from "@/components/BrandView";
 import LiveRefresher from "@/components/LiveRefresher";
+import MetaDirectPanel from "@/components/MetaDirectPanel";
 import MediaPlanView from "@/components/MediaPlanView";
 import { getMediaPlanExecution } from "@/lib/mediaPlan";
 import PlatformPlanView from "@/components/PlatformPlanView";
@@ -266,6 +267,13 @@ export default async function ClientPage({
       <Suspense key={`${brandId}:${range.from}:${range.to}:${isClient ? "c" : "a"}`} fallback={<ViewSkeleton />}>
         <BrandContent brand={brand} range={range} isClient={isClient} sub={sp.sub ?? ""} tab={sp.tab ?? ""} asParam={previewClient ? "&as=client" : ""} />
       </Suspense>
+      {brand.metaAccountId && !brand.commandCenter && (
+        <div className="mt-6">
+          <Suspense fallback={null}>
+            <MetaDirectPanel accountId={brand.metaAccountId} from={range.from} to={range.to} />
+          </Suspense>
+        </div>
+      )}
     </AppShell>
   );
 }
