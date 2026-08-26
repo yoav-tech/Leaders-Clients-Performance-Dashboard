@@ -213,6 +213,7 @@ export const BRANDS: BrandConfig[] = [
 
     targetRoas: 3,
     monthlyBudget: 100000,
+    navHidden: true, // hidden from the nav/display — data still ingests & is retained
   },
   {
     id: "style",
