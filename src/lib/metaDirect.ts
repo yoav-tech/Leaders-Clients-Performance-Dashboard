@@ -33,9 +33,12 @@ async function _get(accountId: string, from: string, to: string): Promise<MetaDi
       spend: n(r.spend), impressions: n(r.impressions), reach: n(r.reach),
       frequency: r.frequency != null ? n(r.frequency) : null, clicks: n(r.clicks),
       ctr: r.ctr != null ? n(r.ctr) / 100 : null, // Meta returns CTR as a percentage
-      purchases: metaAction(r, "purchase", "omni_purchase", "onsite_web_purchase"),
-      purchaseValue: actionValue(r, "purchase", "omni_purchase", "onsite_web_purchase"),
-      leads: metaAction(r, "lead", "onsite_conversion.lead_grouped"),
+      // Meta reports the SAME purchases under ~8 overlapping action_type labels (purchase,
+      // omni_purchase, onsite_web_purchase, fb_pixel_purchase, …) — summing them multiplies the
+      // count. Use the single canonical `omni_purchase` (matches Windsor's actions_purchase exactly).
+      purchases: metaAction(r, "omni_purchase"),
+      purchaseValue: actionValue(r, "omni_purchase"),
+      leads: metaAction(r, "lead"),
       messaging: metaAction(r, "onsite_conversion.messaging_conversation_started_7d", "messaging_conversation_started_7d"),
       landingPageViews: metaAction(r, "landing_page_view"),
     };
