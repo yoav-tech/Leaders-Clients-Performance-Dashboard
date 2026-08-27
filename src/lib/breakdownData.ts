@@ -345,7 +345,7 @@ export const getBreakdownData = unstable_cache(_getBreakdownData, ["breakdown-v2
 function explorerBrands(): { brand: BrandConfig; channel: Channel }[] {
   const out: { brand: BrandConfig; channel: Channel }[] = [];
   for (const b of BRANDS) {
-    if (b.platformPlan || b.appInstall || b.googleSnapshot || b.commandCenter || b.navHidden) continue;
+    if (b.platformPlan || b.appInstall || b.googleSnapshot || b.commandCenter || b.navHidden || b.retired) continue;
     const profile = campaignProfileOf(b);
     let channel: Channel | null = null;
     // Profile first: a views/leads brand renders CampaignBrandView (with the explorer) even when it
