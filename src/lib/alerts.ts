@@ -247,7 +247,10 @@ export async function collectAlerts(): Promise<Alert[]> {
     adHealthAlerts().catch(() => [] as Alert[]),
   ]);
   const severityRank: Record<AlertSeverity, number> = { critical: 0, warning: 1, info: 2 };
-  return [...perf, ...health].sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
+  const retired = new Set(BRANDS.filter((b) => b.retired).map((b) => b.id));
+  return [...perf, ...health]
+    .filter((a) => !retired.has(a.brandId)) // retired clients (e.g. Seacret) are hidden everywhere
+    .sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
 }
 
 // --- helpers ---
