@@ -60,9 +60,12 @@ export interface BrandConfig {
   // Marketing command center (Leaders): one view with sub-section tabs (each a brand id), a native
   // content calendar + approvals + briefs. Sub-section brands are read for data but hidden from nav.
   commandCenter?: { subSections: string[] };
-  // Hide from the sidebar (still accessible/authorized) — e.g. Bestie is a sub-section of the
-  // Leaders command center rather than its own nav entry.
+  // Hide from the sidebar (still accessible/authorized AND still in reports/digest) — e.g. Bestie is
+  // a sub-section of the Leaders command center rather than its own nav entry.
   navHidden?: boolean;
+  // Retired/parked client — fully hidden from the platform (nav AND digest/reports), but its data
+  // keeps ingesting and is retained. Distinct from navHidden (which stays in reports). e.g. Seacret.
+  retired?: boolean;
   // Which daily-digest table a client belongs to. Derived from the flags above by default
   // (reportGroupOf) — set explicitly only to override for a new client.
   reportGroup?: ReportGroup;
@@ -213,7 +216,7 @@ export const BRANDS: BrandConfig[] = [
 
     targetRoas: 3,
     monthlyBudget: 100000,
-    navHidden: true, // hidden from the nav/display — data still ingests & is retained
+    retired: true, // fully hidden from platform + digest; data still ingests & is retained
   },
   {
     id: "style",

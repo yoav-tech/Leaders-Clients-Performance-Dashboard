@@ -62,7 +62,7 @@ export async function getGroupedDigest(alerts?: Alert[]): Promise<GroupedDigest>
   const jobs: Promise<void>[] = [];
 
   for (const brand of BRANDS) {
-    if (brand.navHidden) continue; // hidden from display (e.g. Seacret) — data kept, not shown
+    if (brand.retired) continue; // retired client (e.g. Seacret) — data kept, not shown. navHidden (Bestie) stays.
     const group = reportGroupOf(brand);
     const m = metrics.find((x) => x.brandId === brand.id);
 
@@ -157,7 +157,7 @@ export function renderGroupedText(d: GroupedDigest, reminder: "week" | "month" |
       : `☀️ **דוח יומי לקוחות לידרס** · ${d.to}`;
   const parts: string[] = [title];
   if (reminder) {
-    const ecomNames = BRANDS.filter((b) => !b.navHidden && reportGroupOf(b) === "ecommerce").map((b) => b.name).join(", ");
+    const ecomNames = BRANDS.filter((b) => !b.retired && reportGroupOf(b) === "ecommerce").map((b) => b.name).join(", ");
     parts.push(reminder === "week"
       ? `⏰ **תזכורת: סיכום שבועי ללקוחות** — מלאו מסקנות ושלחו בדשבורד: ${ecomNames}.`
       : `⏰ **תזכורת: סיכום חודשי ללקוחות** — תחילת חודש, מלאו מסקנות ושלחו בדשבורד: ${ecomNames}.`);
