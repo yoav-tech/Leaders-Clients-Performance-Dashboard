@@ -354,7 +354,7 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 0,
-    monthlyBudget: 150000, // total Haat monthly budget (both sections) for pacing
+    monthlyBudget: 100000, // total Haat monthly budget (both sections) for pacing
     appInstall: true,
     appSections: [
       { key: "delivery", title: "Haat delivery IL", account: "1234295457784453", kind: "app", budget: 0 },

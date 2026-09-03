@@ -54,3 +54,6 @@ export const HAAT_AUGUST_2026: ManualRegionSummary = {
   ],
   total: { city: "סה״כ", spend: 78223, regs: 3080, cpr: 25 },
 };
+
+// The cities Haat runs city-level campaigns in — the rows of the budget-request form.
+export const HAAT_CITIES: string[] = HAAT_AUGUST_2026.rows.map((r) => r.city);
