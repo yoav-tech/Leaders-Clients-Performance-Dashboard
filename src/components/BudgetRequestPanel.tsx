@@ -47,7 +47,10 @@ export default function BudgetRequestPanel({ brandId, cities, current }: { brand
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error ?? `שגיאה ${res.status}`);
       setState("sent");
-      setMessage(`הבקשה נשלחה לצוות המדיה (${filled.length} ${filled.length === 1 ? "עיר" : "ערים"}).`);
+      const n = `${filled.length} ${filled.length === 1 ? "עיר" : "ערים"}`;
+      setMessage(json.notified === false
+        ? `הבקשה נשמרה (${n}) והיא מול צוות המדיה. שליחת המייל נכשלה — הצוות יראה את הבקשה בדשבורד.`
+        : `הבקשה נשלחה לצוות המדיה (${n}).`);
     } catch (e) {
       setState("error");
       setMessage(e instanceof Error ? e.message : String(e));
