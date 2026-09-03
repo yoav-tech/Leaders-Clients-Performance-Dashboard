@@ -30,7 +30,14 @@ export default function BudgetRequestPanel({ brandId, cities, current, currentDa
   };
 
   const filled = rows.filter((r) => r.daily !== "" || r.monthly !== "");
+
+  // Totals: "live" is what the campaigns are set to now; "requested" is what the account would run
+  // at if this form were applied — so a city left blank counts at its current budget rather than
+  // zero, and the two totals are directly comparable.
   const totalLive = cities.reduce((a, c) => a + (currentDaily[c] ?? 0), 0);
+  const totalRequestedDaily = rows.reduce((a, r) => a + (r.daily === "" ? currentDaily[r.city] ?? 0 : Number(r.daily)), 0);
+  const totalRequestedMonthly = rows.reduce((a, r) => a + (r.monthly === "" ? 0 : Number(r.monthly)), 0);
+  const deltaDaily = totalRequestedDaily - totalLive;
 
   const submit = async () => {
     if (!filled.length) { setState("error"); setMessage("יש למלא תקציב יומי או חודשי לפחות לעיר אחת."); return; }
@@ -101,17 +108,25 @@ export default function BudgetRequestPanel({ brandId, cities, current, currentDa
               );
             })}
           </tbody>
-          {totalLive > 0 && (
-            <tfoot>
-              <tr className="border-t-2 border-[var(--card-border)] text-[13px] font-bold tabular-nums">
-                <td className="px-2 py-1.5">סה״כ יומי</td>
-                <td className="px-2 py-1.5">₪{Math.round(totalLive).toLocaleString("en-US")}</td>
-                <td className="px-2 py-1.5" />
-                <td className="px-2 py-1.5" />
-              </tr>
-            </tfoot>
-          )}
+          <tfoot>
+            <tr className="border-t-2 border-[var(--card-border)] text-[13px] font-bold tabular-nums">
+              <td className="px-2 py-1.5">סה״כ</td>
+              <td className="px-2 py-1.5">{totalLive > 0 ? `₪${Math.round(totalLive).toLocaleString("en-US")}` : "—"}</td>
+              <td className="px-2 py-1.5">
+                <span>₪{Math.round(totalRequestedDaily).toLocaleString("en-US")}</span>
+                {Math.round(deltaDaily) !== 0 && (
+                  <span className={`ms-2 text-[12px] font-medium ${deltaDaily > 0 ? "text-[var(--bad)]" : "text-[var(--good)]"}`} dir="ltr">
+                    {deltaDaily > 0 ? "+" : "−"}₪{Math.abs(Math.round(deltaDaily)).toLocaleString("en-US")}
+                  </span>
+                )}
+              </td>
+              <td className="px-2 py-1.5">{totalRequestedMonthly > 0 ? `₪${Math.round(totalRequestedMonthly).toLocaleString("en-US")}` : "—"}</td>
+            </tr>
+          </tfoot>
         </table>
+      </div>
+      <div className="mt-2 text-[11px] text-[var(--muted)]">
+        סה״כ המבוקש מחושב כך שעיר שנשארה ריקה נספרת בתקציב הנוכחי שלה — כך שהסכום משקף את התקציב היומי הכולל אם הבקשה תאושר.
       </div>
 
       <textarea

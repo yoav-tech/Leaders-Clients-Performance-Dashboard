@@ -50,9 +50,23 @@ export async function POST(request: Request) {
         <td style="padding:6px 10px;border-top:1px solid #e5e7eb;text-align:left">${ils(r.daily)}</td>
         <td style="padding:6px 10px;border-top:1px solid #e5e7eb;text-align:left">${ils(r.monthly)}</td>
       </tr>`).join("");
+
+    // Headline: the account's total daily budget now vs if this request were applied. Cities the
+    // client didn't touch (and monthly-only asks) keep their current daily budget.
+    const totalLive = Object.values(live).reduce((a, b) => a + b, 0);
+    const totalRequested = rows.reduce((a, r) => (r.daily == null ? a : a + (r.daily - (live[r.city] ?? 0))), totalLive);
+    const delta = Math.round(totalRequested - totalLive);
+    const totalLine = totalLive > 0
+      ? `<div style="margin:0 0 12px;padding:8px 12px;background:#f3f4f6;border-radius:8px">
+           סה״כ תקציב יומי: <b>${ils(totalLive)}</b> → <b>${ils(totalRequested)}</b>
+           ${delta !== 0 ? `<span style="color:${delta > 0 ? "#b91c1c" : "#15803d"}">(${delta > 0 ? "+" : "−"}${ils(Math.abs(delta))})</span>` : ""}
+         </div>`
+      : "";
+
     const html = `<div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111">
       <h2 style="margin:0 0 4px">בקשת שינוי תקציב · ${esc(brand.name)}</h2>
       <div style="color:#6b7280;margin-bottom:12px">${esc(session.sub)} · ${new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" })}</div>
+      ${totalLine}
       <table style="border-collapse:collapse;min-width:360px">
         <thead><tr style="color:#6b7280;font-size:12px;text-align:right">
           <th style="padding:6px 10px">עיר</th>
