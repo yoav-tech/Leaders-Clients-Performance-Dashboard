@@ -3,8 +3,8 @@ import type { AppReport, AppSection, Totals } from "@/lib/appReport";
 import { formatIls, formatNumber, formatPct } from "@/lib/metrics";
 import AppLevelTable, { type Col } from "./AppLevelTable";
 import RegionCostPanel from "./RegionCostPanel";
-import { WeekRegionPanel, ManualMonthPanel } from "./HaatRegionSummaries";
-import { HAAT_AUGUST_2026 } from "@/lib/haatRegions";
+import ManualRegionPanel from "./HaatRegionSummaries";
+import { HAAT_AUGUST_2026, HAAT_LAST_WEEK } from "@/lib/haatRegions";
 import type { RegionCostReport } from "@/lib/regionCost";
 
 const REACH_COLS: Col[] = [
@@ -158,9 +158,9 @@ export default function AppReportView({ brand, report, regionReport, from, to, i
             )}
           </Panel>
 
-          {/* Under the overview: last week (live) on top, then the client's manual monthly summary. */}
-          {s.kind === "app" && regionReport && regionReport.rows.length > 0 && <WeekRegionPanel report={regionReport} />}
-          {s.kind === "app" && <ManualMonthPanel summary={HAAT_AUGUST_2026} />}
+          {/* Under the overview: the client's own summaries — last week on top, then the month. */}
+          {s.kind === "app" && <ManualRegionPanel summary={HAAT_LAST_WEEK} title="סיכום השבוע האחרון · הרשמות לפי עיר" />}
+          {s.kind === "app" && <ManualRegionPanel summary={HAAT_AUGUST_2026} title="סיכום חודשי · הרשמות לפי עיר" />}
 
           {s.kind === "app" && (
             <Panel title="Funnel · הורדות → הרשמות → רכישות">

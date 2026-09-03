@@ -16,13 +16,12 @@ function sumAction(v: unknown): number {
 }
 
 export interface RegionWindow { spend: number; regs: number; installs: number; cpr: number | null }
-export interface RegionRow { city: string; recent: RegionWindow; base: RegionWindow; week: RegionWindow; deltaPct: number | null }
+export interface RegionRow { city: string; recent: RegionWindow; base: RegionWindow; deltaPct: number | null }
 export interface UacPoint { date: string; cpr: number | null }
 export interface RegionCostReport {
   recentFrom: string; recentTo: string; baseFrom: string; baseTo: string;
-  weekFrom: string; weekTo: string; // trailing 7 complete days
   rows: RegionRow[];
-  totalRecent: RegionWindow; totalBase: RegionWindow; totalMonth: RegionWindow; totalWeek: RegionWindow; deltaPct: number | null;
+  totalRecent: RegionWindow; totalBase: RegionWindow; totalMonth: RegionWindow; deltaPct: number | null;
   daily: UacPoint[]; // UAC (cost per registration) per day, month-to-date
 }
 
@@ -37,9 +36,7 @@ export async function getRegionCostReport(brand: BrandConfig): Promise<RegionCos
   const recentFrom = shiftDate(t, -3); // last 3 days
   const baseFrom = t.slice(0, 8) + "01"; // 1st of the month
   const baseTo = shiftDate(baseFrom, 2); // first 3 days of the month
-  const weekTo = recentTo; // trailing 7 complete days — the client's "last week" summary
-  const weekFrom = shiftDate(t, -7);
-  const from = [baseFrom, recentFrom, weekFrom].sort()[0];
+  const from = baseFrom < recentFrom ? baseFrom : recentFrom;
 
   const rows = await fetchWindsor({
     connector: "facebook",
@@ -54,12 +51,11 @@ export async function getRegionCostReport(brand: BrandConfig): Promise<RegionCos
   const acc = normId(appSec.account);
   const nativeCur = brand.nativeCurrency as string;
   const empty = (): RegionWindow => ({ spend: 0, regs: 0, installs: 0, cpr: null });
-  const byCity = new Map<string, { recent: RegionWindow; base: RegionWindow; week: RegionWindow }>();
+  const byCity = new Map<string, { recent: RegionWindow; base: RegionWindow }>();
   const byDate = new Map<string, { spend: number; regs: number }>();
   const totalRecent = empty();
   const totalBase = empty();
   const totalMonth = empty();
-  const totalWeek = empty();
   const bucket = (w: RegionWindow, tot: RegionWindow, spend: number, regs: number, installs: number) => {
     w.spend += spend; w.regs += regs; w.installs += installs;
     tot.spend += spend; tot.regs += regs; tot.installs += installs;
@@ -74,7 +70,6 @@ export async function getRegionCostReport(brand: BrandConfig): Promise<RegionCos
     const d = String(r.date ?? "").slice(0, 10);
     const inRecent = d >= recentFrom && d <= recentTo;
     const inBase = d >= baseFrom && d <= baseTo;
-    const inWeek = d >= weekFrom && d <= weekTo;
     const inMonth = d >= baseFrom && d <= recentTo;
     const spend = toIls(num(r.spend), String(r.currency ?? nativeCur).toUpperCase());
     const regs = sumAction(r[F_REG]);
@@ -83,20 +78,18 @@ export async function getRegionCostReport(brand: BrandConfig): Promise<RegionCos
       totalMonth.spend += spend; totalMonth.regs += regs; totalMonth.installs += installs;
       const dd = byDate.get(d) ?? { spend: 0, regs: 0 }; dd.spend += spend; dd.regs += regs; byDate.set(d, dd);
     }
-    if (!inRecent && !inBase && !inWeek) continue;
+    if (!inRecent && !inBase) continue;
     let e = byCity.get(city);
-    if (!e) { e = { recent: empty(), base: empty(), week: empty() }; byCity.set(city, e); }
+    if (!e) { e = { recent: empty(), base: empty() }; byCity.set(city, e); }
     if (inRecent) bucket(e.recent, totalRecent, spend, regs, installs);
     if (inBase) bucket(e.base, totalBase, spend, regs, installs);
-    if (inWeek) bucket(e.week, totalWeek, spend, regs, installs);
   }
 
   const rowsOut: RegionRow[] = [...byCity].map(([city, e]) => {
     const recent = { ...e.recent, cpr: cprOf(e.recent) };
     const base = { ...e.base, cpr: cprOf(e.base) };
-    const week = { ...e.week, cpr: cprOf(e.week) };
     const deltaPct = recent.cpr != null && base.cpr != null && base.cpr > 0 ? ((recent.cpr - base.cpr) / base.cpr) * 100 : null;
-    return { city, recent, base, week, deltaPct };
+    return { city, recent, base, deltaPct };
   });
   rowsOut.sort((a, b) => {
     const av = a.deltaPct ?? (a.recent.regs ? -1 : -1000);
@@ -107,9 +100,8 @@ export async function getRegionCostReport(brand: BrandConfig): Promise<RegionCos
   totalRecent.cpr = cprOf(totalRecent);
   totalBase.cpr = cprOf(totalBase);
   totalMonth.cpr = cprOf(totalMonth);
-  totalWeek.cpr = cprOf(totalWeek);
   const deltaPct = totalRecent.cpr != null && totalBase.cpr != null && totalBase.cpr > 0 ? ((totalRecent.cpr - totalBase.cpr) / totalBase.cpr) * 100 : null;
   const daily: UacPoint[] = [...byDate].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([date, w]) => ({ date, cpr: w.regs ? w.spend / w.regs : null }));
 
-  return { recentFrom, recentTo, baseFrom, baseTo, weekFrom, weekTo, rows: rowsOut, totalRecent, totalBase, totalMonth, totalWeek, deltaPct, daily };
+  return { recentFrom, recentTo, baseFrom, baseTo, rows: rowsOut, totalRecent, totalBase, totalMonth, deltaPct, daily };
 }
