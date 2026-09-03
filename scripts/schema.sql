@@ -263,6 +263,24 @@ ALTER TABLE briefs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE briefs FORCE  ROW LEVEL SECURITY;
 REVOKE ALL ON briefs FROM anon, authenticated;
 
+-- ---- Per-city budget change requests (client -> media managers) ----
+-- One row per brand+city holding the client's CURRENT ask (upserted, not a log) — the notification
+-- email sent on each save is the audit trail. Either budget may be null: the client can ask to
+-- change only the daily or only the monthly figure for a city.
+CREATE TABLE IF NOT EXISTS budget_requests (
+  brand_id        text NOT NULL,
+  city            text NOT NULL,
+  daily_budget    numeric,
+  monthly_budget  numeric,
+  note            text NOT NULL DEFAULT '',
+  requested_by    text,
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (brand_id, city)
+);
+ALTER TABLE budget_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE budget_requests FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON budget_requests FROM anon, authenticated;
+
 -- ---- Automations on/off (super-admin console) ----
 -- One row per scheduled automation the owner has toggled. Missing row = enabled (default ON).
 CREATE TABLE IF NOT EXISTS automation_settings (
