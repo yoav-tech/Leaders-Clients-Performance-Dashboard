@@ -1,5 +1,6 @@
 import type { RegionCostReport, UacPoint } from "@/lib/regionCost";
 import { formatIls, formatNumber } from "@/lib/metrics";
+import { cityLabel } from "@/lib/haatRegions";
 
 // Haat · cost per registration by region — last 3 days vs start of month + month average, outliers
 // on top so a region whose cost jumped (e.g. ₪3.75 → ₪40) is impossible to miss. A UAC trend line
@@ -100,7 +101,7 @@ export default function RegionCostPanel({ report }: { report: RegionCostReport }
               const tn = tone(r.deltaPct);
               return (
                 <tr key={r.city} className={`border-t border-[var(--card-border)] ${tn.row}`}>
-                  <td className="px-2 py-1.5 text-right font-medium">{r.city}</td>
+                  <td className="px-2 py-1.5 text-right font-medium">{cityLabel(r.city)}</td>
                   <td className={`px-2 py-1.5 text-left font-semibold ${tn.cls}`}>{cpr(r.recent.cpr)}</td>
                   <td className="px-2 py-1.5 text-left text-[var(--muted)]">{cpr(r.base.cpr)}</td>
                   <td className={`px-2 py-1.5 text-left font-medium ${tn.cls}`}>{deltaText(r.deltaPct)}</td>
