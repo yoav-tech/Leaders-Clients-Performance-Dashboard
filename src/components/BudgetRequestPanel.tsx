@@ -16,7 +16,7 @@ const initial = (cities: string[], current: Record<string, BudgetRequest>): Row[
     monthly: current[city]?.monthly != null ? String(current[city]!.monthly) : "",
   }));
 
-export default function BudgetRequestPanel({ brandId, cities, current }: { brandId: string; cities: string[]; current: Record<string, BudgetRequest> }) {
+export default function BudgetRequestPanel({ brandId, cities, current, currentDaily = {} }: { brandId: string; cities: string[]; current: Record<string, BudgetRequest>; currentDaily?: Record<string, number> }) {
   const [rows, setRows] = useState<Row[]>(() => initial(cities, current));
   const [note, setNote] = useState("");
   const [state, setState] = useState<"idle" | "saving" | "sent" | "error">("idle");
@@ -30,6 +30,7 @@ export default function BudgetRequestPanel({ brandId, cities, current }: { brand
   };
 
   const filled = rows.filter((r) => r.daily !== "" || r.monthly !== "");
+  const totalLive = cities.reduce((a, c) => a + (currentDaily[c] ?? 0), 0);
 
   const submit = async () => {
     if (!filled.length) { setState("error"); setMessage("יש למלא תקציב יומי או חודשי לפחות לעיר אחת."); return; }
@@ -61,7 +62,7 @@ export default function BudgetRequestPanel({ brandId, cities, current }: { brand
     <div className="panel p-4" dir="rtl">
       <div className="mb-1 text-[11px] uppercase tracking-wide text-[var(--muted)]">בקשת שינוי תקציב לפי עיר</div>
       <p className="mb-3 text-[12px] text-[var(--muted)]">
-        מלאו את התקציב היומי או החודשי המבוקש לכל עיר. לאחר השליחה הבקשה תגיע לצוות המדיה במייל.
+        העמודה “תקציב יומי נוכחי” מציגה את המוגדר כרגע בקמפיינים. מלאו את התקציב המבוקש רק בערים שברצונכם לשנות — לאחר השליחה הבקשה תגיע לצוות המדיה במייל.
       </p>
 
       <div className="overflow-x-auto">
@@ -69,32 +70,47 @@ export default function BudgetRequestPanel({ brandId, cities, current }: { brand
           <thead>
             <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
               <th className="px-2 py-1.5 text-right">עיר</th>
+              <th className="px-2 py-1.5 text-right">תקציב יומי נוכחי</th>
               <th className="px-2 py-1.5 text-right">תקציב יומי מבוקש</th>
               <th className="px-2 py-1.5 text-right">תקציב חודשי מבוקש</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => (
-              <tr key={r.city} className="border-t border-[var(--card-border)]">
-                <td className="px-2 py-1.5 font-medium">{r.city}</td>
-                {(["daily", "monthly"] as const).map((f) => (
-                  <td key={f} className="px-2 py-1.5">
-                    <div className="flex items-center gap-1">
-                      <span className="text-[var(--muted)]">₪</span>
-                      <input
-                        inputMode="numeric"
-                        value={r[f]}
-                        onChange={(e) => set(i, f, e.target.value)}
-                        placeholder="—"
-                        aria-label={`${f === "daily" ? "תקציב יומי" : "תקציב חודשי"} ${r.city}`}
-                        className="w-28 rounded-lg border border-[var(--card-border)] bg-[var(--background)] px-2 py-1 text-sm tabular-nums outline-none focus:border-blue-600"
-                      />
-                    </div>
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {rows.map((r, i) => {
+              const live = currentDaily[r.city];
+              return (
+                <tr key={r.city} className="border-t border-[var(--card-border)]">
+                  <td className="px-2 py-1.5 font-medium">{r.city}</td>
+                  <td className="px-2 py-1.5 tabular-nums text-[var(--muted)]">{live == null ? "—" : `₪${Math.round(live).toLocaleString("en-US")}`}</td>
+                  {(["daily", "monthly"] as const).map((f) => (
+                    <td key={f} className="px-2 py-1.5">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[var(--muted)]">₪</span>
+                        <input
+                          inputMode="numeric"
+                          value={r[f]}
+                          onChange={(e) => set(i, f, e.target.value)}
+                          placeholder={f === "daily" && live != null ? String(Math.round(live)) : "—"}
+                          aria-label={`${f === "daily" ? "תקציב יומי" : "תקציב חודשי"} ${r.city}`}
+                          className="w-28 rounded-lg border border-[var(--card-border)] bg-[var(--background)] px-2 py-1 text-sm tabular-nums outline-none focus:border-blue-600"
+                        />
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
+          {totalLive > 0 && (
+            <tfoot>
+              <tr className="border-t-2 border-[var(--card-border)] text-[13px] font-bold tabular-nums">
+                <td className="px-2 py-1.5">סה״כ יומי</td>
+                <td className="px-2 py-1.5">₪{Math.round(totalLive).toLocaleString("en-US")}</td>
+                <td className="px-2 py-1.5" />
+                <td className="px-2 py-1.5" />
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 

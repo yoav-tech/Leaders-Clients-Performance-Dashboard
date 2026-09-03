@@ -124,7 +124,7 @@ function Trend({ s }: { s: AppSection }) {
   );
 }
 
-export default function AppReportView({ brand, report, regionReport, from, to, isClient = false, budgetRequests }: { brand: BrandConfig; report: AppReport; regionReport?: RegionCostReport | null; from: string; to: string; isClient?: boolean; budgetRequests?: Record<string, BudgetRequest> }) {
+export default function AppReportView({ brand, report, regionReport, from, to, isClient = false, budgetRequests, cityDailyBudgets }: { brand: BrandConfig; report: AppReport; regionReport?: RegionCostReport | null; from: string; to: string; isClient?: boolean; budgetRequests?: Record<string, BudgetRequest>; cityDailyBudgets?: Record<string, number> }) {
   const budget = brand.monthlyBudget;
   const mtdSpend = report.sections.reduce((a, s) => a + (s.pacing?.monthSpend ?? 0), 0);
   const projSpend = report.sections.reduce((a, s) => a + (s.pacing?.projectedSpend ?? 0), 0);
@@ -152,7 +152,7 @@ export default function AppReportView({ brand, report, regionReport, from, to, i
         {pacingPanel}
         <ManualRegionPanel summary={HAAT_LAST_WEEK} title="סיכום השבוע האחרון · הרשמות לפי עיר" />
         <ManualRegionPanel summary={HAAT_AUGUST_2026} title="סיכום חודשי · הרשמות לפי עיר" />
-        <BudgetRequestPanel brandId={brand.id} cities={HAAT_CITIES} current={budgetRequests ?? {}} />
+        <BudgetRequestPanel brandId={brand.id} cities={HAAT_CITIES} current={budgetRequests ?? {}} currentDaily={cityDailyBudgets ?? {}} />
       </div>
     );
   }
