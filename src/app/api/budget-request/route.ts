@@ -59,8 +59,17 @@ export async function POST(request: Request) {
       ${note ? `<p style="margin-top:14px"><b>הערה:</b><br>${esc(note).replace(/\n/g, "<br>")}</p>` : ""}
     </div>`;
 
-    await sendEmail({ to: mediaManagers(), subject, html, replyTo: session.sub });
-    return NextResponse.json({ ok: true, saved: rows.length });
+    // The request is already stored, so a mail failure must NOT read as "your request failed" —
+    // the client would re-submit something we already have. Report it as received but un-notified,
+    // and log loudly so we chase the delivery problem rather than the client.
+    let notified = true;
+    try {
+      await sendEmail({ to: mediaManagers(), subject, html, replyTo: session.sub });
+    } catch (mailErr) {
+      notified = false;
+      console.error("[budget-request] saved but email failed:", mailErr instanceof Error ? mailErr.message : mailErr);
+    }
+    return NextResponse.json({ ok: true, saved: rows.length, notified });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
