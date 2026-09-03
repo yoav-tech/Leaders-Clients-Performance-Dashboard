@@ -3,6 +3,10 @@
 // The response is JSON: { data: [ { <field>: <value>, ... } ] }
 
 const BASE = "https://connectors.windsor.ai";
+// Bound every call: several run in parallel per page, so worst case stays far under the 120s
+// function limit even when Windsor is unreachable.
+const WINDSOR_TIMEOUT_MS = 20_000;
+const WINDSOR_ATTEMPTS = 2;
 
 export interface WindsorQuery {
   connector: string; // e.g. "google_ads", "facebook", "tiktok", "shopify"
@@ -32,16 +36,37 @@ export async function fetchWindsor(q: WindsorQuery): Promise<WindsorRow[]> {
   for (const [k, v] of Object.entries(q.options ?? {})) params.set(k, v);
 
   const url = `${BASE}/${q.connector}?${params.toString()}`;
-  const res = await fetch(url, {
-    headers: { Accept: "application/json" },
-    ...(q.cacheSeconds ? { next: { revalidate: q.cacheSeconds } } : {}),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Windsor ${q.connector} ${res.status}: ${body.slice(0, 300)}`);
+
+  // Windsor intermittently hangs on connect from Vercel (ETIMEDOUT / ECONNRESET). Without a bound
+  // the socket never settles, so callers' .catch() never runs and the whole request burns the
+  // 120s function limit — the page just dies. A timeout turns a hang into a normal error that
+  // callers already degrade from, and one retry covers the transient resets.
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < WINDSOR_ATTEMPTS; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 400));
+    let fatal: Error | null = null;
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(WINDSOR_TIMEOUT_MS),
+        ...(q.cacheSeconds ? { next: { revalidate: q.cacheSeconds } } : {}),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        const err = new Error(`Windsor ${q.connector} ${res.status}: ${body.slice(0, 300)}`);
+        // A 4xx is a bad request — retrying won't help. A 5xx might pass on a second try.
+        if (res.status < 500) fatal = err;
+        lastErr = err;
+      } else {
+        const json = (await res.json()) as { data?: WindsorRow[] };
+        return json.data ?? [];
+      }
+    } catch (e) {
+      lastErr = e; // timeout, connection reset, DNS — worth one more try
+    }
+    if (fatal) throw fatal;
   }
-  const json = (await res.json()) as { data?: WindsorRow[] };
-  return json.data ?? [];
+  throw new Error(`Windsor ${q.connector} failed after ${WINDSOR_ATTEMPTS} attempts: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`);
 }
 
 export function num(v: string | number | null | undefined): number {
