@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBrand, campaignProfileOf, type BrandConfig } from "@/lib/brands";
 import { getClientReport, periodLabel, type ClientReport } from "@/lib/clientReport";
+import { getTopProducts, type TopProductsResult } from "@/lib/topProducts";
 import { getCampaignBrandMetrics, type CampBrandMetrics } from "@/lib/campaignMetrics";
 import { getReportNote, markReportSent, type ReportPeriod } from "@/lib/clientReportStore";
 import { getServerSession, canAccessBrand } from "@/lib/serverSession";
@@ -16,7 +17,7 @@ const roas = (v: number | null) => (v == null ? "—" : v.toFixed(1));
 const pct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-function renderEmail(r: ClientReport, note: string): string {
+function renderEmail(r: ClientReport, note: string, products: TopProductsResult | null): string {
   const F = "-apple-system,Segoe UI,Roboto,Arial,sans-serif";
   const row = (a: string, b: string) => `<tr><td style="padding:6px 8px;border-bottom:1px solid #ececf3;font:400 13px/1.3 ${F};color:#1a1d26">${a}</td><td style="padding:6px 8px;border-bottom:1px solid #ececf3;font:600 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${b}</td></tr>`;
   // Per-platform as a real multi-column table (was one crammed cell). Numbers LTR, platform RTL.
@@ -37,6 +38,34 @@ function renderEmail(r: ClientReport, note: string): string {
     `<tr>${pth("מודעה", true)}${pth("הוצאה")}${pth("רואס מטא")}${pth("הכנסות חנות")}${pth("רואס חנות")}</tr>` +
     r.topAds.map((a, i) => `<tr><td style="padding:7px 8px;border-bottom:1px solid #ececf3;font:400 13px/1.3 ${F};color:#1a1d26;text-align:right">${adName(a, i)}</td>${ptd(ils(a.spend))}${ptd(roas(a.roas))}${ptd(a.storeRevenue == null ? "—" : ils(a.storeRevenue), true)}${ptd(a.storeRoas == null ? "—" : roas(a.storeRoas), true)}</tr>`).join("") +
     adsTotal;
+
+  // Best sellers. The period is spelled out because QuickShop only exposes a rolling 30 days,
+  // which won't match the rest of the report's range.
+  const fmtD = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
+  let productsBlock = "";
+  if (products && products.rows.length) {
+    const topRev = products.rows.reduce((a, x) => a + x.revenue, 0);
+    const topUnits = products.rows.reduce((a, x) => a + x.quantity, 0);
+    const ofStore = !!(products.storeRevenue && products.storeRevenue >= topRev);
+    const base = ofStore ? products.storeRevenue! : topRev;
+    const shareOf = (v: number) => (base ? `${((v / base) * 100).toFixed(1)}%` : "—");
+    const shareLabel = ofStore ? "% מהחנות" : "% מהמובילים";
+    const label = products.period === "range" && products.from && products.to
+      ? `${fmtD(products.from)}–${fmtD(products.to)}`
+      : "30 הימים האחרונים";
+    const rows = products.rows.map((x, i) =>
+      `<tr><td style="padding:7px 8px;border-bottom:1px solid #ececf3;font:400 13px/1.3 ${F};color:#1a1d26;text-align:right">${i + 1}. ${esc(x.name)}</td>${ptd(x.quantity.toLocaleString("en-US"))}${ptd(ils(x.avgPrice))}${ptd(ils(x.revenue), true)}${ptd(shareOf(x.revenue))}</tr>`).join("");
+    const totalRow = `<tr><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:right">סה״כ ${products.rows.length} המובילים</td><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${topUnits.toLocaleString("en-US")}</td><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${topUnits ? ils(topRev / topUnits) : "—"}</td><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${ils(topRev)}</td><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${shareOf(topRev)}</td></tr>`;
+    const note30 = products.period === "last30d"
+      ? `<div style="margin-top:6px;color:#6b7280;font-size:11px">נתוני המוצרים בחנות זמינים ל־30 הימים האחרונים בלבד, ולכן הטווח כאן אינו זהה לשאר הדוח.</div>`
+      : "";
+    productsBlock =
+      `<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin:14px 0 6px">מוצרים מובילים · ${label}</div>` +
+      `<table role="presentation" width="100%" style="border-collapse:collapse">` +
+      `<tr>${pth("מוצר", true)}${pth("יחידות")}${pth("מחיר ממוצע")}${pth("הכנסות")}${pth(shareLabel)}</tr>` +
+      rows + totalRow + `</table>` + note30;
+  }
+
   return `<!doctype html><html><body style="margin:0;background:#f5f4fb"><div dir="rtl" style="max-width:640px;margin:0 auto;background:#fff;border:1px solid #ececf3;border-radius:16px;overflow:hidden;font-family:${F}">
     <div style="padding:24px;background:linear-gradient(135deg,#efeaff,#fff);border-bottom:1px solid #ececf3">
       <div style="font:800 22px/1 ${F};letter-spacing:.16em">LEADERS</div>
@@ -57,6 +86,7 @@ function renderEmail(r: ClientReport, note: string): string {
       <table role="presentation" width="100%" style="border-collapse:collapse">${platforms}</table>
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin:14px 0 6px">${r.topAds.length || 5} מודעות מובילות ברואס</div>
       <table role="presentation" width="100%" style="border-collapse:collapse">${ads}</table>
+      ${productsBlock}
       <div style="margin-top:16px;color:#6b7280;font-size:13px;line-height:1.6">${esc(r.summary)}</div>
     </div>
     <div style="padding:16px 24px;border-top:1px solid #ececf3;color:#6b7280;font-size:11px">Leaders · Powered by People</div>
@@ -113,10 +143,13 @@ export async function POST(request: Request) {
       await markReportSent(brand.id, period, from, to);
       return NextResponse.json({ ok: true, sentTo: to_ });
     }
-    const report = await getClientReport(brand, from, to);
+    const [report, products] = await Promise.all([
+      getClientReport(brand, from, to),
+      getTopProducts(brand, from, to).catch(() => null),
+    ]);
     if (!report) return NextResponse.json({ error: "no report data" }, { status: 400 });
     const to_ = mediaManagers(); // DEMO recipients; swap for the client's emails in production
-    await sendEmail({ to: to_, subject: `דוח ביצועים · ${report.brandName} · ${from} – ${to} (תצוגה)`, html: renderEmail(report, note.note), text: report.summary + (note.note ? `\n\n${note.note}` : "") });
+    await sendEmail({ to: to_, subject: `דוח ביצועים · ${report.brandName} · ${from} – ${to} (תצוגה)`, html: renderEmail(report, note.note, products), text: report.summary + (note.note ? `\n\n${note.note}` : "") });
     await markReportSent(brand.id, period, from, to);
     return NextResponse.json({ ok: true, sentTo: to_ });
   } catch (e) {
