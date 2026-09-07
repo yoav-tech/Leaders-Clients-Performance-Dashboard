@@ -1,4 +1,6 @@
 import type { BrandConfig } from "@/lib/brands";
+import type { TopProductsResult } from "@/lib/topProducts";
+import TopProductsPanel from "./TopProductsPanel";
 import type { BrandMetrics, Channel, DayBreakdown } from "@/lib/types";
 import type { MonthForecast } from "@/lib/queries";
 import type { ClientReport } from "@/lib/clientReport";
@@ -76,6 +78,7 @@ export default function ClientSummaryView({
   report = null,
   note = null,
   canEdit = false,
+  topProducts = null,
 }: {
   brand: BrandConfig;
   metrics: BrandMetrics;
@@ -85,6 +88,7 @@ export default function ClientSummaryView({
   report?: ClientReport | null;
   note?: ReportNote | null;
   canEdit?: boolean;
+  topProducts?: TopProductsResult | null;
 }) {
   const { total, channels, blendedRoas, newRevenue, returningRevenue, previous: p } = metrics;
   const target = brand.targetRoas;
@@ -205,6 +209,7 @@ export default function ClientSummaryView({
         <>
           <PlatformTable report={report} />
           <TopAdsTable report={report} />
+          {topProducts && <TopProductsPanel data={topProducts} />}
           <ReportConclusions
             brandId={report.brandId}
             from={report.from}
