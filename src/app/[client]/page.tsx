@@ -25,6 +25,8 @@ import { getAppReport } from "@/lib/appReport";
 import { getRegionCostReport } from "@/lib/regionCost";
 import { listBudgetRequests } from "@/lib/budgetRequestStore";
 import { getCityDailyBudgets } from "@/lib/cityBudgets";
+import { getSnapshot, HAAT_WEEKLY_KEY } from "@/lib/sheetStore";
+import type { HaatWeekSummary } from "@/lib/haatSheet";
 import SearchSnapshotView from "@/components/SearchSnapshotView";
 import CampaignBrandView from "@/components/CampaignBrandView";
 import { getCampaignBrandMetrics } from "@/lib/campaignMetrics";
@@ -108,14 +110,16 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
     return exec ? <MediaPlanView brand={brand} exec={exec} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No plan data.</div>;
   }
   if (isAppInstall) {
-    const [appReport, regionReport, budgetRequests, cityDailyBudgets] = await Promise.all([
+    const [appReport, regionReport, budgetRequests, cityDailyBudgets, weekSnap] = await Promise.all([
       getAppReport(brand, range.from, range.to),
       getRegionCostReport(brand),
       // Only the client view shows the budget-request form; don't pay for these otherwise.
       isClient ? listBudgetRequests(brand.id).catch(() => ({})) : Promise.resolve({}),
       isClient ? getCityDailyBudgets(brand).catch(() => ({})) : Promise.resolve({}),
+      // Weekly registrations come from the team's sheet, captured by cron (Sun/Tue/Thu).
+      getSnapshot<HaatWeekSummary>(HAAT_WEEKLY_KEY).catch(() => null),
     ]);
-    return appReport ? <AppReportView brand={brand} report={appReport} regionReport={regionReport} from={range.from} to={range.to} isClient={isClient} budgetRequests={budgetRequests} cityDailyBudgets={cityDailyBudgets} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No app data for this range.</div>;
+    return appReport ? <AppReportView brand={brand} report={appReport} regionReport={regionReport} from={range.from} to={range.to} isClient={isClient} budgetRequests={budgetRequests} cityDailyBudgets={cityDailyBudgets} weekSummary={weekSnap?.payload ?? null} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No app data for this range.</div>;
   }
   if (isSnapshot) return <SearchSnapshotView brandId={brandId} brandName={brand.name} from={range.from} to={range.to} />;
 
