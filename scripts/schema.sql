@@ -281,6 +281,18 @@ ALTER TABLE budget_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budget_requests FORCE  ROW LEVEL SECURITY;
 REVOKE ALL ON budget_requests FROM anon, authenticated;
 
+-- ---- Snapshots of external spreadsheets, captured on a schedule ----
+-- One row per source (e.g. 'haat/weekly-registration'). The dashboard reads the stored snapshot,
+-- so a page render never depends on Google being reachable.
+CREATE TABLE IF NOT EXISTS sheet_snapshots (
+  key         text PRIMARY KEY,
+  payload     jsonb NOT NULL,
+  captured_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE sheet_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sheet_snapshots FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON sheet_snapshots FROM anon, authenticated;
+
 -- ---- Automations on/off (super-admin console) ----
 -- One row per scheduled automation the owner has toggled. Missing row = enabled (default ON).
 CREATE TABLE IF NOT EXISTS automation_settings (

@@ -7,6 +7,7 @@ import ManualRegionPanel from "./HaatRegionSummaries";
 import BudgetRequestPanel from "./BudgetRequestPanel";
 import { HAAT_AUGUST_2026, HAAT_LAST_WEEK, HAAT_CITIES } from "@/lib/haatRegions";
 import type { BudgetRequest } from "@/lib/budgetRequestStore";
+import type { HaatWeekSummary } from "@/lib/haatSheet";
 import type { RegionCostReport } from "@/lib/regionCost";
 
 const REACH_COLS: Col[] = [
@@ -124,7 +125,7 @@ function Trend({ s }: { s: AppSection }) {
   );
 }
 
-export default function AppReportView({ brand, report, regionReport, from, to, isClient = false, budgetRequests, cityDailyBudgets }: { brand: BrandConfig; report: AppReport; regionReport?: RegionCostReport | null; from: string; to: string; isClient?: boolean; budgetRequests?: Record<string, BudgetRequest>; cityDailyBudgets?: Record<string, number> }) {
+export default function AppReportView({ brand, report, regionReport, from, to, isClient = false, budgetRequests, cityDailyBudgets, weekSummary }: { brand: BrandConfig; report: AppReport; regionReport?: RegionCostReport | null; from: string; to: string; isClient?: boolean; budgetRequests?: Record<string, BudgetRequest>; cityDailyBudgets?: Record<string, number>; weekSummary?: HaatWeekSummary | null }) {
   const budget = brand.monthlyBudget;
   const mtdSpend = report.sections.reduce((a, s) => a + (s.pacing?.monthSpend ?? 0), 0);
   const projSpend = report.sections.reduce((a, s) => a + (s.pacing?.projectedSpend ?? 0), 0);
@@ -150,7 +151,7 @@ export default function AppReportView({ brand, report, regionReport, from, to, i
     return (
       <div className="space-y-6">
         {pacingPanel}
-        <ManualRegionPanel summary={HAAT_LAST_WEEK} title="סיכום השבוע האחרון · הרשמות לפי עיר" />
+        <ManualRegionPanel summary={weekSummary ?? HAAT_LAST_WEEK} title="סיכום השבוע האחרון · הרשמות לפי עיר" capturedAt={weekSummary?.capturedAt} />
         <ManualRegionPanel summary={HAAT_AUGUST_2026} title="סיכום חודשי · הרשמות לפי עיר" />
         <BudgetRequestPanel brandId={brand.id} cities={HAAT_CITIES} current={budgetRequests ?? {}} currentDaily={cityDailyBudgets ?? {}} />
       </div>
@@ -177,7 +178,7 @@ export default function AppReportView({ brand, report, regionReport, from, to, i
           </Panel>
 
           {/* Under the overview: the client's own summaries — last week on top, then the month. */}
-          {s.kind === "app" && <ManualRegionPanel summary={HAAT_LAST_WEEK} title="סיכום השבוע האחרון · הרשמות לפי עיר" />}
+          {s.kind === "app" && <ManualRegionPanel summary={weekSummary ?? HAAT_LAST_WEEK} title="סיכום השבוע האחרון · הרשמות לפי עיר" capturedAt={weekSummary?.capturedAt} />}
           {s.kind === "app" && <ManualRegionPanel summary={HAAT_AUGUST_2026} title="סיכום חודשי · הרשמות לפי עיר" />}
 
           {s.kind === "app" && (
