@@ -15,12 +15,14 @@ export interface CampChannel {
   clicks: number;
   reach: number;
   views: number;
+  views3s: number; // Meta 3-second plays (0 on TikTok/Google — see ingest)
   completed: number;
   leads: number;
   ctr: number | null;
   cpc: number | null;
   cpm: number | null;
-  cpv: number | null;
+  cpv: number | null;      // cost per ThruPlay (Meta) / 6s (TikTok) — the qualified view
+  cpv3s: number | null;    // cost per 3-second play
   cpl: number | null;
   frequency: number | null;
 }
@@ -33,7 +35,7 @@ export interface CampBrandMetrics {
   previous: { spend: number; impressions: number; clicks: number; reach: number; views: number; leads: number; cpv: number | null; cpl: number | null };
 }
 
-interface Raw { date: string; channel: "meta" | "google" | "tiktok"; spend: number; impr: number; clicks: number; reach: number; views: number; completed: number; leads: number }
+interface Raw { date: string; channel: "meta" | "google" | "tiktok"; spend: number; impr: number; clicks: number; reach: number; views: number; views3s: number; completed: number; leads: number }
 
 // Cached like the ecommerce reads (busted on ingest via the "metrics" tag).
 const fetchCamp = unstable_cache(_fetchCamp, ["camp-metrics-rows"], { revalidate: 120, tags: ["metrics"] });
@@ -42,7 +44,7 @@ async function _fetchCamp(brandId: string, from: string, to: string): Promise<Ra
   const sb = getSupabase();
   const { data, error } = await sb
     .from("daily_metrics")
-    .select("date,channel,spend_ils,impressions,clicks,reach,views,completed_views,leads")
+    .select("date,channel,spend_ils,impressions,clicks,reach,views,views_3s,completed_views,leads")
     .eq("brand_id", brandId)
     .neq("channel", "site")
     .gte("date", from)
@@ -57,6 +59,7 @@ async function _fetchCamp(brandId: string, from: string, to: string): Promise<Ra
     clicks: Number(r.clicks),
     reach: Number(r.reach),
     views: Number(r.views),
+    views3s: Number(r.views_3s ?? 0),
     completed: Number(r.completed_views),
     leads: Number(r.leads),
   }));
@@ -64,7 +67,10 @@ async function _fetchCamp(brandId: string, from: string, to: string): Promise<Ra
 
 const sum = <T,>(a: T[], f: (t: T) => number) => a.reduce((s, t) => s + (f(t) || 0), 0);
 
-function derive(channel: CampChannel["channel"], r: { spend: number; impr: number; clicks: number; reach: number; views: number; completed: number; leads: number }): CampChannel {
+function derive(channel: CampChannel["channel"], r: { spend: number; impr: number; clicks: number; reach: number; views: number; views3s: number; completed: number; leads: number; spend3s?: number }): CampChannel {
+  // Only Meta reports 3-second plays, so the blended cost must divide by the spend that actually
+  // produced them. Dividing total spend (TikTok included) by Meta-only views overstates it by ~50%.
+  const spend3s = r.spend3s ?? r.spend;
   return {
     channel,
     spend: Math.round(r.spend),
@@ -72,18 +78,25 @@ function derive(channel: CampChannel["channel"], r: { spend: number; impr: numbe
     clicks: Math.round(r.clicks),
     reach: Math.round(r.reach),
     views: Math.round(r.views),
+    views3s: Math.round(r.views3s),
     completed: Math.round(r.completed),
     leads: Math.round(r.leads * 10) / 10,
     ctr: r.impr ? r.clicks / r.impr : null,
     cpc: r.clicks ? r.spend / r.clicks : null,
     cpm: r.impr ? (r.spend / r.impr) * 1000 : null,
     cpv: r.views ? r.spend / r.views : null,
+    cpv3s: r.views3s ? spend3s / r.views3s : null,
     cpl: r.leads ? r.spend / r.leads : null,
     frequency: r.reach ? r.impr / r.reach : null,
   };
 }
 function totalsOf(rows: Raw[]) {
-  return { spend: sum(rows, (r) => r.spend), impr: sum(rows, (r) => r.impr), clicks: sum(rows, (r) => r.clicks), reach: sum(rows, (r) => r.reach), views: sum(rows, (r) => r.views), completed: sum(rows, (r) => r.completed), leads: sum(rows, (r) => r.leads) };
+  return {
+    spend: sum(rows, (r) => r.spend), impr: sum(rows, (r) => r.impr), clicks: sum(rows, (r) => r.clicks),
+    reach: sum(rows, (r) => r.reach), views: sum(rows, (r) => r.views), views3s: sum(rows, (r) => r.views3s),
+    completed: sum(rows, (r) => r.completed), leads: sum(rows, (r) => r.leads),
+    spend3s: sum(rows.filter((r) => r.views3s > 0), (r) => r.spend),
+  };
 }
 
 export async function getCampaignBrandMetrics(brand: BrandConfig, from: string, to: string): Promise<CampBrandMetrics> {

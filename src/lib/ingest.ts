@@ -301,9 +301,9 @@ async function writeSourceAttribution(
 
 // Non-ecommerce accumulator (awareness reach/views, leads, app installs, or search conversions),
 // per day, per channel.
-type CampAgg = { spend: number; impr: number; clicks: number; reach: number; views: number; completed: number; leads: number; installs: number; purchases: number };
+type CampAgg = { spend: number; impr: number; clicks: number; reach: number; views: number; views3s: number; completed: number; leads: number; installs: number; purchases: number };
 function emptyCamp(): CampAgg {
-  return { spend: 0, impr: 0, clicks: 0, reach: 0, views: 0, completed: 0, leads: 0, installs: 0, purchases: 0 };
+  return { spend: 0, impr: 0, clicks: 0, reach: 0, views: 0, views3s: 0, completed: 0, leads: 0, installs: 0, purchases: 0 };
 }
 
 // Replace a non-ecommerce brand-channel's daily_metrics rows over [from, to] with fresh
@@ -317,7 +317,7 @@ async function replaceCampaignDaily(sb: Sb, brand: BrandConfig, channel: Channel
     spend: a.spend, purchases: a.purchases, revenue: 0, native_currency: currency,
     spend_ils: toIls(a.spend, currency, usdIls), revenue_ils: 0,
     impressions: a.impr, clicks: a.clicks,
-    reach: a.reach, views: a.views, completed_views: a.completed, leads: a.leads, installs: a.installs,
+    reach: a.reach, views: a.views, views_3s: a.views3s, completed_views: a.completed, leads: a.leads, installs: a.installs,
     new_purchases: 0, new_revenue_ils: 0, fetched_at: now,
   }));
   if (rows.length === 0) return 0;
@@ -342,7 +342,7 @@ async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to:
     const metricFields =
       profile === "views"
         ? ch.id === "meta"
-          ? ["reach", "video_thruplay_watched_actions", "video_p100_watched_actions"]
+          ? ["reach", "video_thruplay_watched_actions", "video_p100_watched_actions", "actions_video_view"]
           : ch.id === "tiktok"
             ? ["reach", "video_watched_6s", "video_views_p100"]
             : ["unique_users", "video_views", "video_quartile_p75_rate", "video_quartile_p100_rate"] // google/YouTube: reach=unique_users; video_views is null in Windsor
@@ -385,7 +385,13 @@ async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to:
           // the TikTok completion field to verify on the next ingest run (see channelFields.ts
           // for the same caveat on other TikTok fields).
           a.reach += num(r.reach);
-          if (ch.id === "meta") { a.views += sumAction(r.video_thruplay_watched_actions); a.completed += sumAction(r.video_p100_watched_actions); }
+          if (ch.id === "meta") {
+              a.views += sumAction(r.video_thruplay_watched_actions);
+              a.completed += sumAction(r.video_p100_watched_actions);
+              // 3-second plays. Meta-only: TikTok reports 2s and 6s, neither of which is a
+              // 3-second view, so it stays 0 there rather than being quietly conflated.
+              a.views3s += sumAction(r.actions_video_view);
+            }
           else if (ch.id === "tiktok") { a.views += num(r.video_watched_6s); a.completed += num(r.video_views_p100); }
           else {
             // Google/YouTube: reach = unique_users (Google's "reach" field is null); video_views is
