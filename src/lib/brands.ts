@@ -35,6 +35,7 @@ export interface BrandConfig {
   targetCpv?: number;
   targetCpl?: number; // leads brands — cost per lead (ILS)
   targetCpi?: number; // app brands — cost per install (ILS)
+  targetCpReg?: number; // app brands — ceiling on cost per registration (ILS)
   monthlyBudget: number; // total monthly ad budget (ILS) for pacing; 0 = pacing hidden
   // Awareness/media-plan brands (no store, no ROAS) — get the plan-vs-execution view instead
   // of the conversion dashboard, and are excluded from digest/alerts.
@@ -355,6 +356,7 @@ export const BRANDS: BrandConfig[] = [
     nativeCurrency: "ILS",
     targetRoas: 0,
     monthlyBudget: 100000, // total Haat monthly budget (both sections) for pacing
+    targetCpReg: 40, // ceiling: a registration must not cost more than ₪40
     appInstall: true,
     appSections: [
       { key: "delivery", title: "Haat delivery IL", account: "1234295457784453", kind: "app", budget: 0 },
