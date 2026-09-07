@@ -35,6 +35,10 @@ export async function GET(request: Request) {
   const to = url.searchParams.get("to") ?? "";
   if (!from || !to) return NextResponse.json({ error: "missing from/to" }, { status: 400 });
   const only = url.searchParams.get("brand");
+  // dry=1 returns the computed facts and recommendations instead of sending — used to review and
+  // tune the rules against real numbers without filling anyone's inbox.
+  const dry = url.searchParams.get("dry") === "1";
+  const facts: Record<string, unknown> = {};
   const recipients = mediaManagers();
 
   const out: Record<string, string> = {};
@@ -50,7 +54,16 @@ export async function GET(request: Request) {
           getClientReport(b, from, to),
           getTopProducts(b, from, to).catch(() => null),
         ]);
-        if (r) html = renderEmail(r, "", products, ecomInsights(b, r, products));
+        if (r) {
+          const ins = ecomInsights(b, r, products);
+          if (dry) facts[b.id] = {
+            topLevel: r.topLevel, platforms: r.platforms,
+            topAds: r.topAds.map((a) => ({ name: a.name, spend: a.spend, roas: a.roas, storeRevenue: a.storeRevenue, storeRoas: a.storeRoas })),
+            products: products?.rows?.slice(0, 8), productTotal: products?.storeRevenue, distinctProducts: products?.distinctProducts,
+            targetRoas: b.targetRoas, insights: ins,
+          };
+          html = renderEmail(r, "", products, ins);
+        }
       } else if (prof === "leads") {
         const m = await getCampaignBrandMetrics(b, from, to);
         if (m && (m.total.spend > 0 || m.total.leads > 0)) html = renderLeadsEmail(b, m, "", from, to, leadsInsights(b, m));
@@ -118,11 +131,12 @@ export async function GET(request: Request) {
       }
 
       if (!html) { out[b.id] = "skipped — no data"; continue; }
+      if (dry) { out[b.id] = "dry"; continue; }
       await sendEmail({ to: recipients, subject: `סיכום חודשי · ${b.nameHe} · ${from} – ${to}`, html });
       out[b.id] = "sent";
     } catch (e) {
       out[b.id] = `error: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`;
     }
   }
-  return NextResponse.json({ ok: true, from, to, sentTo: recipients, brands: out });
+  return NextResponse.json({ ok: true, from, to, sentTo: dry ? [] : recipients, brands: out, ...(dry ? { facts } : {}) });
 }
