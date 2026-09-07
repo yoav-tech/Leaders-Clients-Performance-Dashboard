@@ -1,15 +1,49 @@
 {
   "framework": "nextjs",
   "crons": [
-    { "path": "/api/cron/ingest", "schedule": "0 * * * *" },
-    { "path": "/api/cron/digest", "schedule": "0 7,8 * * 0-4" },
-    { "path": "/api/cron/alerts", "schedule": "0 5-17/2 * * *" },
-    { "path": "/api/cron/clickup-poll", "schedule": "*/10 * * * *" },
-    { "path": "/api/cron/weekly", "schedule": "0 5 * * 4" },
-    { "path": "/api/cron/monthly", "schedule": "0 5 1 * *" },
-    { "path": "/api/cron/report-reminder", "schedule": "0 7,8 1 * *" },
-    { "path": "/api/cron/media-plan", "schedule": "0 5 24 * *" },
-    { "path": "/api/cron/warm-breakdowns", "schedule": "*/30 * * * *" },
-    { "path": "/api/cron/haat-sheet", "schedule": "0 9,10 * * 0,2,4" }
+    {
+      "path": "/api/cron/ingest",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/digest",
+      "schedule": "0 7,8 * * 0-4"
+    },
+    {
+      "path": "/api/cron/alerts",
+      "schedule": "0 5-17/2 * * *"
+    },
+    {
+      "path": "/api/cron/clickup-poll",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/weekly",
+      "schedule": "0 5 * * 4"
+    },
+    {
+      "path": "/api/cron/monthly",
+      "schedule": "0 5 1 * *"
+    },
+    {
+      "path": "/api/cron/report-reminder",
+      "schedule": "0 7,8 1 * *"
+    },
+    {
+      "path": "/api/cron/media-plan",
+      "schedule": "0 5 24 * *"
+    },
+    {
+      "path": "/api/cron/warm-breakdowns",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/haat-sheet",
+      "schedule": "0 9,10 * * 0,2,4"
+    },
+    {
+      "path": "/api/cron/store-products",
+      "schedule": "20 3 * * *"
+    }
   ]
 }

@@ -1,9 +1,7 @@
 import type { TopProductsResult } from "@/lib/topProducts";
 import { formatIls, formatNumber } from "@/lib/metrics";
 
-// Best sellers for the store clients. The period is stated explicitly because it isn't the same
-// on both platforms — Shopify gives us the report's exact range, QuickShop a rolling 30 days —
-// and a table of revenue with an unstated period invites the wrong comparison.
+// Best sellers for the store clients, over the report's own date range.
 const fmtD = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -25,9 +23,7 @@ export default function TopProductsPanel({ data }: { data: TopProductsResult }) 
   const base = ofStore ? data.storeRevenue! : topRev;
   const pct = (v: number) => (base ? `${((v / base) * 100).toFixed(1)}%` : "—");
   const shareLabel = ofStore ? "% מהכנסות החנות" : "% מהמובילים";
-  const period = data.period === "range" && data.from && data.to
-    ? `${fmtD(data.from)}–${fmtD(data.to)}`
-    : "30 הימים האחרונים";
+  const period = `${fmtD(data.from)}–${fmtD(data.to)}`;
 
   return (
     <div className="panel p-4" dir="rtl">
@@ -90,12 +86,7 @@ export default function TopProductsPanel({ data }: { data: TopProductsResult }) 
       </div>
       {data.distinctProducts != null && (
         <div className="mt-2 text-[11px] text-[var(--muted)]">
-          מתוך {formatNumber(data.distinctProducts)} מוצרים {data.period === "range" ? "שנמכרו בתקופה" : "פעילים בחנות"}.
-        </div>
-      )}
-      {data.period === "last30d" && (
-        <div className="mt-2 text-[11px] text-[var(--muted)]">
-          נתוני המוצרים בחנות זמינים ל־30 הימים האחרונים בלבד, ולכן הטווח כאן אינו זהה לשאר הדוח.
+          מתוך {formatNumber(data.distinctProducts)} מוצרים שנמכרו בתקופה.
         </div>
       )}
     </div>

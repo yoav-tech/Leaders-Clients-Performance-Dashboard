@@ -39,8 +39,7 @@ function renderEmail(r: ClientReport, note: string, products: TopProductsResult 
     r.topAds.map((a, i) => `<tr><td style="padding:7px 8px;border-bottom:1px solid #ececf3;font:400 13px/1.3 ${F};color:#1a1d26;text-align:right">${adName(a, i)}</td>${ptd(ils(a.spend))}${ptd(roas(a.roas))}${ptd(a.storeRevenue == null ? "—" : ils(a.storeRevenue), true)}${ptd(a.storeRoas == null ? "—" : roas(a.storeRoas), true)}</tr>`).join("") +
     adsTotal;
 
-  // Best sellers. The period is spelled out because QuickShop only exposes a rolling 30 days,
-  // which won't match the rest of the report's range.
+  // Best sellers over the same range as the rest of the report.
   const fmtD = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
   let productsBlock = "";
   if (products && products.rows.length) {
@@ -50,15 +49,11 @@ function renderEmail(r: ClientReport, note: string, products: TopProductsResult 
     const base = ofStore ? products.storeRevenue! : topRev;
     const shareOf = (v: number) => (base ? `${((v / base) * 100).toFixed(1)}%` : "—");
     const shareLabel = ofStore ? "% מהחנות" : "% מהמובילים";
-    const label = products.period === "range" && products.from && products.to
-      ? `${fmtD(products.from)}–${fmtD(products.to)}`
-      : "30 הימים האחרונים";
+    const label = `${fmtD(products.from)}–${fmtD(products.to)}`;
     const rows = products.rows.map((x, i) =>
       `<tr><td style="padding:7px 8px;border-bottom:1px solid #ececf3;font:400 13px/1.3 ${F};color:#1a1d26;text-align:right">${i + 1}. ${esc(x.name)}</td>${ptd(x.quantity.toLocaleString("en-US"))}${ptd(ils(x.avgPrice))}${ptd(ils(x.revenue), true)}${ptd(shareOf(x.revenue))}</tr>`).join("");
     const totalRow = `<tr><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:right">סה״כ ${products.rows.length} המובילים</td><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${topUnits.toLocaleString("en-US")}</td><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${topUnits ? ils(topRev / topUnits) : "—"}</td><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${ils(topRev)}</td><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${shareOf(topRev)}</td></tr>`;
-    const note30 = products.period === "last30d"
-      ? `<div style="margin-top:6px;color:#6b7280;font-size:11px">נתוני המוצרים בחנות זמינים ל־30 הימים האחרונים בלבד, ולכן הטווח כאן אינו זהה לשאר הדוח.</div>`
-      : "";
+    const note30 = "";
     productsBlock =
       `<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin:14px 0 6px">מוצרים מובילים · ${label}</div>` +
       `<table role="presentation" width="100%" style="border-collapse:collapse">` +

@@ -281,6 +281,23 @@ ALTER TABLE budget_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budget_requests FORCE  ROW LEVEL SECURITY;
 REVOKE ALL ON budget_requests FROM anon, authenticated;
 
+-- ---- Per-day product sales for store clients (top-products in the client report) ----
+-- PRIVACY: product name, units and revenue only — no order ids or customer fields.
+-- Ingested because QuickShop's order list omits line items and its analytics summary is locked to
+-- a rolling 30 days, so an exact-range ranking needs one request per order.
+CREATE TABLE IF NOT EXISTS store_product_daily (
+  brand_id   text NOT NULL,
+  date       date NOT NULL,
+  product    text NOT NULL,
+  quantity   numeric NOT NULL DEFAULT 0,
+  revenue    numeric NOT NULL DEFAULT 0,
+  PRIMARY KEY (brand_id, date, product)
+);
+CREATE INDEX IF NOT EXISTS idx_store_product_daily_brand_date ON store_product_daily (brand_id, date);
+ALTER TABLE store_product_daily ENABLE ROW LEVEL SECURITY;
+ALTER TABLE store_product_daily FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON store_product_daily FROM anon, authenticated;
+
 -- ---- Snapshots of external spreadsheets, captured on a schedule ----
 -- One row per source (e.g. 'haat/weekly-registration'). The dashboard reads the stored snapshot,
 -- so a page render never depends on Google being reachable.
