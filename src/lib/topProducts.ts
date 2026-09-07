@@ -12,12 +12,23 @@ import type { BrandConfig } from "./brands";
 import { quickshopKeyFor } from "./quickshop";
 import { shopifyDomainFor, shopifyStaticTokenFor } from "./shopify";
 
-export interface TopProduct { name: string; quantity: number; revenue: number }
+export interface TopProduct {
+  name: string;
+  quantity: number;
+  revenue: number;
+  avgPrice: number; // revenue per unit actually realised, i.e. after discounts
+}
 export interface TopProductsResult {
   rows: TopProduct[];
   period: "range" | "last30d";
   from?: string;
   to?: string;
+  // Store revenue on the SAME basis as the product rows, so shares are of the whole store. Null
+  // when the platform can't give us a comparable figure — QuickShop's order revenue is netted
+  // differently from its product revenue, and using it produced shares over 100%. When null the
+  // panel falls back to sharing out the top-N subtotal and says so.
+  storeRevenue: number | null;
+  distinctProducts: number | null; // products sold in the period (Shopify) or active (QuickShop)
 }
 
 const num = (v: unknown): number => {
@@ -27,17 +38,19 @@ const num = (v: unknown): number => {
 
 // Stores sell the same product under several ids (one per colour or size), which would otherwise
 // fill a top-10 with repeats of one name. Merge on the display name the customer actually sees.
-function mergeByName(items: TopProduct[], limit = 10): TopProduct[] {
+function mergeByName(items: { name: string; quantity: number; revenue: number }[]): TopProduct[] {
   const m = new Map<string, TopProduct>();
   for (const it of items) {
     const name = it.name.trim();
     if (!name) continue;
-    const e = m.get(name) ?? { name, quantity: 0, revenue: 0 };
+    const e = m.get(name) ?? { name, quantity: 0, revenue: 0, avgPrice: 0 };
     e.quantity += it.quantity;
     e.revenue += it.revenue;
     m.set(name, e);
   }
-  return [...m.values()].sort((a, b) => b.revenue - a.revenue).slice(0, limit);
+  const rows = [...m.values()].sort((a, b) => b.revenue - a.revenue);
+  for (const r of rows) r.avgPrice = r.quantity ? r.revenue / r.quantity : 0;
+  return rows;
 }
 
 async function quickshopTop(brand: BrandConfig): Promise<TopProductsResult | null> {
@@ -48,12 +61,22 @@ async function quickshopTop(brand: BrandConfig): Promise<TopProductsResult | nul
     next: { revalidate: 1800 },
   }).catch(() => null);
   if (!res?.ok) return null;
-  const j = (await res.json()) as { data?: { top_products?: { name?: string; quantity_sold?: unknown; revenue?: unknown }[] } };
+  const j = (await res.json()) as {
+    data?: {
+      top_products?: { name?: string; quantity_sold?: unknown; revenue?: unknown }[];
+      orders?: { revenue?: unknown };
+      products?: { active?: unknown };
+    };
+  };
   const raw = j.data?.top_products ?? [];
   if (!raw.length) return null;
   return {
-    rows: mergeByName(raw.map((p) => ({ name: String(p.name ?? ""), quantity: num(p.quantity_sold), revenue: num(p.revenue) }))),
+    rows: mergeByName(raw.map((p) => ({ name: String(p.name ?? ""), quantity: num(p.quantity_sold), revenue: num(p.revenue) }))).slice(0, 10),
     period: "last30d",
+    // Deliberately null: /analytics orders.revenue is netted (discounts/refunds/status) while
+    // top_products.revenue is gross line revenue, so the top ten can exceed it. Not comparable.
+    storeRevenue: null,
+    distinctProducts: num(j.data?.products?.active) || null,
   };
 }
 
@@ -74,7 +97,8 @@ async function shopifyTop(brand: BrandConfig, from: string, to: string): Promise
     fields: "financial_status,line_items",
   });
   let url: string | null = `https://${domain}/admin/api/2026-07/orders.json?${params.toString()}`;
-  const items: TopProduct[] = [];
+  // Raw lines; avgPrice is derived once they're merged by product name.
+  const items: { name: string; quantity: number; revenue: number }[] = [];
 
   for (let guard = 0; url && guard < 60; guard++) {
     const res: Response = await fetch(url, {
@@ -102,7 +126,15 @@ async function shopifyTop(brand: BrandConfig, from: string, to: string): Promise
   }
 
   if (!items.length) return null;
-  return { rows: mergeByName(items), period: "range", from, to };
+  const all = mergeByName(items); // every product sold in the range, ranked
+  return {
+    rows: all.slice(0, 10),
+    period: "range",
+    from,
+    to,
+    storeRevenue: all.reduce((a, r) => a + r.revenue, 0),
+    distinctProducts: all.length,
+  };
 }
 
 const _get = async (brandJson: string, from: string, to: string): Promise<TopProductsResult | null> => {
