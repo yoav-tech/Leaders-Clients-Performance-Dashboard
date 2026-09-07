@@ -22,7 +22,7 @@ export default function TopProductsPanel({ data }: { data: TopProductsResult }) 
   const ofStore = !!(data.storeRevenue && data.storeRevenue >= topRev);
   const base = ofStore ? data.storeRevenue! : topRev;
   const pct = (v: number) => (base ? `${((v / base) * 100).toFixed(1)}%` : "—");
-  const shareLabel = ofStore ? "% מהכנסות החנות" : "% מהמובילים";
+  const shareLabel = ofStore ? "% ממכירות המוצרים" : "% מהמובילים";
   const period = `${fmtD(data.from)}–${fmtD(data.to)}`;
 
   return (
@@ -34,7 +34,7 @@ export default function TopProductsPanel({ data }: { data: TopProductsResult }) 
 
       <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat label="הכנסות המובילים" value={formatIls(Math.round(topRev))} />
-        <Stat label={ofStore ? "חלקם מהכנסות החנות" : "מוצרים מובילים"} value={ofStore ? pct(topRev) : String(data.rows.length)} />
+        <Stat label={ofStore ? "חלקם ממכירות המוצרים" : "מוצרים מובילים"} value={ofStore ? pct(topRev) : String(data.rows.length)} />
         <Stat label="יחידות שנמכרו" value={formatNumber(topUnits)} />
         <Stat label="מחיר ממוצע ליחידה" value={topUnits ? formatIls(Math.round(topRev / topUnits)) : "—"} />
       </div>
@@ -84,11 +84,10 @@ export default function TopProductsPanel({ data }: { data: TopProductsResult }) 
           </tfoot>
         </table>
       </div>
-      {data.distinctProducts != null && (
-        <div className="mt-2 text-[11px] text-[var(--muted)]">
-          מתוך {formatNumber(data.distinctProducts)} מוצרים שנמכרו בתקופה.
-        </div>
-      )}
+      <div className="mt-2 text-[11px] leading-relaxed text-[var(--muted)]">
+        {data.distinctProducts != null && <>מתוך {formatNumber(data.distinctProducts)} מוצרים שנמכרו בתקופה. </>}
+        {ofStore && <>סך מכירות המוצרים בתקופה {formatIls(Math.round(data.storeRevenue!))}, אחרי הנחות. ההפרש מסך הכנסות החנות הוא דמי משלוח, שאינם מוצר.</>}
+      </div>
     </div>
   );
 }
