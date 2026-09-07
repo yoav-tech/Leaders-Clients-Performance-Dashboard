@@ -7,6 +7,7 @@ import type { AppReport } from "./appReport";
 import type { SnapSection } from "./searchSnapshot";
 import { periodLabel, type ClientReport } from "./clientReport";
 import type { TopProductsResult } from "./topProducts";
+import type { Insight } from "./reportInsights";
 
 const F = "-apple-system,Segoe UI,Roboto,Arial,sans-serif";
 
@@ -59,6 +60,33 @@ const attain = (actual: number | null, target: number | null) =>
   actual == null || !target ? null : (actual / target) * 100;
 const pctAttain = (v: number | null) => (v == null ? "—" : `${Math.round(v)}%`);
 
+// Conclusions block. Deliberately placed above the tables: the recommendation is the point of the
+// email, the tables are the evidence for it.
+export function insightsBlock(items: Insight[]): string {
+  if (!items.length) return "";
+  const chrome: Record<Insight["severity"], { bar: string; chip: string; label: string }> = {
+    critical: { bar: BAD_C, chip: "#fbe7e8", label: "לטיפול מיידי" },
+    warn: { bar: "#b8730c", chip: "#fdf3e3", label: "לשים לב" },
+    good: { bar: GOOD_C, chip: "#e0efef", label: "הזדמנות" },
+  };
+  const cards = items.map((it) => {
+    const c = chrome[it.severity];
+    return `<tr><td style="padding:0 0 10px 0">
+      <table role="presentation" width="100%" style="border-collapse:collapse;border:1px solid #ececf3;border-radius:12px;overflow:hidden">
+        <tr>
+          <td width="4" style="background:${c.bar}"></td>
+          <td style="padding:12px 14px">
+            <div style="margin-bottom:5px"><span style="background:${c.chip};color:${c.bar};font:700 10px/1 ${F};padding:4px 8px;border-radius:999px;letter-spacing:.04em">${c.label}</span></div>
+            <div style="font:700 14px/1.35 ${F};color:#1a1d26">${it.title}</div>
+            <div style="margin-top:4px;font:400 12.5px/1.5 ${F};color:#6b7280">${it.evidence}</div>
+            <div style="margin-top:7px;padding-top:7px;border-top:1px dashed #ececf3;font:600 12.5px/1.5 ${F};color:#1a1d26">← ${it.action}</div>
+          </td>
+        </tr>
+      </table></td></tr>`;
+  }).join("");
+  return head("מסקנות והמלצות") + `<table role="presentation" width="100%" style="border-collapse:collapse">${cards}</table>`;
+}
+
 function targetBanner(rows: { label: string; actual: string; target: string; ok: boolean | null; note?: string }[]): string {
   const cells = rows.map((r) =>
     `<tr>
@@ -78,7 +106,7 @@ export interface LeadsBlock { leads: number; cpl: number | null; targetLeads: nu
 
 export function renderViewsEmail(
   brand: BrandConfig, m: CampBrandMetrics, note: string, from: string, to: string,
-  extra?: { plan?: PlanRow[]; ads?: AdRow[]; leads?: LeadsBlock; flight?: string },
+  extra?: { plan?: PlanRow[]; ads?: AdRow[]; leads?: LeadsBlock; flight?: string; insights?: Insight[] },
 ): string {
   const t = m.total;
   const targetCpv = brand.targetCpv ?? null;
@@ -138,7 +166,7 @@ export function renderViewsEmail(
           `<td style="padding:7px 8px;border-bottom:1px solid #ececf3;font:600 13px/1.3 ${F};color:${targetCpv != null && a.cpv != null ? (a.cpv <= targetCpv ? GOOD_C : BAD_C) : "#1a1d26"};text-align:left" dir="ltr">${ils2(a.cpv)}</td></tr>`).join(""))
     : "";
 
-  return shell(brand.nameHe, from, to, pills, targets + platforms + plan + ads, note);
+  return shell(brand.nameHe, from, to, pills, insightsBlock(extra?.insights ?? []) + targets + platforms + plan + ads, note);
 }
 
 // ---- App brand (Haat) ----
@@ -152,6 +180,7 @@ export function renderAppEmail(
   from: string,
   to: string,
   cityRows?: { city: string; spend: number; regs: number; cpr: number }[],
+  insights: Insight[] = [],
 ): string {
   const app = r.sections.filter((s) => s.kind === "app");
   const hr = r.sections.filter((s) => s.kind === "leads");
@@ -236,7 +265,7 @@ export function renderAppEmail(
         `<tr>${prd("סה״כ")}${ptd(ils(cityRows.reduce((a, c) => a + c.spend, 0)), true)}${ptd(n0(cityRows.reduce((a, c) => a + c.regs, 0)), true)}${ptd("", true)}</tr>`)
     : "";
 
-  return shell(brand.nameHe, from, to, pills, targets + funnel + activity + campaigns + cities, note);
+  return shell(brand.nameHe, from, to, pills, insightsBlock(insights) + targets + funnel + activity + campaigns + cities, note);
 }
 
 // ---- Search share of voice (Colgate) ----
@@ -249,6 +278,7 @@ export function renderImpShareEmail(
   from: string,
   to: string,
   typeLabel: Record<string, string> = {},
+  insights: Insight[] = [],
 ): string {
   const spend = sections.reduce((a, s) => a + s.totals.cost, 0);
   const clicks = sections.reduce((a, s) => a + s.totals.clicks, 0);
@@ -315,14 +345,14 @@ export function renderImpShareEmail(
         top.map(([d, v]) => `<tr>${prd(esc(d))}${ptd(String(v.days), true)}</tr>`).join(""))
     : "";
 
-  return shell(brand.nameHe, from, to, pills, targets + accounts + types + competitors, note);
+  return shell(brand.nameHe, from, to, pills, insightsBlock(insights) + targets + accounts + types + competitors, note);
 }
 
 // ---- moved from the send route so every sender shares one set of templates ----
 const roas = (v: number | null) => (v == null ? "—" : v.toFixed(1));
 const pct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
 
-export function renderEmail(r: ClientReport, note: string, products: TopProductsResult | null): string {
+export function renderEmail(r: ClientReport, note: string, products: TopProductsResult | null, insights: Insight[] = []): string {
   const F = "-apple-system,Segoe UI,Roboto,Arial,sans-serif";
   const row = (a: string, b: string) => `<tr><td style="padding:6px 8px;border-bottom:1px solid #ececf3;font:400 13px/1.3 ${F};color:#1a1d26">${a}</td><td style="padding:6px 8px;border-bottom:1px solid #ececf3;font:600 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${b}</td></tr>`;
   // Per-platform as a real multi-column table (was one crammed cell). Numbers LTR, platform RTL.
@@ -384,6 +414,7 @@ export function renderEmail(r: ClientReport, note: string, products: TopProducts
         <span style="padding:8px 12px;border:1px solid #ececf3;border-radius:999px;font-size:12px;color:#6b7280">הרשמות <b style="color:#1a1d26">${r.registrations.toLocaleString("en-US")}</b></span>
       </div>
       ${note ? `<div style="padding:12px 14px;border:1px solid rgba(124,58,237,.18);border-radius:12px;background:#f4f1ff;margin-bottom:14px;font-size:14px;line-height:1.6;white-space:pre-wrap">${esc(note)}</div>` : ""}
+      ${insightsBlock(insights)}
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin:6px 0">לפי פלטפורמה</div>
       <table role="presentation" width="100%" style="border-collapse:collapse">${platforms}</table>
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin:14px 0 6px">${r.topAds.length || 5} מודעות מובילות ברואס</div>
@@ -400,7 +431,7 @@ export function renderEmail(r: ClientReport, note: string, products: TopProducts
 
 const cplv = (v: number | null) => (v == null ? "—" : `₪${Math.round(v).toLocaleString("en-US")}`);
 
-export function renderLeadsEmail(brand: BrandConfig, m: CampBrandMetrics, note: string, from: string, to: string): string {
+export function renderLeadsEmail(brand: BrandConfig, m: CampBrandMetrics, note: string, from: string, to: string, insights: Insight[] = []): string {
   const t = m.total;
   const targetCpl = brand.targetCpl ?? null;
   const budget = brand.monthlyBudget ?? 0;
@@ -441,5 +472,5 @@ export function renderLeadsEmail(brand: BrandConfig, m: CampBrandMetrics, note: 
     head("לפי פלטפורמה") +
     table(`<tr>${pth("פלטפורמה", true)}${pth("הוצאה")}${pth("חשיפות")}${pth("קליקים")}${pth("CTR")}${pth("לידים")}${pth(targetCpl != null ? `עלות לליד (יעד ${ils(targetCpl)})` : "עלות לליד")}</tr>${rows}${totalRow}`);
 
-  return shell(brand.nameHe, from, to, pills, targets + platforms, note);
+  return shell(brand.nameHe, from, to, pills, insightsBlock(insights) + targets + platforms, note);
 }
