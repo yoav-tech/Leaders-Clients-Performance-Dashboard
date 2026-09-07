@@ -5,7 +5,9 @@
 const BASE = "https://connectors.windsor.ai";
 // Bound every call: several run in parallel per page, so worst case stays far under the 120s
 // function limit even when Windsor is unreachable.
-const WINDSOR_TIMEOUT_MS = 20_000;
+// 20s proved too tight: campaign-level queries over a month legitimately take longer and were
+// being aborted mid-flight. 45s still bounds a hang well inside the 120s function limit.
+const WINDSOR_TIMEOUT_MS = 45_000;
 const WINDSOR_ATTEMPTS = 2;
 
 export interface WindsorQuery {

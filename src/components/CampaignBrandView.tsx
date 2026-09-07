@@ -18,8 +18,8 @@ const cpv = (v: number | null) => (v == null ? "—" : `₪${v.toFixed(3)}`);
 const cpm = (v: number | null) => (v == null ? "—" : `₪${v.toFixed(1)}`);
 const freq = (v: number | null) => (v == null ? "—" : v.toFixed(2));
 
-const HIGHER_BETTER = new Set(["views", "reach", "impressions", "clicks", "leads"]);
-const LOWER_BETTER = new Set(["cpv", "cpl", "cpm", "cpc"]);
+const HIGHER_BETTER = new Set(["views", "views3s", "reach", "impressions", "clicks", "leads"]);
+const LOWER_BETTER = new Set(["cpv", "cpv3s", "cpl", "cpm", "cpc"]);
 function deltaTone(metric: string, delta: number | null): string {
   if (delta == null) return "none";
   if (HIGHER_BETTER.has(metric)) return delta >= 0 ? "good" : "bad";
@@ -93,9 +93,11 @@ export default function CampaignBrandView({
         { label: "Spend", metric: "spend", value: formatIls(total.spend), cur: total.spend, prev: previous.spend },
         { label: "Impressions", metric: "impressions", value: formatNumber(total.impressions), cur: total.impressions, prev: previous.impressions },
         { label: "Reach", metric: "reach", value: formatNumber(total.reach), cur: total.reach, prev: previous.reach },
-        { label: "Views", metric: "views", value: formatNumber(total.views), cur: total.views, prev: previous.views },
+        { label: "צפיות 3 שניות", metric: "views3s", value: formatNumber(total.views3s), cur: total.views3s, prev: null },
+        { label: "עלות לצפיית 3 שניות", metric: "cpv3s", value: cpv(total.cpv3s), cur: total.cpv3s, prev: null },
+        { label: "ThruPlay", metric: "views", value: formatNumber(total.views), cur: total.views, prev: previous.views },
+        { label: "עלות ל-ThruPlay", metric: "cpv", value: cpv(total.cpv), cur: total.cpv, prev: previous.cpv, tone: goalTone(total.cpv, target) },
         { label: "CPM", metric: "cpm", value: cpm(total.cpm), cur: total.cpm, prev: null },
-        { label: "CPV", metric: "cpv", value: cpv(total.cpv), cur: total.cpv, prev: previous.cpv, tone: goalTone(total.cpv, target) },
       ]
     : [
         { label: "Spend", metric: "spend", value: formatIls(total.spend), cur: total.spend, prev: previous.spend },
@@ -151,9 +153,11 @@ export default function CampaignBrandView({
                     <th className="px-2 py-1.5 text-right">Reach</th>
                     <th className="px-2 py-1.5 text-right">Freq</th>
                     <th className="px-2 py-1.5 text-right">CPM</th>
-                    <th className={`px-2 py-1.5 text-right ${DIV}`}>Views</th>
+                    <th className={`px-2 py-1.5 text-right ${DIV}`}>3 שניות</th>
+                    <th className="px-2 py-1.5 text-right">עלות 3ש׳</th>
+                    <th className="px-2 py-1.5 text-right">ThruPlay</th>
+                    <th className="px-2 py-1.5 text-right">עלות ThruPlay</th>
                     <th className="px-2 py-1.5 text-right">100%</th>
-                    <th className="px-2 py-1.5 text-right">CPV</th>
                   </>
                 ) : (
                   <>
@@ -172,7 +176,7 @@ export default function CampaignBrandView({
             </tbody>
           </table>
         </div>
-        <div className="mt-2 text-[11px] text-[var(--muted)]">חי מ-Windsor, נשמר יומית ב-DB · {isViews ? "Meta Views = ThruPlay · TikTok Views = 2s+ (100% = 6s+)" : "Meta = לידים · Google = conversions"}.</div>
+        <div className="mt-2 text-[11px] text-[var(--muted)]">חי מ-Windsor, נשמר יומית ב-DB · {isViews ? "צפיות 3 שניות נמדדות במטא בלבד · ThruPlay = מטא 15ש׳/סיום, טיקטוק 6ש׳" : "Meta = לידים · Google = conversions"}.</div>
       </Panel>
 
       {/* 4 · Trend (per field) */}
@@ -250,9 +254,12 @@ function FunnelRow({ c, isViews, target, bold }: { c: CampChannel; isViews: bool
           <td className="px-2 py-1.5 text-right">{formatNumber(c.reach)}</td>
           <td className="px-2 py-1.5 text-right">{freq(c.frequency)}</td>
           <td className="px-2 py-1.5 text-right">{cpm(c.cpm)}</td>
-          <td className={`px-2 py-1.5 text-right font-semibold ${DIV}`}>{formatNumber(c.views)}</td>
-          <td className="px-2 py-1.5 text-right">{formatNumber(c.completed)}</td>
+          {/* 3-second plays are a Meta metric; TikTok reports 2s/6s instead, so it shows as —. */}
+          <td className={`px-2 py-1.5 text-right ${DIV}`}>{c.views3s ? formatNumber(c.views3s) : "—"}</td>
+          <td className="px-2 py-1.5 text-right text-[var(--muted)]">{c.views3s ? cpv(c.cpv3s) : "—"}</td>
+          <td className="px-2 py-1.5 text-right font-semibold">{formatNumber(c.views)}</td>
           <td className={`px-2 py-1.5 text-right ${TONE[goalTone(c.cpv, target)]}`}>{cpv(c.cpv)}</td>
+          <td className="px-2 py-1.5 text-right">{formatNumber(c.completed)}</td>
         </>
       ) : (
         <>
