@@ -7,6 +7,11 @@ import { getCampaignBrandMetrics } from "@/lib/campaignMetrics";
 import { getAppReport } from "@/lib/appReport";
 import { getSearchSnapshot } from "@/lib/searchSnapshot";
 import { HAAT_AUGUST_2026 } from "@/lib/haatRegions";
+import { getMediaPlanExecution } from "@/lib/mediaPlan";
+import { getPlatformPlanExecution } from "@/lib/platformPlan";
+import { getAwarenessReport } from "@/lib/awarenessReport";
+import { TYPE_LABEL } from "@/lib/searchSnapshot";
+import type { PlanRow, AdRow, LeadsBlock } from "@/lib/reportEmailExtra";
 import { renderEmail, renderLeadsEmail, renderViewsEmail, renderAppEmail, renderImpShareEmail } from "@/lib/reportEmailExtra";
 import { sendEmail, emailConfigured } from "@/lib/email";
 import { mediaManagers } from "@/lib/recipients";
@@ -56,10 +61,52 @@ export async function GET(request: Request) {
         if (r) html = renderAppEmail(b, r, "", from, to, cities);
       } else if (grp === "impshare") {
         const r = await getSearchSnapshot(b, from, to);
-        if (r) html = renderImpShareEmail(b, r.sections, "", from, to);
+        if (r) html = renderImpShareEmail(b, r.sections, "", from, to, TYPE_LABEL);
       } else {
         const m = await getCampaignBrandMetrics(b, from, to);
-        if (m && m.total.spend > 0) html = renderViewsEmail(b, m, "", from, to);
+        if (m && m.total.spend > 0) {
+          // Plan vs execution, from whichever plan the brand carries.
+          let plan: PlanRow[] | undefined;
+          let flight: string | undefined;
+          let leads: LeadsBlock | undefined;
+          if (b.platformPlan) {
+            const ex = await getPlatformPlanExecution(b).catch(() => null);
+            if (ex) {
+              flight = `${ex.flightStart} – ${ex.flightEnd}`;
+              plan = ex.lines.map((l) => ({
+                title: l.line.title, budget: l.line.budget, spend: l.actual.spend, spendPct: l.spendPct,
+                target: l.line.thruplay, actual: l.actual.thruplay, pct: l.thruplayPct, unit: "ThruPlay",
+              }));
+              const lt = b.platformPlan.leadTarget;
+              if (lt) {
+                const lg = ex.leads.reduce((a, x) => ({ leads: a.leads + x.leadgenLeads, spend: a.spend + x.leadgenSpend }), { leads: 0, spend: 0 });
+                leads = { leads: lg.leads, cpl: lg.leads ? lg.spend / lg.leads : null, targetLeads: lt.leads, targetCpa: lt.cpa };
+              }
+            }
+          } else if (b.mediaPlan) {
+            const ex = await getMediaPlanExecution(b).catch(() => null);
+            if (ex) {
+              flight = `${ex.flightStart} – ${ex.flightEnd}`;
+              plan = ex.lines.map((l) => ({
+                title: `${l.line.platform} · ${l.line.type}`, budget: l.line.budget, spend: l.actual.spend,
+                spendPct: l.line.budget ? (l.actual.spend / l.line.budget) * 100 : null,
+                target: l.line.thruplay || l.line.views, actual: l.actual.thruplay ?? l.actual.views,
+                pct: (l.line.thruplay || l.line.views) ? ((l.actual.thruplay ?? l.actual.views) / (l.line.thruplay || l.line.views)) * 100 : null,
+                unit: "צפיות",
+              }));
+            }
+          }
+          // Ad names — the awareness report can group at ad level.
+          let ads: AdRow[] | undefined;
+          const aw = await getAwarenessReport(b, from, to, "ad").catch(() => null);
+          if (aw) {
+            ads = aw.sources.flatMap((src) => src.campaigns.map((c) => ({
+              name: c.name, spend: c.spend, views: c.views, cpv: c.views ? c.spend / c.views : null,
+            }))).filter((a) => a.views > 0).sort((a, b2) => b2.views - a.views).slice(0, 8);
+            if (!ads.length) ads = undefined;
+          }
+          html = renderViewsEmail(b, m, "", from, to, { plan, ads, leads, flight });
+        }
       }
 
       if (!html) { out[b.id] = "skipped — no data"; continue; }
