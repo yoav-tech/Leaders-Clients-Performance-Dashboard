@@ -12,6 +12,7 @@ import { getPlatformPlanExecution } from "@/lib/platformPlan";
 import { getAwarenessReport } from "@/lib/awarenessReport";
 import { TYPE_LABEL } from "@/lib/searchSnapshot";
 import type { PlanRow, AdRow, LeadsBlock } from "@/lib/reportEmailExtra";
+import { viewsInsights, appInsights, ecomInsights, leadsInsights, impShareInsights } from "@/lib/reportInsights";
 import { renderEmail, renderLeadsEmail, renderViewsEmail, renderAppEmail, renderImpShareEmail } from "@/lib/reportEmailExtra";
 import { sendEmail, emailConfigured } from "@/lib/email";
 import { mediaManagers } from "@/lib/recipients";
@@ -49,30 +50,32 @@ export async function GET(request: Request) {
           getClientReport(b, from, to),
           getTopProducts(b, from, to).catch(() => null),
         ]);
-        if (r) html = renderEmail(r, "", products);
+        if (r) html = renderEmail(r, "", products, ecomInsights(b, r, products));
       } else if (prof === "leads") {
         const m = await getCampaignBrandMetrics(b, from, to);
-        if (m && (m.total.spend > 0 || m.total.leads > 0)) html = renderLeadsEmail(b, m, "", from, to);
+        if (m && (m.total.spend > 0 || m.total.leads > 0)) html = renderLeadsEmail(b, m, "", from, to, leadsInsights(b, m));
       } else if (prof === "app") {
         const r = await getAppReport(b, from, to);
         // The city table is the client's own registration count (their backend, not Meta's
         // attribution), so it only applies to the month it was compiled for.
         const cities = from.startsWith("2026-08") ? HAAT_AUGUST_2026.rows : undefined;
-        if (r) html = renderAppEmail(b, r, "", from, to, cities);
+        if (r) html = renderAppEmail(b, r, "", from, to, cities, appInsights(b, r, cities));
       } else if (grp === "impshare") {
         const r = await getSearchSnapshot(b, from, to);
-        if (r) html = renderImpShareEmail(b, r.sections, "", from, to, TYPE_LABEL);
+        if (r) html = renderImpShareEmail(b, r.sections, "", from, to, TYPE_LABEL, impShareInsights(b, r.sections));
       } else {
         const m = await getCampaignBrandMetrics(b, from, to);
         if (m && m.total.spend > 0) {
           // Plan vs execution, from whichever plan the brand carries.
           let plan: PlanRow[] | undefined;
           let flight: string | undefined;
+          let elapsedPct: number | undefined;
           let leads: LeadsBlock | undefined;
           if (b.platformPlan) {
             const ex = await getPlatformPlanExecution(b).catch(() => null);
             if (ex) {
               flight = `${ex.flightStart} – ${ex.flightEnd}`;
+              elapsedPct = ex.totalDays ? (ex.elapsedDays / ex.totalDays) * 100 : undefined;
               plan = ex.lines.map((l) => ({
                 title: l.line.title, budget: l.line.budget, spend: l.actual.spend, spendPct: l.spendPct,
                 target: l.line.thruplay, actual: l.actual.thruplay, pct: l.thruplayPct, unit: "ThruPlay",
@@ -87,6 +90,7 @@ export async function GET(request: Request) {
             const ex = await getMediaPlanExecution(b).catch(() => null);
             if (ex) {
               flight = `${ex.flightStart} – ${ex.flightEnd}`;
+              elapsedPct = ex.totalDays ? (ex.elapsedDays / ex.totalDays) * 100 : undefined;
               plan = ex.lines.map((l) => ({
                 title: `${l.line.platform} · ${l.line.type}`, budget: l.line.budget, spend: l.actual.spend,
                 spendPct: l.line.budget ? (l.actual.spend / l.line.budget) * 100 : null,
@@ -105,7 +109,11 @@ export async function GET(request: Request) {
             }))).filter((a) => a.views > 0).sort((a, b2) => b2.views - a.views).slice(0, 8);
             if (!ads.length) ads = undefined;
           }
-          html = renderViewsEmail(b, m, "", from, to, { plan, ads, leads, flight });
+          const planPct = plan?.length
+            ? (() => { const tg = plan.reduce((a, x) => a + x.target, 0); const ac = plan.reduce((a, x) => a + x.actual, 0); return tg ? (ac / tg) * 100 : null; })()
+            : null;
+          const insights = viewsInsights(b, m, { ads, leads, planPct, elapsedPct: elapsedPct ?? null });
+          html = renderViewsEmail(b, m, "", from, to, { plan, ads, leads, flight, insights });
         }
       }
 
