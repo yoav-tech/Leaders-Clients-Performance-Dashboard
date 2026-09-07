@@ -34,6 +34,7 @@ import ClientSummaryView from "@/components/ClientSummaryView";
 import ClientReportPanels from "@/components/ClientReportPanels";
 import CommandCenterView from "@/components/CommandCenterView";
 import { getClientReport } from "@/lib/clientReport";
+import { getTopProducts } from "@/lib/topProducts";
 import { getReportNote } from "@/lib/clientReportStore";
 import AppShell from "@/components/AppShell";
 import DateRangeCalendar from "@/components/DateRangeCalendar";
@@ -139,9 +140,10 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
   // paid ROAS + sign-ups in the top-level KPIs, the per-platform + top-ads tables, and the verbal
   // summary (auto text + the manager's conclusions), all for the same period. Read-only.
   if (isClient) {
-    const [report, note] = await Promise.all([
+    const [report, note, topProducts] = await Promise.all([
       getClientReport(brand, range.from, range.to),
       getReportNote(brandId, "custom", range.from, range.to),
+      getTopProducts(brand, range.from, range.to).catch(() => null),
     ]);
     return (
       <ClientSummaryView
@@ -153,6 +155,7 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
         report={report}
         note={note}
         canEdit={false}
+        topProducts={topProducts}
       />
     );
   }
