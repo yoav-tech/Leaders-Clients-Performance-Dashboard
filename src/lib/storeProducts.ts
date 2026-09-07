@@ -65,6 +65,8 @@ async function quickshopLines(brand: BrandConfig, from: string, to: string): Pro
     if (!arr.length) break;
     for (const o of arr) {
       if (String(o.financial_status ?? "") !== "paid") continue;
+      // POS orders are excluded from store revenue elsewhere; keep products on the same basis.
+      if (String(o.utm_source ?? "").toLowerCase() === "pos") continue;
       const d = localDate(String(o.created_at ?? ""));
       if (d < from || d > to) continue;
       orders.push({ id: String(o.id), date: d });
@@ -78,15 +80,20 @@ async function quickshopLines(brand: BrandConfig, from: string, to: string): Pro
     if (!j) return;
     const d = ((j.order ?? j.data ?? j) as Record<string, unknown>);
     const lines = (d.line_items ?? d.items ?? []) as Record<string, unknown>[];
+    const gross = lines.reduce((a, li) => a + (num(li.total) || num(li.price) * num(li.quantity)), 0);
+    // Line prices are list prices; the discount lands on the order, not the line. Spread the
+    // order's net product revenue back over the lines so products sum to what the store took.
+    const net = Math.max(0, num(d.total) - num(d.shipping_amount));
+    const factor = gross > 0 ? net / gross : 0;
     for (const li of lines) {
       const product = String(li.name ?? li.title ?? "").trim();
       if (!product) continue;
       const qty = num(li.quantity);
-      const revenue = num(li.total) || num(li.price) * qty;
+      const lineGross = num(li.total) || num(li.price) * qty;
       const k = `${o.date}|${product}`;
       const e = agg.get(k) ?? { date: o.date, product, quantity: 0, revenue: 0 };
       e.quantity += qty;
-      e.revenue += revenue;
+      e.revenue += lineGross * factor;
       agg.set(k, e);
     }
   });
@@ -102,7 +109,7 @@ async function shopifyLines(brand: BrandConfig, from: string, to: string): Promi
     created_at_min: `${from}T00:00:00+03:00`,
     created_at_max: `${to}T23:59:59+03:00`,
     limit: "250",
-    fields: "created_at,financial_status,line_items",
+    fields: "created_at,financial_status,current_total_price,total_price,total_shipping_price_set,line_items",
   });
   let url: string | null = `https://${domain}/admin/api/2026-07/orders.json?${params.toString()}`;
   const agg = new Map<string, ProductDay>();
@@ -114,20 +121,34 @@ async function shopifyLines(brand: BrandConfig, from: string, to: string): Promi
       signal: AbortSignal.timeout(25_000),
     }).catch(() => null);
     if (!res?.ok) break;
-    const j = (await res.json()) as { orders?: { created_at?: string; financial_status?: string; line_items?: Record<string, unknown>[] }[] };
+    const j = (await res.json()) as {
+      orders?: {
+        created_at?: string; financial_status?: string;
+        current_total_price?: string; total_price?: string;
+        total_shipping_price_set?: { shop_money?: { amount?: string } };
+        line_items?: Record<string, unknown>[];
+      }[];
+    };
     for (const o of j.orders ?? []) {
       const st = String(o.financial_status ?? "").toLowerCase();
       if (st !== "paid" && st !== "partially_refunded") continue;
       const d = localDate(String(o.created_at ?? ""));
       if (d < from || d > to) continue;
-      for (const li of o.line_items ?? []) {
+      const lines = o.line_items ?? [];
+      const gross = lines.reduce((a, li) => a + num(li.price) * num(li.quantity), 0);
+      // Shopify records these discounts on the order, not the line (line total_discount came to
+      // ₪201 against ₪1.6m of order-level discounts), so the same proportional netting applies.
+      const shipping = num(o.total_shipping_price_set?.shop_money?.amount);
+      const net = Math.max(0, num(o.current_total_price ?? o.total_price) - shipping);
+      const factor = gross > 0 ? net / gross : 0;
+      for (const li of lines) {
         const product = String(li.title ?? li.name ?? "").trim();
         if (!product) continue;
         const qty = num(li.quantity);
         const k = `${d}|${product}`;
         const e = agg.get(k) ?? { date: d, product, quantity: 0, revenue: 0 };
         e.quantity += qty;
-        e.revenue += num(li.price) * qty - num(li.total_discount);
+        e.revenue += num(li.price) * qty * factor;
         agg.set(k, e);
       }
     }
@@ -173,25 +194,36 @@ export interface TopProductsFromDb {
 
 export async function getStoreTopProducts(brand: BrandConfig, from: string, to: string, limit = 10): Promise<TopProductsFromDb | null> {
   if (!hasDb()) return null;
-  const { data, error } = await getSupabase()
-    .from("store_product_daily")
-    .select("product,quantity,revenue")
-    .eq("brand_id", brand.id)
-    .gte("date", from)
-    .lte("date", to)
-    .limit(50000);
-  if (error) throw new Error(error.message);
-  if (!data?.length) return null;
-
+  const sb = getSupabase();
   const m = new Map<string, TopProductRow>();
-  for (const r of data) {
-    const name = String(r.product ?? "").trim();
-    if (!name) continue;
-    const e = m.get(name) ?? { name, quantity: 0, revenue: 0, avgPrice: 0 };
-    e.quantity += num(r.quantity);
-    e.revenue += num(r.revenue);
-    m.set(name, e);
+  let seen = 0;
+
+  // PostgREST caps a response at 1,000 rows regardless of .limit(), so page explicitly. A month of
+  // Argania is ~2,600 product-days: reading only the first page silently under-counted revenue by
+  // more than half, which is exactly what made products disagree with store revenue.
+  const PAGE = 1000;
+  for (let offset = 0; offset < 200_000; offset += PAGE) {
+    const { data, error } = await sb
+      .from("store_product_daily")
+      .select("product,quantity,revenue")
+      .eq("brand_id", brand.id)
+      .gte("date", from)
+      .lte("date", to)
+      .range(offset, offset + PAGE - 1);
+    if (error) throw new Error(error.message);
+    if (!data?.length) break;
+    seen += data.length;
+    for (const r of data) {
+      const name = String(r.product ?? "").trim();
+      if (!name) continue;
+      const e = m.get(name) ?? { name, quantity: 0, revenue: 0, avgPrice: 0 };
+      e.quantity += num(r.quantity);
+      e.revenue += num(r.revenue);
+      m.set(name, e);
+    }
+    if (data.length < PAGE) break;
   }
+  if (!seen) return null;
   const all = [...m.values()].sort((a, b) => b.revenue - a.revenue);
   for (const r of all) r.avgPrice = r.quantity ? r.revenue / r.quantity : 0;
   return {

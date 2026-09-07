@@ -48,12 +48,14 @@ function renderEmail(r: ClientReport, note: string, products: TopProductsResult 
     const ofStore = !!(products.storeRevenue && products.storeRevenue >= topRev);
     const base = ofStore ? products.storeRevenue! : topRev;
     const shareOf = (v: number) => (base ? `${((v / base) * 100).toFixed(1)}%` : "—");
-    const shareLabel = ofStore ? "% מהחנות" : "% מהמובילים";
+    const shareLabel = ofStore ? "% מהמוצרים" : "% מהמובילים";
     const label = `${fmtD(products.from)}–${fmtD(products.to)}`;
     const rows = products.rows.map((x, i) =>
       `<tr><td style="padding:7px 8px;border-bottom:1px solid #ececf3;font:400 13px/1.3 ${F};color:#1a1d26;text-align:right">${i + 1}. ${esc(x.name)}</td>${ptd(x.quantity.toLocaleString("en-US"))}${ptd(ils(x.avgPrice))}${ptd(ils(x.revenue), true)}${ptd(shareOf(x.revenue))}</tr>`).join("");
     const totalRow = `<tr><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:right">סה״כ ${products.rows.length} המובילים</td><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${topUnits.toLocaleString("en-US")}</td><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${topUnits ? ils(topRev / topUnits) : "—"}</td><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${ils(topRev)}</td><td style="padding:7px 8px;border-top:2px solid #ececf3;font:700 13px/1.3 ${F};color:#1a1d26;text-align:left" dir="ltr">${shareOf(topRev)}</td></tr>`;
-    const note30 = "";
+    const note30 = ofStore
+      ? `<div style="margin-top:6px;color:#6b7280;font-size:11px">סך מכירות המוצרים בתקופה ${ils(base)}, אחרי הנחות. ההפרש מסך הכנסות החנות הוא דמי משלוח, שאינם מוצר.</div>`
+      : "";
     productsBlock =
       `<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin:14px 0 6px">מוצרים מובילים · ${label}</div>` +
       `<table role="presentation" width="100%" style="border-collapse:collapse">` +
