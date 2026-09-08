@@ -21,7 +21,13 @@ function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: 
 
 export default function AwarenessRangeView({ report, brandName }: { report: AwarenessRangeReport; brandName: string }) {
   const t = report.totals;
-  const target = report.targetCpv;
+  const target = report.planTotals?.planCpv ?? report.targetCpv;
+  // Each platform is judged against its own planned CPV — the plan sets a different goal for
+  // Facebook than for YouTube, so one blended number would mislabel both.
+  const planByKey = new Map(report.plan.map((p) => [p.key, p]));
+  const goalFor = (key: string) => planByKey.get(key)?.planCpv ?? target;
+  const tone = (v: number | null, goal: number | null) =>
+    v == null || goal == null ? "" : v <= goal ? "text-[var(--good)]" : "text-[var(--bad)]";
   const onTarget = target != null && t.cpv != null ? t.cpv <= target : null;
   const hookRate = t.impressions ? t.views3s / t.impressions : null;
   const holdRate = t.views3s ? t.views15s / t.views3s : null;
@@ -80,8 +86,9 @@ export default function AwarenessRangeView({ report, brandName }: { report: Awar
                   <td className="px-2 py-1.5 text-right">{freq(r.frequency)}</td>
                   <td className="px-2 py-1.5 text-right">{num(r.views3s)}</td>
                   <td className="px-2 py-1.5 text-right font-semibold">{formatNumber(r.views15s)}</td>
-                  <td className={`px-2 py-1.5 text-right font-semibold ${target != null && r.cpv != null ? (r.cpv <= target ? "text-[var(--good)]" : "text-[var(--bad)]") : ""}`}>
+                  <td className={`px-2 py-1.5 text-right font-semibold ${tone(r.cpv, goalFor(r.key))}`}>
                     {cpv(r.cpv)}
+                    {goalFor(r.key) != null && <span className="ms-1 text-[10px] font-normal text-[var(--muted)]">/ {cpv(goalFor(r.key))}</span>}
                   </td>
                 </tr>
               ))}
@@ -105,6 +112,63 @@ export default function AwarenessRangeView({ report, brandName }: { report: Awar
           {report.reachNote.map((n2) => <div key={n2}>{n2}</div>)}
         </div>
       </div>
+
+      {report.plan.length > 0 && report.planTotals && (
+        <div className="panel p-4">
+          <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">Media plan vs delivery</div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] border-collapse text-sm">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
+                  <th className="px-2 py-1.5 text-left">Platform</th>
+                  <th className="px-2 py-1.5 text-right">Planned budget</th>
+                  <th className="px-2 py-1.5 text-right">Spent</th>
+                  <th className="px-2 py-1.5 text-right">% of plan</th>
+                  <th className="px-2 py-1.5 text-right">Planned views</th>
+                  <th className="px-2 py-1.5 text-right">Delivered</th>
+                  <th className="px-2 py-1.5 text-right">% of target</th>
+                  <th className="px-2 py-1.5 text-right">Cost / view vs plan</th>
+                </tr>
+              </thead>
+              <tbody className="tabular-nums">
+                {report.plan.map((p) => (
+                  <tr key={p.key} className="border-t border-[var(--card-border)]">
+                    <td className="px-2 py-1.5 text-left font-medium">{p.label}</td>
+                    <td className="px-2 py-1.5 text-right text-[var(--muted)]">{formatIls(p.planBudget)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatIls(p.spend)}</td>
+                    <td className="px-2 py-1.5 text-right">{p.budgetPct == null ? "—" : `${Math.round(p.budgetPct)}%`}</td>
+                    <td className="px-2 py-1.5 text-right text-[var(--muted)]">{formatNumber(p.planViews)}</td>
+                    <td className="px-2 py-1.5 text-right font-semibold">{formatNumber(p.views)}</td>
+                    <td className={`px-2 py-1.5 text-right font-semibold ${p.viewsPct == null ? "" : p.viewsPct >= 100 ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>
+                      {p.viewsPct == null ? "—" : `${Math.round(p.viewsPct)}%`}
+                    </td>
+                    <td className={`px-2 py-1.5 text-right ${p.beat == null ? "" : p.beat ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>
+                      {cpv(p.cpv)} <span className="text-[10px] text-[var(--muted)]">/ {cpv(p.planCpv)}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-[var(--card-border)] font-bold tabular-nums">
+                  <td className="px-2 py-1.5 text-left">Total</td>
+                  <td className="px-2 py-1.5 text-right text-[var(--muted)]">{formatIls(report.planTotals.planBudget)}</td>
+                  <td className="px-2 py-1.5 text-right">{formatIls(report.planTotals.spend)}</td>
+                  <td className="px-2 py-1.5 text-right">{report.planTotals.budgetPct == null ? "—" : `${Math.round(report.planTotals.budgetPct)}%`}</td>
+                  <td className="px-2 py-1.5 text-right text-[var(--muted)]">{formatNumber(report.planTotals.planViews)}</td>
+                  <td className="px-2 py-1.5 text-right">{formatNumber(report.planTotals.views)}</td>
+                  <td className={`px-2 py-1.5 text-right ${(report.planTotals.viewsPct ?? 0) >= 100 ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>
+                    {report.planTotals.viewsPct == null ? "—" : `${Math.round(report.planTotals.viewsPct)}%`}
+                  </td>
+                  <td className={`px-2 py-1.5 text-right ${report.planTotals.beat ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>
+                    {cpv(report.planTotals.cpv)} <span className="text-[10px] font-normal text-[var(--muted)]">/ {cpv(report.planTotals.planCpv)}</span>
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div className="mt-2 text-[11px] text-[var(--muted)]">Targets are the signed media plan, phase 1 and scaling combined. Each platform carries its own view target, so its cost-per-view goal differs.</div>
+        </div>
+      )}
 
       {report.creatives.length > 0 && (
         <div className="panel p-4">
@@ -135,9 +199,7 @@ export default function AwarenessRangeView({ report, brandName }: { report: Awar
                     <td className="px-2 py-1.5 text-right">{formatIls(c.spend)}</td>
                     <td className="px-2 py-1.5 text-right">{formatNumber(c.impressions)}</td>
                     <td className="px-2 py-1.5 text-right font-semibold">{formatNumber(c.views15s)}</td>
-                    <td className={`px-2 py-1.5 text-right ${target != null && c.cpv != null ? (c.cpv <= target ? "text-[var(--good)]" : "text-[var(--bad)]") : ""}`}>
-                      {cpv(c.cpv)}
-                    </td>
+                    <td className={`px-2 py-1.5 text-right ${tone(c.cpv, target)}`}>{cpv(c.cpv)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -36,6 +36,7 @@ export interface BrandConfig {
   targetCpl?: number; // leads brands — cost per lead (ILS)
   targetCpi?: number; // app brands — cost per install (ILS)
   targetCpReg?: number; // app brands — ceiling on cost per registration (ILS)
+  awarenessPlan?: AwarenessPlan; // per-platform video plan (SCJ)
   monthlyBudget: number; // total monthly ad budget (ILS) for pacing; 0 = pacing hidden
   // Awareness/media-plan brands (no store, no ROAS) — get the plan-vs-execution view instead
   // of the conversion dashboard, and are excluded from digest/alerts.
@@ -149,6 +150,20 @@ export interface PlatformPlan {
   // Optional lead-generation goal for the flight (dedicated leadgen + bonus conversions count toward
   // the leads total; cpa is the acceptable cost per lead, compared to the leadgen CPL).
   leadTarget?: { leads: number; cpa: number };
+}
+
+// Awareness media plan laid out per publisher platform (SCJ), so the report can show plan vs
+// execution against the split the client actually signed off — Facebook and Instagram separately,
+// each with its own view target and therefore its own CPV goal.
+export interface AwarenessPlanLine {
+  key: string;   // matches the report row key: "meta:facebook", "meta:instagram", "tiktok", "google"
+  label: string;
+  budget: number;    // ILS, whole flight (phase 1 + scaling)
+  thruplays: number; // 15-second view target
+}
+export interface AwarenessPlan {
+  totalBudget: number;
+  lines: AwarenessPlanLine[];
 }
 
 // Creator/influencer attribution for platform-plan brands. An ad row is attributed to the first
@@ -374,7 +389,19 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 0,
-    targetCpv: 0.03, // TODO: confirm SCJ's vertical and set from CPV15_BENCHMARK (₪0.03–0.16)
+    // From the signed media plan (Duck Fresh Disk): ₪0.10 CPV in phase 1, ₪0.05–0.08 in scaling.
+    // The blended plan CPV across both phases is ₪0.073 — the earlier ₪0.03 was a placeholder and
+    // made every platform read as a miss.
+    targetCpv: 0.073,
+    awarenessPlan: {
+      totalBudget: 83300,
+      lines: [
+        { key: "meta:facebook", label: "Facebook", budget: 29155, thruplays: 481055 },
+        { key: "meta:instagram", label: "Instagram", budget: 24991, thruplays: 290514 },
+        { key: "google", label: "YouTube", budget: 16660, thruplays: 193673 },
+        { key: "tiktok", label: "TikTok", budget: 12495, thruplays: 179091 },
+      ],
+    },
     monthlyBudget: 84000,
     campaignFilter: "scj",
     // TikTok bills in USD in the LDRS Group account → converted to ILS (×3) on ingest + in the
