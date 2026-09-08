@@ -329,7 +329,9 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
   // Google Ads API; the rest still come from Windsor. Skip the Windsor fetches entirely if no
   // section needs them.
   const apiOn = googleAdsConfigured();
-  const needWindsor = brand.googleSnapshot.some((c) => !(c.api && apiOn));
+  // Always fetch Windsor: API sections fall back to it when the call fails, and an account with
+  // every section on the API would otherwise have nothing to fall back to.
+  const needWindsor = true;
   const [campRows, kwRows, stRows, dayRows, auctionRows, prevAuctionRows] = needWindsor
     ? await Promise.all([
         fetchWindsor({
@@ -430,9 +432,34 @@ export async function getSearchSnapshot(brand: BrandConfig, from: string, to: st
       .slice(0, 50);
   };
 
+  // Windsor path, used both as the default and as the fallback when the API call fails.
+  const viaWindsor = (c: GoogleSnapshotConfig) => {
+    const sec = buildSection(c, campRows, kwRows, stRows);
+    const acc1 = new Set([normId(c.account)]);
+    const typesPresent = TYPE_ORDER.filter((t) => sec.campaigns.some((cp) => cp.type === t));
+    return {
+      ...sec,
+      trend: buildTrend(acc1),
+      trendByType: typesPresent.map((t) => ({ type: t, trend: buildTrend(acc1, t) })),
+      competitors: buildCompetitors(normId(c.account)),
+    };
+  };
+
   const sections = await Promise.all(
     brand.googleSnapshot.map(async (c) => {
-      if (c.api && apiOn) return buildSectionViaApi(c, from, to, prevFrom, prevTo);
+      if (c.api && apiOn) {
+        // Configured is not the same as working: an expired refresh token still passes
+        // googleAdsConfigured(), and returning its empty result blanked the whole account.
+        // Fall back to Windsor on any API failure, and on an empty result.
+        try {
+          const viaApi = await buildSectionViaApi(c, from, to, prevFrom, prevTo);
+          if (viaApi && viaApi.totals.impressions > 0) return viaApi;
+          console.warn(`[searchSnapshot] ${c.title}: Google Ads API returned no rows — falling back to Windsor`);
+        } catch (e) {
+          console.warn(`[searchSnapshot] ${c.title}: Google Ads API failed (${e instanceof Error ? e.message.slice(0, 120) : e}) — falling back to Windsor`);
+        }
+        return viaWindsor(c);
+      }
       const sec = buildSection(c, campRows, kwRows, stRows);
       const acc1 = new Set([normId(c.account)]);
       const typesPresent = TYPE_ORDER.filter((t) => sec.campaigns.some((cp) => cp.type === t));
