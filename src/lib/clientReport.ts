@@ -3,6 +3,7 @@
 // table, newsletter sign-ups (Meta complete_registration), top ads by ROAS, and an auto summary.
 import { unstable_cache } from "next/cache";
 import { reportGroupOf, getBrand, type BrandConfig } from "./brands";
+import { playbookFor } from "./playbooks";
 import { getBrandMetrics } from "./queries";
 import { fetchWindsor, num } from "./windsor";
 import { fetchQuickShopPaidOrders } from "./quickshop";
@@ -63,6 +64,9 @@ export interface ClientReport {
   to: string;
   periodLabel: string; // human-readable Hebrew period the report covers (so the מלל is unambiguous)
   target: number;
+  // Influencer vs brand creative, when the playbook names the creators. Commission on
+  // influencer conversions is invisible to every platform's ROAS, so it's carried here.
+  creativeSplit?: { influencerSpend: number; influencerRevenue: number; influencerAds: number; brandSpend: number; brandRevenue: number; brandAds: number } | null;
   topLevel: { siteRoas: number | null; paidRoas: number | null; cvr: number | null; cvrPrev: number | null; storeRevenue: number; totalSpend: number; orders: number };
   platforms: PlatformRow[];
   registrations: number;
@@ -86,8 +90,8 @@ export function periodLabel(from: string, to: string): string {
 const CH_LABEL: Record<string, string> = { meta: "Meta", google: "Google", tiktok: "TikTok" };
 
 // Top Meta ads by ROAS + total newsletter sign-ups (complete_registration), ILS.
-async function metaAdsAndRegs(brand: BrandConfig, from: string, to: string): Promise<{ topAds: TopAd[]; registrations: number }> {
-  if (!brand.metaAccountId) return { topAds: [], registrations: 0 };
+async function metaAdsAndRegs(brand: BrandConfig, from: string, to: string): Promise<{ topAds: TopAd[]; registrations: number; creativeSplit: ClientReport["creativeSplit"] }> {
+  if (!brand.metaAccountId) return { topAds: [], registrations: 0, creativeSplit: null };
   try {
     const rows = await fetchWindsor({
       connector: "facebook",
@@ -112,14 +116,27 @@ async function metaAdsAndRegs(brand: BrandConfig, from: string, to: string): Pro
       if (rowSpend > e.best) { e.best = rowSpend; e.ig = String(r.instagram_permalink_url ?? "").trim(); e.story = String(r.effective_object_story_id ?? "").trim(); }
       map.set(name, e);
     }
+    const pbook = playbookFor(brand.id);
+    const creators = (pbook?.creators ?? []).map((c) => c.toLowerCase());
+    let creativeSplit: { influencerSpend: number; influencerRevenue: number; influencerAds: number; brandSpend: number; brandRevenue: number; brandAds: number } | null = null;
+    if (creators.length) {
+      const acc2 = { influencerSpend: 0, influencerRevenue: 0, influencerAds: 0, brandSpend: 0, brandRevenue: 0, brandAds: 0 };
+      for (const [name, e] of map) {
+        const isInfluencer = creators.some((c) => name.toLowerCase().startsWith(c));
+        if (isInfluencer) { acc2.influencerSpend += e.spend; acc2.influencerRevenue += e.rev; acc2.influencerAds++; }
+        else { acc2.brandSpend += e.spend; acc2.brandRevenue += e.rev; acc2.brandAds++; }
+      }
+      creativeSplit = acc2;
+    }
+
     const topAds = [...map]
       .filter(([, e]) => e.spend >= 100) // ignore tiny-spend outliers so ROAS is meaningful
       .map(([name, e]) => ({ name, spend: Math.round(e.spend), revenue: Math.round(e.rev), roas: e.spend ? e.rev / e.spend : null, previewUrl: adPreviewUrl(e.ig, e.story), storeRevenue: null as number | null, storeRoas: null as number | null }))
       .sort((a, b) => (b.roas ?? 0) - (a.roas ?? 0))
       .slice(0, brand.topAdsCount ?? 5);
-    return { topAds, registrations: Math.round(registrations) };
+    return { topAds, registrations: Math.round(registrations), creativeSplit };
   } catch {
-    return { topAds: [], registrations: 0 };
+    return { topAds: [], registrations: 0, creativeSplit: null };
   }
 }
 
@@ -168,6 +185,7 @@ export async function getClientReport(brand: BrandConfig, from: string, to: stri
     topLevel: { siteRoas, paidRoas, cvr, cvrPrev, storeRevenue: Math.round(m.channels.site.revenue), totalSpend: Math.round(m.total.spend), orders: Math.round(m.channels.site.purchases) },
     platforms,
     registrations: meta.registrations,
+    creativeSplit: meta.creativeSplit,
     topAds,
     summary,
   };
