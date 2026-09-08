@@ -23,6 +23,8 @@ import { getPlatformPlanExecution } from "@/lib/platformPlan";
 import AppReportView from "@/components/AppReportView";
 import { getAppReport } from "@/lib/appReport";
 import { getRegionCostReport } from "@/lib/regionCost";
+import { getAwarenessRange } from "@/lib/awarenessRange";
+import AwarenessRangeView from "@/components/AwarenessRangeView";
 import { listBudgetRequests } from "@/lib/budgetRequestStore";
 import { getCityDailyBudgets } from "@/lib/cityBudgets";
 import { getSnapshot, HAAT_WEEKLY_KEY } from "@/lib/sheetStore";
@@ -87,6 +89,14 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
   // Views/leads clients (SCJ, Style, Leaders, Bestie) — the unified DB-backed layout: overview +
   // budget pacing + channel funnel + trend + breakdown explorer + daily, KPI-adapted per profile.
   const profile = campaignProfileOf(brand);
+  // SCJ reports to the client's global team, so it gets the English range-level view: deduplicated
+  // reach, Facebook/Instagram split, and no trend or daily table.
+  if (brand.id === "scj") {
+    const rep = await getAwarenessRange(brand, range.from, range.to);
+    return rep
+      ? <AwarenessRangeView report={rep} brandName={brand.name} />
+      : <div className="panel p-4 text-sm text-[var(--muted)]">No campaign data for this range.</div>;
+  }
   if (profile === "views" || profile === "leads") {
     const [cm, monthSpend] = await Promise.all([
       getCampaignBrandMetrics(brand, range.from, range.to),
