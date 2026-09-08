@@ -10,6 +10,7 @@ import type { AppReport } from "./appReport";
 import type { ClientReport } from "./clientReport";
 import type { SnapSection } from "./searchSnapshot";
 import type { TopProductsResult } from "./topProducts";
+import { playbookFor, rampDays } from "./playbooks";
 
 export type Severity = "critical" | "warn" | "good";
 export interface Insight { severity: Severity; title: string; evidence: string; action: string }
@@ -189,31 +190,101 @@ export function appInsights(
 }
 
 // ─────────────────────────────────────────── e-commerce
-export function ecomInsights(brand: BrandConfig, r: ClientReport, products?: TopProductsResult | null): Insight[] {
+export function ecomInsights(
+  brand: BrandConfig,
+  r: ClientReport,
+  products?: TopProductsResult | null,
+  audience?: { newRevenue: number; storeRevenue: number },
+): Insight[] {
   const out: Insight[] = [];
-  const target = brand.targetRoas || 0;
-  const roas = r.topLevel.siteRoas;
+  const pb = playbookFor(brand.id);
+  const paidRoas = r.topLevel.paidRoas;
+  const siteRoas = r.topLevel.siteRoas;
+  const spend = r.topLevel.totalSpend;
 
-  if (target > 0 && roas != null) {
-    out.push(roas >= target
-      ? { severity: "good", title: "הרואס מעל היעד", evidence: `${roas.toFixed(1)} מול יעד ${target.toFixed(1)}.`,
-          action: `יש מקום להגדיל תקציב: בשמירה על הרואס הנוכחי, תוספת של ${ils(r.topLevel.totalSpend * 0.2)} שווה כ-${ils(r.topLevel.totalSpend * 0.2 * roas)} הכנסות.` }
-      : { severity: roas < target * 0.7 ? "critical" : "warn", title: "הרואס מתחת ליעד",
-          evidence: `${roas.toFixed(1)} מול יעד ${target.toFixed(1)}.`,
-          action: "לצמצם קמפיינים מתחת ליעד ולהסיט למודעות המובילות — פירוט בטבלת המודעות." });
+  // 1. The floor the account is actually judged on. Site ROAS counts revenue paid media didn't
+  //    create, so a healthy-looking 5.1 can sit on top of a paid ROAS scraping its floor.
+  if (pb?.paidRoasFloor != null && paidRoas != null) {
+    const floor = pb.paidRoasFloor;
+    const margin = (paidRoas / floor - 1) * 100;
+    if (paidRoas < floor) {
+      out.push({
+        severity: "critical",
+        title: `הרואס הממומן מתחת לרצפה של ${floor}`,
+        evidence: `${paidRoas.toFixed(2)} מול רצפה ${floor.toFixed(1)}${siteRoas != null ? `. רואס האתר ${siteRoas.toFixed(2)} גבוה יותר אבל הוא כולל הכנסות שהמדיה לא ייצרה` : ""}.`,
+        action: "לעצור קמפיינים מתחת לרצפה ולהסיט את תקציבם למובילים לפני כל הגדלה.",
+      });
+    } else if (margin < 15) {
+      out.push({
+        severity: "warn",
+        title: `הרואס הממומן ${paidRoas.toFixed(2)} — רק ${Math.round(margin)}% מעל הרצפה`,
+        evidence: `הרצפה היא ${floor.toFixed(1)}${siteRoas != null ? `; רואס האתר ${siteRoas.toFixed(2)} מטעה כאן כי הוא סופר גם הכנסות שאינן מהמדיה` : ""}.`,
+        action: "אין מרווח להגדלה רוחבית. קודם לשפר יעילות במודעות החלשות, ורק אז לשקול תקציב.",
+      });
+    }
   }
 
+  // 2. Audience mix — the account is judged on new customers, not revenue alone.
+  if (pb?.newCustomerShareTarget != null && audience && audience.storeRevenue > 0) {
+    const share = audience.newRevenue / audience.storeRevenue;
+    if (share > 0 && share < pb.newCustomerShareTarget) {
+      const gap = pb.newCustomerShareTarget - share;
+      out.push({
+        severity: gap > 0.2 ? "critical" : "warn",
+        title: `${Math.round(share * 100)}% מההכנסות מקהל חדש, מול יעד ${Math.round(pb.newCustomerShareTarget * 100)}%`,
+        evidence: `${ils(audience.newRevenue)} מתוך ${ils(audience.storeRevenue)} — השאר מקהל חוזר.`,
+        action: `להסיט משקל לקהלים קרים ולקריאייטיב גיוס: סגירת הפער שווה כ-${ils(gap * audience.storeRevenue)} הכנסות מלקוחות חדשים.`,
+      });
+    }
+  }
+
+  // 3. Efficient-but-small channel. Never a scale instruction on its own — the playbook's checks
+  //    decide whether the efficiency is repeatable or the echo of something already over.
+  const plats = r.platforms.filter((p) => p.spend > 0 && p.roas != null);
+  if (plats.length >= 2 && pb) {
+    const best = plats.reduce((a, b) => (a.roas! >= b.roas! ? a : b));
+    const biggest = plats.reduce((a, b) => (a.spend >= b.spend ? a : b));
+    if (best.platform !== biggest.platform && best.roas! >= biggest.roas! * 1.5) {
+      const cur = best.spend / 30;
+      const tgt = cur * 2;
+      const days = rampDays(cur, tgt, pb.maxDailyBudgetChange);
+      out.push({
+        severity: "good",
+        title: `${best.platform} מחזיר ${best.roas!.toFixed(2)} על ${ils(best.spend)} בלבד`,
+        evidence: `${biggest.platform} מחזיר ${biggest.roas!.toFixed(2)} על ${ils(biggest.spend)}. הפער מצדיק בדיקה — לא הגדלה אוטומטית.`,
+        action: `לפני הגדלה לענות: ${pb.scaleChecks.join(" · ")} אם התשובה מצדיקה — הכפלה של ${best.platform} דורשת ${days} ימי העלאה הדרגתית (עד ${Math.round(pb.maxDailyBudgetChange * 100)}% ליום, מעבר לכך הקמפיין חוזר ללמידה).`,
+      });
+    }
+  }
+
+  // 4. Creative spread — the cheapest lever, and it doesn't touch budget caps.
   const ads = r.topAds.filter((a) => a.spend > 0 && a.roas != null);
   if (ads.length >= 3) {
     const best = ads.reduce((a, b) => (a.roas! >= b.roas! ? a : b));
     const worst = ads.reduce((a, b) => (a.roas! <= b.roas! ? a : b));
-    if (best.roas! > 0 && worst.roas! >= 0 && best.roas! / Math.max(worst.roas!, 0.1) >= 2.5) {
+    if (best.roas! > 0 && best.roas! / Math.max(worst.roas!, 0.1) >= 2.5) {
       const gain = worst.spend * (best.roas! - worst.roas!);
       out.push({
         severity: "warn",
         title: "פער גדול בין המודעות המובילות",
         evidence: `"${best.name}" ברואס ${best.roas!.toFixed(1)} מול "${worst.name}" ב-${worst.roas!.toFixed(1)}.`,
-        action: `להסיט את ${ils(worst.spend)} מהחלשה למובילה — פוטנציאל של כ-${ils(gain)} הכנסות נוספות.`,
+        action: `להסיט את ${ils(worst.spend)} מהחלשה למובילה — פוטנציאל של כ-${ils(gain)} הכנסות. שינוי קריאייטיב אינו כפוף למגבלת התקציב היומית.`,
+      });
+    }
+  }
+
+  // 5. Attribution gap — Meta claiming credit the store doesn't confirm.
+  const withStore = r.topAds.filter((a) => a.roas != null && a.storeRoas != null && a.storeRoas > 0);
+  if (withStore.length >= 3) {
+    const metaSum = withStore.reduce((a, x) => a + x.roas!, 0);
+    const storeSum = withStore.reduce((a, x) => a + x.storeRoas!, 0);
+    const ratio = storeSum > 0 ? metaSum / storeSum : null;
+    if (ratio != null && ratio >= 1.5) {
+      out.push({
+        severity: "warn",
+        title: `מטא מדווחת רואס גבוה פי ${ratio.toFixed(1)} מהחנות`,
+        evidence: `על ${withStore.length} המודעות המובילות, הרואס לפי מטא גבוה בעקביות מהרואס לפי הכנסות החנות בפועל.`,
+        action: "לתקצב לפי רואס החנות ולא לפי הדיווח של מטא — ההפרש הוא קרדיט שמטא לוקחת על מכירות שלא לגמרי שלה.",
       });
     }
   }
