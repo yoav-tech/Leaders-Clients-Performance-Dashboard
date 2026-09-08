@@ -22,6 +22,18 @@ const REG_COLS: Col[] = [
   { label: "Spend", field: "spend", fmt: "ils" }, { label: "Clicks", field: "clicks", fmt: "num" }, { label: "CTR", field: "ctr", fmt: "pct" },
   { label: "Reg", field: "registrations", fmt: "num" }, { label: "CP-Reg", field: "cpReg", fmt: "ils" },
 ];
+// Remarketing: existing registrants pushed to purchase — judged on purchases, not registrations.
+const RMKT_COLS: Col[] = [
+  { label: "Spend", field: "spend", fmt: "ils" }, { label: "Impr", field: "impressions", fmt: "num" },
+  { label: "Clicks", field: "clicks", fmt: "num" }, { label: "CTR", field: "ctr", fmt: "pct" },
+  { label: "Purchases", field: "purchases", fmt: "num" }, { label: "Cost/purchase", field: "cpPurch", fmt: "ils" },
+];
+// Traffic: bought on link clicks, so cost per click is the KPI.
+const TRAFFIC_COLS: Col[] = [
+  { label: "Spend", field: "spend", fmt: "ils" }, { label: "Impr", field: "impressions", fmt: "num" },
+  { label: "Reach", field: "reach", fmt: "num" }, { label: "Clicks", field: "clicks", fmt: "num" },
+  { label: "CTR", field: "ctr", fmt: "pct" }, { label: "Cost/click", field: "cpc", fmt: "ils" },
+];
 const LEADS_COLS: Col[] = [
   { label: "Spend", field: "spend", fmt: "ils" }, { label: "Impr", field: "impressions", fmt: "num" }, { label: "Clicks", field: "clicks", fmt: "num" },
   { label: "CTR", field: "ctr", fmt: "pct" }, { label: "Leads", field: "leads", fmt: "num" }, { label: "CP-Lead", field: "cpLead", fmt: "ils" },
@@ -213,6 +225,16 @@ export default function AppReportView({ brand, report, regionReport, from, to, i
               <Panel title="REG · לפי קמפיין / אד-גרופ / מודעה · פילטר עיר">
                 <AppLevelTable rows={s.rows.filter((r) => r.type === "registration")} cols={REG_COLS} />
               </Panel>
+              {s.rows.some((r) => r.type === "remarketing") && (
+                <Panel title="רימרקטינג · הרשמה → רכישה">
+                  <AppLevelTable rows={s.rows.filter((r) => r.type === "remarketing")} cols={RMKT_COLS} />
+                </Panel>
+              )}
+              {s.rows.some((r) => r.type === "traffic") && (
+                <Panel title="Bring a Friend · תנועה (מטרה: קליקים לקישור)">
+                  <AppLevelTable rows={s.rows.filter((r) => r.type === "traffic")} cols={TRAFFIC_COLS} />
+                </Panel>
+              )}
             </>
           ) : (
             <Panel title="Leads · לפי קמפיין / אד-גרופ / מודעה · פילטר עיר">
