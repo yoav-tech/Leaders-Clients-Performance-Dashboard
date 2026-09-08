@@ -67,6 +67,9 @@ export interface ClientReport {
   // Influencer vs brand creative, when the playbook names the creators. Commission on
   // influencer conversions is invisible to every platform's ROAS, so it's carried here.
   creativeSplit?: { influencerSpend: number; influencerRevenue: number; influencerAds: number; brandSpend: number; brandRevenue: number; brandAds: number } | null;
+  // Paid ROAS on store-attributed revenue (UTM), not what the platforms claim.
+  paidStoreRoas?: number | null;
+  paidStoreRevenue?: number | null;
   topLevel: { siteRoas: number | null; paidRoas: number | null; cvr: number | null; cvrPrev: number | null; storeRevenue: number; totalSpend: number; orders: number };
   platforms: PlatformRow[];
   registrations: number;
@@ -90,6 +93,36 @@ export function periodLabel(from: string, to: string): string {
 const CH_LABEL: Record<string, string> = { meta: "Meta", google: "Google", tiktok: "TikTok" };
 
 // Top Meta ads by ROAS + total newsletter sign-ups (complete_registration), ILS.
+// Store revenue attributed to PAID media by UTM — the basis the account is actually judged on.
+// Platform-reported revenue overstates badly (Meta ran 2.3x the store figure on Argania in
+// August), so a ROAS floor has to be measured against what the store recorded, not what the ad
+// platform claimed. Organic sources that merely contain a platform's name (google_organic,
+// instagram bio, facebook/organic) are excluded — matching on the source string alone counts them.
+const PAID_SOURCES = new Set(["ig", "fb", "facebook", "instagram", "google", "tiktok", "meta"]);
+const NON_PAID_MEDIUM = /organic|bio|referral|email|sms|chat/;
+
+const _paidStoreRevenue = async (brandId: string, from: string, to: string): Promise<number> => {
+  const brand = getBrand(brandId);
+  if (!brand) return 0;
+  try {
+    const orders = brand.storePlatform === "shopify"
+      ? (await fetchShopifyPaidOrders(brand, from, to)).orders
+      : await fetchQuickShopPaidOrders(brand, from, to);
+    let total = 0;
+    for (const o of orders) {
+      const src = (o.utmSource ?? "").toLowerCase().trim();
+      const med = (o.utmMedium ?? "").toLowerCase().trim();
+      if (!PAID_SOURCES.has(src)) continue;
+      if (NON_PAID_MEDIUM.test(med)) continue;
+      total += o.total;
+    }
+    return total;
+  } catch {
+    return 0;
+  }
+};
+const paidStoreRevenue = unstable_cache(_paidStoreRevenue, ["paid-store-revenue-v1"], { revalidate: 1800, tags: ["client-report"] });
+
 async function metaAdsAndRegs(brand: BrandConfig, from: string, to: string): Promise<{ topAds: TopAd[]; registrations: number; creativeSplit: ClientReport["creativeSplit"] }> {
   if (!brand.metaAccountId) return { topAds: [], registrations: 0, creativeSplit: null };
   try {
@@ -145,7 +178,7 @@ const pctStr = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(1
 
 export async function getClientReport(brand: BrandConfig, from: string, to: string): Promise<ClientReport | null> {
   if (reportGroupOf(brand) !== "ecommerce") return null;
-  const [all, meta, storeByAd] = await Promise.all([getBrandMetrics(from, to), metaAdsAndRegs(brand, from, to), storeRevByAd(brand, from, to)]);
+  const [all, meta, storeByAd, paidStoreRev] = await Promise.all([getBrandMetrics(from, to), metaAdsAndRegs(brand, from, to), storeRevByAd(brand, from, to), paidStoreRevenue(brand.id, from, to)]);
   const m = all.find((x) => x.brandId === brand.id);
   if (!m) return null;
 
@@ -186,6 +219,8 @@ export async function getClientReport(brand: BrandConfig, from: string, to: stri
     platforms,
     registrations: meta.registrations,
     creativeSplit: meta.creativeSplit,
+    paidStoreRevenue: Math.round(paidStoreRev),
+    paidStoreRoas: m.total.spend ? paidStoreRev / m.total.spend : null,
     topAds,
     summary,
   };

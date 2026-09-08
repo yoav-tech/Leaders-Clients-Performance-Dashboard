@@ -198,7 +198,10 @@ export function ecomInsights(
 ): Insight[] {
   const out: Insight[] = [];
   const pb = playbookFor(brand.id);
-  const paidRoas = r.topLevel.paidRoas;
+  // The floor is on STORE ROAS for paid — utm-attributed store revenue over paid spend — not on
+  // what the ad platforms report. Falls back to the platform figure only if UTMs are unavailable.
+  const paidRoas = r.paidStoreRoas ?? r.topLevel.paidRoas;
+  const roasBasis = r.paidStoreRoas != null ? "חנות (UTM)" : "דיווח פלטפורמות";
   const siteRoas = r.topLevel.siteRoas;
   const spend = r.topLevel.totalSpend;
 
@@ -210,15 +213,15 @@ export function ecomInsights(
     if (paidRoas < floor) {
       out.push({
         severity: "critical",
-        title: `הרואס הממומן מתחת לרצפה של ${floor}`,
-        evidence: `${paidRoas.toFixed(2)} מול רצפה ${floor.toFixed(1)}${siteRoas != null ? `. רואס האתר ${siteRoas.toFixed(2)} גבוה יותר אבל הוא כולל הכנסות שהמדיה לא ייצרה` : ""}.`,
+        title: `רואס חנות ממומן מתחת לרצפה של ${floor}`,
+        evidence: `${paidRoas.toFixed(2)} לפי ${roasBasis} מול רצפה ${floor.toFixed(1)}${r.topLevel.paidRoas != null ? `. מטא מדווחת ${r.topLevel.paidRoas.toFixed(2)}` : ""}${siteRoas != null ? `, ורואס האתר ${siteRoas.toFixed(2)} כולל גם הכנסות שהמדיה לא ייצרה` : ""}.`,
         action: "לעצור קמפיינים מתחת לרצפה ולהסיט את תקציבם למובילים לפני כל הגדלה.",
       });
     } else if (margin < 15) {
       out.push({
         severity: "warn",
-        title: `הרואס הממומן ${paidRoas.toFixed(2)} — רק ${Math.round(margin)}% מעל הרצפה`,
-        evidence: `הרצפה היא ${floor.toFixed(1)}${siteRoas != null ? `; רואס האתר ${siteRoas.toFixed(2)} מטעה כאן כי הוא סופר גם הכנסות שאינן מהמדיה` : ""}.`,
+        title: `רואס חנות ממומן ${paidRoas.toFixed(2)} — רק ${Math.round(margin)}% מעל הרצפה`,
+        evidence: `נמדד לפי ${roasBasis}. הרצפה היא ${floor.toFixed(1)}${r.topLevel.paidRoas != null ? `; מטא מדווחת ${r.topLevel.paidRoas.toFixed(2)}` : ""}${siteRoas != null ? ` ורואס האתר ${siteRoas.toFixed(2)}` : ""} — שניהם גבוהים מהמדד שקובע.`,
         action: "אין מרווח להגדלה רוחבית. קודם לשפר יעילות במודעות החלשות, ורק אז לשקול תקציב.",
       });
     }
