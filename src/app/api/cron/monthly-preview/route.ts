@@ -4,6 +4,7 @@ import { BRANDS, campaignProfileOf, reportGroupOf, getBrand } from "@/lib/brands
 import { getClientReport } from "@/lib/clientReport";
 import { getTopProducts } from "@/lib/topProducts";
 import { getCampaignBrandMetrics } from "@/lib/campaignMetrics";
+import { getBrandMetrics } from "@/lib/queries";
 import { getAppReport } from "@/lib/appReport";
 import { getSearchSnapshot } from "@/lib/searchSnapshot";
 import { HAAT_AUGUST_2026 } from "@/lib/haatRegions";
@@ -50,16 +51,22 @@ export async function GET(request: Request) {
       let html: string | null = null;
 
       if (grp === "ecommerce") {
-        const [r, products] = await Promise.all([
+        const [r, products, allMetrics] = await Promise.all([
           getClientReport(b, from, to),
           getTopProducts(b, from, to).catch(() => null),
+          getBrandMetrics(from, to).catch(() => []),
         ]);
         if (r) {
-          const ins = ecomInsights(b, r, products);
+          // New-vs-returning lives in the daily metrics, not the report — the account is judged on
+          // the mix, so the rules need it.
+          const bm = allMetrics.find((m) => m.brandId === b.id);
+          const audience = bm ? { newRevenue: bm.newRevenue, storeRevenue: bm.channels.site.revenue } : undefined;
+          const ins = ecomInsights(b, r, products, audience);
           if (dry) facts[b.id] = {
             topLevel: r.topLevel, platforms: r.platforms,
             topAds: r.topAds.map((a) => ({ name: a.name, spend: a.spend, roas: a.roas, storeRevenue: a.storeRevenue, storeRoas: a.storeRoas })),
             products: products?.rows?.slice(0, 8), productTotal: products?.storeRevenue, distinctProducts: products?.distinctProducts,
+            audience,
             targetRoas: b.targetRoas, insights: ins,
           };
           html = renderEmail(r, "", products, ins);
