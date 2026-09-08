@@ -24,6 +24,13 @@ export interface Playbook {
   levers: string[];
   /** Things never to recommend on this account. */
   neverRecommend: string[];
+  /** Ad-name prefixes that identify an influencer's creative. */
+  creators?: string[];
+  /** Commission paid on a conversion driven by an influencer's creative, as a fraction of revenue.
+   *  It doesn't appear in any platform's ROAS, so influencer performance is overstated until it's
+   *  subtracted — and if only their creative works, the account is paying it on most of its sales. */
+  influencerCommission?: number;
+  vatRate?: number;
 }
 
 export const PLAYBOOKS: Record<string, Playbook> = {
@@ -43,6 +50,8 @@ export const PLAYBOOKS: Record<string, Playbook> = {
       "בגוגל: מונחי מותג או גנרי? ואם Performance Max — אילו קריאייטיבים ויזואליים ועל איזה קהל?",
     ],
     levers: [
+      "Raise budget on the pockets that are already efficient — that is itself an efficiency gain",
+      "Ask the client for new brand creative when only influencer creative converts",
       "Reallocate between platforms, ramped within the daily change limit",
       "Pause or scale individual creatives",
       "Shift between brand and generic search terms",
@@ -52,7 +61,11 @@ export const PLAYBOOKS: Record<string, Playbook> = {
       "Raising a platform's budget by more than the daily change limit in one step",
       "Scaling an efficient channel before diagnosing what made it efficient",
       "Judging the account on site ROAS alone",
+      "Comparing influencer creative to brand creative without subtracting the commission",
     ],
+    creators: ["Miran", "Anna"],
+    influencerCommission: 0.10,
+    vatRate: 0.18,
   },
 };
 

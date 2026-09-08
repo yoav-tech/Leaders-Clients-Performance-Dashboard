@@ -289,6 +289,39 @@ export function ecomInsights(
     }
   }
 
+  // 6. Influencer vs brand creative. The commission is invisible to every platform's ROAS, so an
+  //    influencer looks cheaper than she is — and if only her creative converts, the brand is
+  //    paying that commission on most of its sales.
+  const cs = r.creativeSplit;
+  if (cs && pb?.influencerCommission && cs.influencerSpend > 0 && cs.brandSpend > 0) {
+    const vat = 1 + (pb.vatRate ?? 0);
+    const commission = cs.influencerRevenue * pb.influencerCommission * vat;
+    const inflRoas = cs.influencerRevenue / cs.influencerSpend;
+    const netInflRoas = cs.influencerRevenue / (cs.influencerSpend + commission);
+    const brandRoas = cs.brandRevenue / cs.brandSpend;
+    const totalRev = cs.influencerRevenue + cs.brandRevenue;
+    const inflShare = totalRev ? cs.influencerRevenue / totalRev : 0;
+    const spendShare = cs.brandSpend / (cs.influencerSpend + cs.brandSpend);
+
+    if (netInflRoas > brandRoas) {
+      // The brand's own creative is the weak side — that is the thing to fix.
+      const uplift = cs.brandSpend * (netInflRoas - brandRoas);
+      out.push({
+        severity: inflShare > 0.5 ? "critical" : "warn",
+        title: `קריאייטיב המותג מחזיר ${brandRoas.toFixed(2)} מול ${netInflRoas.toFixed(2)} של המשפיעניות אחרי עמלה`,
+        evidence: `${Math.round(spendShare * 100)}% מהתקציב יושב בקריאייטיב מותג שמחזיר פחות. המשפיעניות מדווחות ${inflRoas.toFixed(2)} אבל העמלה (${Math.round(pb.influencerCommission * 100)}% + מע״מ, ${ils(commission)} החודש) מורידה אותן ל-${netInflRoas.toFixed(2)}.`,
+        action: `לדרוש מהלקוח קריאייטיב מותג חדש — אם הוא היה מגיע ליעילות של המשפיעניות, אותו תקציב היה מניב כ-${ils(uplift)} הכנסות נוספות. תלות במשפיענית עולה ${Math.round(pb.influencerCommission * 100)}% על כל המרה.`,
+      });
+    } else {
+      out.push({
+        severity: "good",
+        title: `אחרי עמלה, קריאייטיב המותג יעיל יותר (${brandRoas.toFixed(2)} מול ${netInflRoas.toFixed(2)})`,
+        evidence: `המשפיעניות מדווחות ${inflRoas.toFixed(2)}, אבל ${ils(commission)} עמלה החודש מורידים אותן מתחת למותג.`,
+        action: "להסיט משקל לקריאייטיב המותג — אותה תוצאה בלי עמלה.",
+      });
+    }
+  }
+
   if (products?.rows?.length && products.storeRevenue) {
     const top3 = products.rows.slice(0, 3).reduce((a, p) => a + p.revenue, 0);
     const share = top3 / products.storeRevenue;
