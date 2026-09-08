@@ -12,6 +12,7 @@ import type {
   KpiSnapshot,
 } from "./types";
 import { AD_CHANNELS } from "./types";
+import { forecastAccuracy, previousMonth, type ForecastAccuracy } from "./forecastAccuracy";
 
 // daily_metrics changes only on ingest (daily cron + live-warm), so cache reads for a short TTL
 // and bust the "metrics" tag on ingest. This collapses the 4–5 daily_metrics round-trips a single
@@ -342,6 +343,14 @@ export interface MonthForecast {
     spend: number; adRevenue: number; purchases: number; storeRevenue: number; orders: number;
     roas: number | null; blendedRoas: number | null; aov: number | null; cpa: number | null;
   };
+  // Below 7 complete days the projection is noise — backtesting August put its error between
+  // 29% and 53% in the first week, because the trailing window still sits mostly in the previous
+  // month. Callers should say "too early" rather than print a number.
+  reliable: boolean;
+  // Measured error from backtesting last month, so the range shown matches this brand's own
+  // history rather than implying every forecast is equally trustworthy.
+  accuracy: ForecastAccuracy | null;
+  eomRange: { low: number; high: number } | null; // store revenue, ± the measured error
 }
 
 export async function getMonthForecast(brandId: string): Promise<MonthForecast> {
@@ -374,8 +383,17 @@ export async function getMonthForecast(brandId: string): Promise<MonthForecast> 
   const storeRevenue = proj(mtd.storeRevenue, r7?.channels.site.revenue);
   const orders = proj(mtd.orders, r7?.channels.site.purchases);
 
+  const month = monthStart.slice(0, 7);
+  const accuracy = await forecastAccuracy(brandId, previousMonth(month)).catch(() => null);
+  const eomRange = accuracy && storeRevenue > 0
+    ? { low: storeRevenue * (1 - accuracy.maePct / 100), high: storeRevenue * (1 + accuracy.maePct / 100) }
+    : null;
+
   return {
-    month: monthStart.slice(0, 7),
+    month,
+    reliable: elapsedComplete >= 7,
+    accuracy,
+    eomRange,
     elapsedComplete,
     daysInMonth,
     daysRemaining,
