@@ -6,10 +6,16 @@
 
 import { AD_LEVELS, type AdLevel } from "./adLevel";
 
-export type CampType = "reach" | "install" | "registration" | "leads" | "other";
+export type CampType = "reach" | "install" | "registration" | "remarketing" | "traffic" | "leads" | "other";
 
 export function classifyType(name: string): CampType {
   const n = name.toLowerCase();
+  // Remarketing is checked first: "Rmkt || Reg To Purchase" also matches the registration rule,
+  // and it belongs in its own table — its goal is a purchase from an existing registrant, not a
+  // new registration, so mixing it in distorts cost per registration.
+  if (/\brmkt\b|remarket/.test(n)) return "remarketing";
+  // Traffic campaigns (Bring a Friend) are bought on link clicks, not installs or registrations.
+  if (/bring a friend|\btraffic\b/.test(n)) return "traffic";
   if (/reach/.test(n)) return "reach";
   if (/install|instal/.test(n)) return "install";
   if (/registration|\breg\b/.test(n)) return "registration";
