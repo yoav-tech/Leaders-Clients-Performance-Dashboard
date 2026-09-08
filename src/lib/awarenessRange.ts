@@ -37,10 +37,18 @@ export interface CreativeRow {
   cpv: number | null;
   previewUrl: string | null;
 }
+export interface PlanCompare {
+  key: string; label: string;
+  planBudget: number; spend: number; budgetPct: number | null;
+  planViews: number; views: number; viewsPct: number | null;
+  planCpv: number | null; cpv: number | null; beat: boolean | null;
+}
 export interface AwarenessRangeReport {
   from: string;
   to: string;
   rows: PlatformRow[];
+  plan: PlanCompare[];
+  planTotals: PlanCompare | null;
   totals: { spend: number; impressions: number; views3s: number; views15s: number; cpv: number | null; reachSum: number | null };
   creatives: CreativeRow[];
   targetCpv: number | null;
@@ -224,8 +232,38 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
 
   creatives.sort((a, b) => b.views15s - a.views15s);
 
+  // Plan vs execution, against the client's signed per-platform split.
+  const plan: PlanCompare[] = [];
+  let planTotals: PlanCompare | null = null;
+  if (brand.awarenessPlan) {
+    for (const l of brand.awarenessPlan.lines) {
+      const row = rows.find((r) => r.key === l.key);
+      const spend = row?.spend ?? 0;
+      const views = row?.views15s ?? 0;
+      const planCpv = l.thruplays ? l.budget / l.thruplays : null;
+      const cpv = views ? spend / views : null;
+      plan.push({
+        key: l.key, label: l.label,
+        planBudget: l.budget, spend, budgetPct: l.budget ? (spend / l.budget) * 100 : null,
+        planViews: l.thruplays, views, viewsPct: l.thruplays ? (views / l.thruplays) * 100 : null,
+        planCpv, cpv, beat: cpv != null && planCpv != null ? cpv <= planCpv : null,
+      });
+    }
+    const pb = plan.reduce((a, x) => a + x.planBudget, 0);
+    const sp = plan.reduce((a, x) => a + x.spend, 0);
+    const pv = plan.reduce((a, x) => a + x.planViews, 0);
+    const av = plan.reduce((a, x) => a + x.views, 0);
+    const pc = pv ? pb / pv : null;
+    const ac = av ? sp / av : null;
+    planTotals = {
+      key: "total", label: "Total", planBudget: pb, spend: sp, budgetPct: pb ? (sp / pb) * 100 : null,
+      planViews: pv, views: av, viewsPct: pv ? (av / pv) * 100 : null,
+      planCpv: pc, cpv: ac, beat: ac != null && pc != null ? ac <= pc : null,
+    };
+  }
+
   return {
-    from, to, rows,
+    from, to, rows, plan, planTotals,
     totals: { ...totals, cpv: totals.views15s ? totals.spend / totals.views15s : null, reachSum: totals.reachSum || null },
     creatives: creatives.slice(0, 12),
     targetCpv: brand.targetCpv ?? null,
