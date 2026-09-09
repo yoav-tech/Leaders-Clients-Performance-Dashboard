@@ -63,17 +63,19 @@ export default function AwarenessRangeView({ report, brandName }: { report: Awar
       <div className="panel p-4">
         <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">By platform</div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] border-collapse text-sm">
+          <table className="w-full min-w-[980px] border-collapse text-sm">
             <thead>
               <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
                 <th className="px-2 py-1.5 text-left">Platform</th>
                 <th className="px-2 py-1.5 text-right">Spend</th>
                 <th className="px-2 py-1.5 text-right">Impressions</th>
                 <th className="px-2 py-1.5 text-right">Reach</th>
-                <th className="px-2 py-1.5 text-right">Frequency</th>
-                <th className="px-2 py-1.5 text-right">3-sec views</th>
-                <th className="px-2 py-1.5 text-right">15-sec views</th>
-                <th className="px-2 py-1.5 text-right">Cost / view</th>
+                <th className="px-2 py-1.5 text-right">ThruPlays</th>
+                <th className="px-2 py-1.5 text-right">Cost per ThruPlay</th>
+                <th className="px-2 py-1.5 text-right">25%</th>
+                <th className="px-2 py-1.5 text-right">50%</th>
+                <th className="px-2 py-1.5 text-right">75%</th>
+                <th className="px-2 py-1.5 text-right">100%</th>
               </tr>
             </thead>
             <tbody className="tabular-nums">
@@ -83,13 +85,15 @@ export default function AwarenessRangeView({ report, brandName }: { report: Awar
                   <td className="px-2 py-1.5 text-right">{formatIls(r.spend)}</td>
                   <td className="px-2 py-1.5 text-right">{formatNumber(r.impressions)}</td>
                   <td className="px-2 py-1.5 text-right">{num(r.reach)}</td>
-                  <td className="px-2 py-1.5 text-right">{freq(r.frequency)}</td>
-                  <td className="px-2 py-1.5 text-right">{num(r.views3s)}</td>
                   <td className="px-2 py-1.5 text-right font-semibold">{formatNumber(r.views15s)}</td>
                   <td className={`px-2 py-1.5 text-right font-semibold ${tone(r.cpv, goalFor(r.key))}`}>
                     {cpv(r.cpv)}
                     {goalFor(r.key) != null && <span className="ms-1 text-[10px] font-normal text-[var(--muted)]">/ {cpv(goalFor(r.key))}</span>}
                   </td>
+                  <td className="px-2 py-1.5 text-right">{formatNumber(r.q.p25)}</td>
+                  <td className="px-2 py-1.5 text-right">{formatNumber(r.q.p50)}</td>
+                  <td className="px-2 py-1.5 text-right">{formatNumber(r.q.p75)}</td>
+                  <td className="px-2 py-1.5 text-right">{formatNumber(r.q.p100)}</td>
                 </tr>
               ))}
             </tbody>
@@ -99,10 +103,12 @@ export default function AwarenessRangeView({ report, brandName }: { report: Awar
                 <td className="px-2 py-1.5 text-right">{formatIls(t.spend)}</td>
                 <td className="px-2 py-1.5 text-right">{formatNumber(t.impressions)}</td>
                 <td className="px-2 py-1.5 text-right text-[var(--muted)]">—</td>
-                <td className="px-2 py-1.5 text-right text-[var(--muted)]">—</td>
-                <td className="px-2 py-1.5 text-right">{formatNumber(t.views3s)}</td>
                 <td className="px-2 py-1.5 text-right">{formatNumber(t.views15s)}</td>
                 <td className="px-2 py-1.5 text-right">{cpv(t.cpv)}</td>
+                <td className="px-2 py-1.5 text-right">{formatNumber(t.q.p25)}</td>
+                <td className="px-2 py-1.5 text-right">{formatNumber(t.q.p50)}</td>
+                <td className="px-2 py-1.5 text-right">{formatNumber(t.q.p75)}</td>
+                <td className="px-2 py-1.5 text-right">{formatNumber(t.q.p100)}</td>
               </tr>
             </tfoot>
           </table>
@@ -172,17 +178,22 @@ export default function AwarenessRangeView({ report, brandName }: { report: Awar
 
       {report.creatives.length > 0 && (
         <div className="panel p-4">
-          <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">Leading creatives</div>
+          <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">Per creative — per video</div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-sm">
+            <table className="w-full min-w-[1040px] border-collapse text-sm">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
                   <th className="px-2 py-1.5 text-left">Creative</th>
                   <th className="px-2 py-1.5 text-left">Platform</th>
                   <th className="px-2 py-1.5 text-right">Spend</th>
                   <th className="px-2 py-1.5 text-right">Impressions</th>
-                  <th className="px-2 py-1.5 text-right">15-sec views</th>
-                  <th className="px-2 py-1.5 text-right">Cost / view</th>
+                  <th className="px-2 py-1.5 text-right">Reach</th>
+                  <th className="px-2 py-1.5 text-right">ThruPlays</th>
+                  <th className="px-2 py-1.5 text-right">Cost per ThruPlay</th>
+                  <th className="px-2 py-1.5 text-right">25%</th>
+                  <th className="px-2 py-1.5 text-right">50%</th>
+                  <th className="px-2 py-1.5 text-right">75%</th>
+                  <th className="px-2 py-1.5 text-right">100%</th>
                 </tr>
               </thead>
               <tbody className="tabular-nums">
@@ -198,14 +209,19 @@ export default function AwarenessRangeView({ report, brandName }: { report: Awar
                     <td className="px-2 py-1.5 text-left text-[var(--muted)]">{c.platform}</td>
                     <td className="px-2 py-1.5 text-right">{formatIls(c.spend)}</td>
                     <td className="px-2 py-1.5 text-right">{formatNumber(c.impressions)}</td>
+                    <td className="px-2 py-1.5 text-right">{num(c.reach)}</td>
                     <td className="px-2 py-1.5 text-right font-semibold">{formatNumber(c.views15s)}</td>
                     <td className={`px-2 py-1.5 text-right ${tone(c.cpv, target)}`}>{cpv(c.cpv)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatNumber(c.q.p25)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatNumber(c.q.p50)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatNumber(c.q.p75)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatNumber(c.q.p100)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div className="mt-2 text-[11px] text-[var(--muted)]">Ranked by 15-second views. Meta creatives link to the live post; TikTok does not expose a public permalink.</div>
+          <div className="mt-2 text-[11px] text-[var(--muted)]">Ranked by ThruPlays. The 25/50/75/100% columns show how far through the video viewers got. Meta creatives link to the live post; TikTok does not expose a public permalink.</div>
         </div>
       )}
     </div>

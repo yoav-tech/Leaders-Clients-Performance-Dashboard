@@ -17,6 +17,8 @@ const sumAction = (v: unknown): number => {
   return num(v as string | number | null | undefined);
 };
 
+export interface Quartiles { p25: number; p50: number; p75: number; p100: number }
+
 export interface PlatformRow {
   key: string;
   label: string;
@@ -24,17 +26,20 @@ export interface PlatformRow {
   impressions: number;
   reach: number | null;       // null = the platform doesn't report deduplicated reach to us
   frequency: number | null;
-  views3s: number | null;     // the hook
+  views3s: number | null;     // the hook — Meta only
   views15s: number;           // ThruPlay (Meta) / 6s (TikTok) / TrueView (YouTube)
-  cpv: number | null;         // cost per 15s view
+  cpv: number | null;         // cost per ThruPlay
+  q: Quartiles;               // how far through the video people got
 }
 export interface CreativeRow {
   platform: string;
   name: string;
   spend: number;
   impressions: number;
+  reach: number | null;
   views15s: number;
   cpv: number | null;
+  q: Quartiles;
   previewUrl: string | null;
 }
 export interface PlanCompare {
@@ -49,11 +54,14 @@ export interface AwarenessRangeReport {
   rows: PlatformRow[];
   plan: PlanCompare[];
   planTotals: PlanCompare | null;
-  totals: { spend: number; impressions: number; views3s: number; views15s: number; cpv: number | null; reachSum: number | null };
+  totals: { spend: number; impressions: number; views3s: number; views15s: number; cpv: number | null; reachSum: number | null; q: Quartiles };
   creatives: CreativeRow[];
   targetCpv: number | null;
   reachNote: string[];
 }
+
+const zeroQ = (): Quartiles => ({ p25: 0, p50: 0, p75: 0, p100: 0 });
+const addQ = (a: Quartiles, b: Quartiles) => { a.p25 += b.p25; a.p50 += b.p50; a.p75 += b.p75; a.p100 += b.p100; };
 
 function previewUrl(ig: string, story: string): string | null {
   if (ig) return ig;
@@ -82,14 +90,16 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
     meta ? fetchWindsor({
       connector: "facebook",
       fields: ["account_id", "currency", "campaign", "publisher_platform", "spend", "impressions", "reach",
-        "video_thruplay_watched_actions", "actions_video_view"],
+        "video_thruplay_watched_actions", "actions_video_view",
+        "video_p25_watched_actions", "video_p50_watched_actions", "video_p75_watched_actions", "video_p100_watched_actions"],
       dateFrom: from, dateTo: to, accounts: [meta.account],
       options: { attribution_window: "7d_click,1d_view" }, cacheSeconds: 1800,
     }).catch(() => []) : Promise.resolve([]),
     meta ? fetchWindsor({
       connector: "facebook",
-      fields: ["account_id", "currency", "campaign", "ad_name", "spend", "impressions",
-        "video_thruplay_watched_actions", "instagram_permalink_url", "effective_object_story_id"],
+      fields: ["account_id", "currency", "campaign", "ad_name", "spend", "impressions", "reach",
+        "video_thruplay_watched_actions", "instagram_permalink_url", "effective_object_story_id",
+        "video_p25_watched_actions", "video_p50_watched_actions", "video_p75_watched_actions", "video_p100_watched_actions"],
       dateFrom: from, dateTo: to, accounts: [meta.account],
       options: { attribution_window: "7d_click,1d_view" }, cacheSeconds: 1800,
     }).catch(() => []) : Promise.resolve([]),
@@ -98,18 +108,20 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
     tiktok ? fetchWindsor({
       connector: "tiktok",
       fields: ["account_id", "currency", "campaign_name", "spend", "impressions", "reach",
-        "video_watched_6s", "video_watched_2s"],
+        "video_watched_6s", "video_watched_2s",
+        "video_views_p25", "video_views_p50", "video_views_p75", "video_views_p100"],
       dateFrom: from, dateTo: to, accounts: [tiktok.account], cacheSeconds: 1800,
     }).catch(() => []) : Promise.resolve([]),
     tiktok ? fetchWindsor({
       connector: "tiktok",
-      fields: ["account_id", "currency", "campaign_name", "ad_name", "spend", "impressions", "video_watched_6s"],
+      fields: ["account_id", "currency", "campaign_name", "ad_name", "spend", "impressions", "reach", "video_watched_6s",
+        "video_views_p25", "video_views_p50", "video_views_p75", "video_views_p100"],
       dateFrom: from, dateTo: to, accounts: [tiktok.account], cacheSeconds: 1800,
     }).catch(() => []) : Promise.resolve([]),
     google ? fetchWindsor({
       connector: "google_ads",
-      fields: ["account_id", "currency", "campaign", "spend", "impressions",
-        "video_views", "video_quartile_p75_rate"],
+      fields: ["account_id", "currency", "campaign", "spend", "impressions", "video_views",
+        "video_quartile_p25_rate", "video_quartile_p50_rate", "video_quartile_p75_rate", "video_quartile_p100_rate"],
       dateFrom: from, dateTo: to, accounts: [google.account], cacheSeconds: 1800,
     }).catch(() => []) : Promise.resolve([]),
   ]);
@@ -117,14 +129,16 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
   // ---- Meta, split Facebook vs Instagram ----
   if (meta) {
     const acc = normId(meta.account);
-    const byPlat = new Map<string, { spend: number; impr: number; reach: number; v15: number; v3: number; cur: string }>();
+    const byPlat = new Map<string, { spend: number; impr: number; reach: number; v15: number; v3: number; cur: string; q: Quartiles }>();
     for (const r of metaPlat) {
       if (normId(r.account_id) !== acc) continue;
       if (filter && !String(r.campaign ?? "").toLowerCase().includes(filter)) continue;
       const plat = String(r.publisher_platform ?? "").toLowerCase() || "other";
-      const e = byPlat.get(plat) ?? { spend: 0, impr: 0, reach: 0, v15: 0, v3: 0, cur: String(r.currency ?? brand.nativeCurrency).toUpperCase() };
+      const e = byPlat.get(plat) ?? { spend: 0, impr: 0, reach: 0, v15: 0, v3: 0, cur: String(r.currency ?? brand.nativeCurrency).toUpperCase(), q: zeroQ() };
       e.spend += num(r.spend); e.impr += num(r.impressions); e.reach += num(r.reach);
       e.v15 += sumAction(r.video_thruplay_watched_actions); e.v3 += sumAction(r.actions_video_view);
+      addQ(e.q, { p25: sumAction(r.video_p25_watched_actions), p50: sumAction(r.video_p50_watched_actions),
+                  p75: sumAction(r.video_p75_watched_actions), p100: sumAction(r.video_p100_watched_actions) });
       byPlat.set(plat, e);
     }
     const LABEL: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", audience_network: "Audience Network", messenger: "Messenger" };
@@ -138,6 +152,7 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
         frequency: e.reach ? e.impr / e.reach : null,
         views3s: e.v3 || null, views15s: e.v15,
         cpv: e.v15 ? spend / e.v15 : null,
+        q: e.q,
       });
     }
     if (byPlat.size > 1) {
@@ -145,22 +160,24 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
     }
 
     // Top creatives on Meta.
-    const adMap = new Map<string, { spend: number; impr: number; v15: number; best: number; ig: string; story: string; cur: string }>();
+    const adMap = new Map<string, { spend: number; impr: number; reach: number; v15: number; best: number; ig: string; story: string; cur: string; q: Quartiles }>();
     for (const r of metaAds) {
       if (normId(r.account_id) !== acc) continue;
       if (filter && !String(r.campaign ?? "").toLowerCase().includes(filter)) continue;
       const name = String(r.ad_name ?? "").trim();
       if (!name) continue;
       const sp = num(r.spend);
-      const e = adMap.get(name) ?? { spend: 0, impr: 0, v15: 0, best: -1, ig: "", story: "", cur: String(r.currency ?? brand.nativeCurrency).toUpperCase() };
-      e.spend += sp; e.impr += num(r.impressions); e.v15 += sumAction(r.video_thruplay_watched_actions);
+      const e = adMap.get(name) ?? { spend: 0, impr: 0, reach: 0, v15: 0, best: -1, ig: "", story: "", cur: String(r.currency ?? brand.nativeCurrency).toUpperCase(), q: zeroQ() };
+      e.spend += sp; e.impr += num(r.impressions); e.reach += num(r.reach); e.v15 += sumAction(r.video_thruplay_watched_actions);
+      addQ(e.q, { p25: sumAction(r.video_p25_watched_actions), p50: sumAction(r.video_p50_watched_actions),
+                  p75: sumAction(r.video_p75_watched_actions), p100: sumAction(r.video_p100_watched_actions) });
       if (sp > e.best) { e.best = sp; e.ig = String(r.instagram_permalink_url ?? ""); e.story = String(r.effective_object_story_id ?? ""); }
       adMap.set(name, e);
     }
     for (const [name, e] of adMap) {
       if (e.v15 <= 0) continue;
       const spend = toIls(e.spend, e.cur);
-      creatives.push({ platform: "Meta", name, spend, impressions: e.impr, views15s: e.v15, cpv: e.v15 ? spend / e.v15 : null, previewUrl: previewUrl(e.ig, e.story) });
+      creatives.push({ platform: "Meta", name, spend, impressions: e.impr, reach: e.reach || null, views15s: e.v15, cpv: e.v15 ? spend / e.v15 : null, q: e.q, previewUrl: previewUrl(e.ig, e.story) });
     }
   }
 
@@ -168,21 +185,24 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
   if (tiktok) {
     const acc = normId(tiktok.account);
     let spend = 0, impr = 0, reach = 0, v6 = 0, v2 = 0, cur = brand.channelCurrency?.tiktok ?? (brand.nativeCurrency as string);
-    const adMap = new Map<string, { spend: number; impr: number; v6: number }>();
+    const tq = zeroQ();
+    const adMap = new Map<string, { spend: number; impr: number; reach: number; v6: number; q: Quartiles }>();
     for (const r of tkRows) {
       if (normId(r.account_id) !== acc) continue;
       if (filter && !String(r.campaign_name ?? "").toLowerCase().includes(filter)) continue;
       if (r.currency) cur = String(r.currency).toUpperCase();
       spend += num(r.spend); impr += num(r.impressions); reach += num(r.reach);
       v6 += num(r.video_watched_6s); v2 += num(r.video_watched_2s);
+      addQ(tq, { p25: num(r.video_views_p25), p50: num(r.video_views_p50), p75: num(r.video_views_p75), p100: num(r.video_views_p100) });
     }
     for (const r of tkAds) {
       if (normId(r.account_id) !== acc) continue;
       if (filter && !String(r.campaign_name ?? "").toLowerCase().includes(filter)) continue;
       const name = String(r.ad_name ?? "").trim();
       if (!name) continue;
-      const e = adMap.get(name) ?? { spend: 0, impr: 0, v6: 0 };
-      e.spend += num(r.spend); e.impr += num(r.impressions); e.v6 += num(r.video_watched_6s);
+      const e = adMap.get(name) ?? { spend: 0, impr: 0, reach: 0, v6: 0, q: zeroQ() };
+      e.spend += num(r.spend); e.impr += num(r.impressions); e.reach += num(r.reach); e.v6 += num(r.video_watched_6s);
+      addQ(e.q, { p25: num(r.video_views_p25), p50: num(r.video_views_p50), p75: num(r.video_views_p75), p100: num(r.video_views_p100) });
       adMap.set(name, e);
     }
     if (impr > 0) {
@@ -190,12 +210,12 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
       rows.push({
         key: "tiktok", label: "TikTok", spend: sp, impressions: impr,
         reach: reach || null, frequency: reach ? impr / reach : null,
-        views3s: v2 || null, views15s: v6, cpv: v6 ? sp / v6 : null,
+        views3s: v2 || null, views15s: v6, cpv: v6 ? sp / v6 : null, q: tq,
       });
       for (const [name, e] of adMap) {
         if (e.v6 <= 0) continue;
         const s2 = toIls(e.spend, cur);
-        creatives.push({ platform: "TikTok", name, spend: s2, impressions: e.impr, views15s: e.v6, cpv: e.v6 ? s2 / e.v6 : null, previewUrl: null });
+        creatives.push({ platform: "TikTok", name, spend: s2, impressions: e.impr, reach: e.reach || null, views15s: e.v6, cpv: e.v6 ? s2 / e.v6 : null, q: e.q, previewUrl: null });
       }
     }
   }
@@ -204,12 +224,17 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
   if (google) {
     const acc = normId(google.account);
     let spend = 0, impr = 0, views = 0, cur = brand.nativeCurrency as string;
+    const gq = zeroQ();
     for (const r of ggRows) {
       if (normId(r.account_id) !== acc) continue;
       if (filter && !String(r.campaign ?? "").toLowerCase().includes(filter)) continue;
       if (r.currency) cur = String(r.currency).toUpperCase();
       spend += num(r.spend); impr += num(r.impressions);
       views += num(r.video_views) || num(r.impressions) * num(r.video_quartile_p75_rate);
+      // Google reports quartiles as rates, not counts.
+      const gi = num(r.impressions);
+      addQ(gq, { p25: gi * num(r.video_quartile_p25_rate), p50: gi * num(r.video_quartile_p50_rate),
+                 p75: gi * num(r.video_quartile_p75_rate), p100: gi * num(r.video_quartile_p100_rate) });
     }
     if (impr > 0) {
       const sp = toIls(spend, cur);
@@ -218,12 +243,14 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
       // not credible for a month-long campaign.
       rows.push({
         key: "google", label: "YouTube", spend: sp, impressions: impr,
-        reach: null, frequency: null, views3s: null, views15s: views, cpv: views ? sp / views : null,
+        reach: null, frequency: null, views3s: null, views15s: views, cpv: views ? sp / views : null, q: gq,
       });
       reachNote.push("YouTube reach is not reported by our data source, so it is shown as unavailable rather than estimated.");
     }
   }
 
+  const tq2 = zeroQ();
+  for (const r of rows) addQ(tq2, r.q);
   const totals = rows.reduce((a, r) => ({
     spend: a.spend + r.spend, impressions: a.impressions + r.impressions,
     views3s: a.views3s + (r.views3s ?? 0), views15s: a.views15s + r.views15s,
@@ -264,7 +291,7 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
 
   return {
     from, to, rows, plan, planTotals,
-    totals: { ...totals, cpv: totals.views15s ? totals.spend / totals.views15s : null, reachSum: totals.reachSum || null },
+    totals: { ...totals, cpv: totals.views15s ? totals.spend / totals.views15s : null, reachSum: totals.reachSum || null, q: tq2 },
     creatives: creatives.slice(0, 12),
     targetCpv: brand.targetCpv ?? null,
     reachNote,

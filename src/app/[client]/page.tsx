@@ -89,9 +89,11 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
   // Views/leads clients (SCJ, Style, Leaders, Bestie) — the unified DB-backed layout: overview +
   // budget pacing + channel funnel + trend + breakdown explorer + daily, KPI-adapted per profile.
   const profile = campaignProfileOf(brand);
-  // SCJ reports to the client's global team, so it gets the English range-level view: deduplicated
-  // reach, Facebook/Instagram split, and no trend or daily table.
-  if (brand.id === "scj") {
+  // Awareness/video clients report on reach and view-completion, so they get the range-level view:
+  // deduplicated reach (which cannot be summed by day), the Facebook/Instagram split, view
+  // quartiles, and a per-creative breakdown. Brands carrying their own platform plan (Chery,
+  // Xpeng) keep that view instead.
+  if (brand.awarenessSources?.length && campaignProfileOf(brand) === "views" && !brand.platformPlan) {
     const rep = await getAwarenessRange(brand, range.from, range.to);
     return rep
       ? <AwarenessRangeView report={rep} brandName={brand.name} />
