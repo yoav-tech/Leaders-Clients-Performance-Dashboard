@@ -89,14 +89,16 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
   // Views/leads clients (SCJ, Style, Leaders, Bestie) — the unified DB-backed layout: overview +
   // budget pacing + channel funnel + trend + breakdown explorer + daily, KPI-adapted per profile.
   const profile = campaignProfileOf(brand);
-  // Awareness/video clients report on reach and view-completion, so they get the range-level view:
-  // deduplicated reach (which cannot be summed by day), the Facebook/Instagram split, view
-  // quartiles, and a per-creative breakdown. Brands carrying their own platform plan (Chery,
-  // Xpeng) keep that view instead.
-  if (brand.awarenessSources?.length && campaignProfileOf(brand) === "views" && !brand.platformPlan) {
+  // Range-level awareness reporting: deduplicated reach (which cannot be summed by day), the
+  // Facebook/Instagram split, and a per-creative breakdown. Two column sets, because the two
+  // clients asked for different things — SCJ for frequency and the 3-second hook, Protein Max for
+  // ThruPlays and view quartiles. Everything else stays on the shared campaign view.
+  const AWARENESS_VIEW: Record<string, "hook" | "quartiles"> = { scj: "hook", "protein-max": "quartiles" };
+  const awarenessVariant = AWARENESS_VIEW[brand.id];
+  if (awarenessVariant) {
     const rep = await getAwarenessRange(brand, range.from, range.to);
     return rep
-      ? <AwarenessRangeView report={rep} brandName={brand.name} />
+      ? <AwarenessRangeView report={rep} brandName={brand.name} variant={awarenessVariant} />
       : <div className="panel p-4 text-sm text-[var(--muted)]">No campaign data for this range.</div>;
   }
   if (profile === "views" || profile === "leads") {

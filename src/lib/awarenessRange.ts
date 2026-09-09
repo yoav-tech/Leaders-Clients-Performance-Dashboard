@@ -58,6 +58,8 @@ export interface AwarenessRangeReport {
   creatives: CreativeRow[];
   targetCpv: number | null;
   reachNote: string[];
+  // Which sources failed to load. An empty table used to be indistinguishable from a zero result.
+  warnings: string[];
 }
 
 const zeroQ = (): Quartiles => ({ p25: 0, p50: 0, p75: 0, p100: 0 });
@@ -85,6 +87,7 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
   const rows: PlatformRow[] = [];
   const creatives: CreativeRow[] = [];
   const reachNote: string[] = [];
+  const warnings: string[] = [];
 
   const [metaPlat, metaAds, tkRows, tkAds, ggRows] = await Promise.all([
     meta ? fetchWindsor({
@@ -251,6 +254,36 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
 
   const tq2 = zeroQ();
   for (const r of rows) addQ(tq2, r.q);
+  // The platform split and the per-creative data come from separate queries, and either can fail.
+  // When the split is missing but creatives are not, rebuild a platform row from them so the table
+  // and the total still show the whole account — reach is dropped because summing it across ads
+  // double-counts people. Previously a failed split rendered as zeros next to a populated
+  // creative table, which reads as "no spend" rather than "one query didn't return".
+  // Match on the platform FAMILY, not the label: a Meta creative's data is already represented by
+  // the Facebook / Instagram / Audience Network rows, and comparing "Meta" against those names
+  // never matched — which added a duplicate Meta row and doubled the total.
+  const familyOf = (key: string) => key.split(":")[0];
+  const familiesPresent = new Set(rows.map((r) => familyOf(r.key)));
+  const familyForCreative = (platform: string) =>
+    platform.toLowerCase() === "meta" ? "meta" : platform.toLowerCase() === "tiktok" ? "tiktok" : "google";
+  const byPlatformFromCreatives = new Map<string, PlatformRow>();
+  for (const c of creatives) {
+    if (familiesPresent.has(familyForCreative(c.platform))) continue;
+    const key = `fallback:${c.platform}`;
+    const e = byPlatformFromCreatives.get(key) ?? {
+      key, label: c.platform, spend: 0, impressions: 0, reach: null, frequency: null,
+      views3s: null, views15s: 0, cpv: null, q: zeroQ(),
+    };
+    e.spend += c.spend; e.impressions += c.impressions; e.views15s += c.views15s;
+    addQ(e.q, c.q);
+    byPlatformFromCreatives.set(key, e);
+  }
+  for (const e of byPlatformFromCreatives.values()) {
+    e.cpv = e.views15s ? e.spend / e.views15s : null;
+    rows.push(e);
+    warnings.push(`${e.label}: the platform breakdown didn't load, so its row is rebuilt from the creatives (reach unavailable).`);
+  }
+
   const totals = rows.reduce((a, r) => ({
     spend: a.spend + r.spend, impressions: a.impressions + r.impressions,
     views3s: a.views3s + (r.views3s ?? 0), views15s: a.views15s + r.views15s,
@@ -292,8 +325,9 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
   return {
     from, to, rows, plan, planTotals,
     totals: { ...totals, cpv: totals.views15s ? totals.spend / totals.views15s : null, reachSum: totals.reachSum || null, q: tq2 },
-    creatives: creatives.slice(0, 12),
+    creatives: creatives.slice(0, 20),
     targetCpv: brand.targetCpv ?? null,
     reachNote,
+    warnings,
   };
 }
