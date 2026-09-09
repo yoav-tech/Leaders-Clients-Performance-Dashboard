@@ -19,8 +19,12 @@ function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: 
   );
 }
 
-export default function AwarenessRangeView({ report, brandName }: { report: AwarenessRangeReport; brandName: string }) {
+// Two column sets. "hook" is what SCJ's client asked for — frequency and the 3-second hook.
+// "quartiles" is the Protein Max layout — ThruPlays and how far through the video people got.
+export default function AwarenessRangeView({ report, brandName, variant = "hook" }: { report: AwarenessRangeReport; brandName: string; variant?: "hook" | "quartiles" }) {
+  const q = variant === "quartiles";
   const t = report.totals;
+  const noData = !report.rows.length && !report.creatives.length;
   const target = report.planTotals?.planCpv ?? report.targetCpv;
   // Each platform is judged against its own planned CPV — the plan sets a different goal for
   // Facebook than for YouTube, so one blended number would mislabel both.
@@ -38,15 +42,23 @@ export default function AwarenessRangeView({ report, brandName }: { report: Awar
         {brandName} · video campaign results · {report.from} → {report.to}
       </div>
 
+      {noData && (
+        <div className="panel p-4 text-sm text-[var(--muted)]">
+          No campaign data returned for this range. If the period had activity, the data source did not
+          respond — reload in a moment rather than reading this as zero spend.
+        </div>
+      )}
+
       <div className="panel p-4">
         <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">Campaign results</div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <Kpi label="Spend" value={formatIls(t.spend)} />
           <Kpi label="Impressions" value={formatNumber(t.impressions)} />
-          <Kpi label="3-sec views" value={formatNumber(t.views3s)} sub={hookRate != null ? `${(hookRate * 100).toFixed(1)}% hook rate` : undefined} />
-          <Kpi label="15-sec views" value={formatNumber(t.views15s)} sub={holdRate != null ? `${(holdRate * 100).toFixed(0)}% held from 3s` : undefined} />
+          {!q && <Kpi label="3-sec views" value={formatNumber(t.views3s)} sub={hookRate != null ? `${(hookRate * 100).toFixed(1)}% hook rate` : undefined} />}
+          {q && <Kpi label="Reach" value={t.reachSum ? formatNumber(t.reachSum) : "—"} />}
+          <Kpi label={q ? "ThruPlays" : "15-sec views"} value={formatNumber(t.views15s)} sub={!q && holdRate != null ? `${(holdRate * 100).toFixed(0)}% held from 3s` : q ? `${formatNumber(t.q.p100)} watched to 100%` : undefined} />
           <Kpi
-            label="Cost per 15-sec view"
+            label={q ? "Cost per ThruPlay" : "Cost per 15-sec view"}
             value={cpv(t.cpv)}
             sub={target != null ? `target ${cpv(target)}` : undefined}
             tone={onTarget == null ? "" : onTarget ? "text-[var(--good)]" : "text-[var(--bad)]"}
@@ -70,12 +82,14 @@ export default function AwarenessRangeView({ report, brandName }: { report: Awar
                 <th className="px-2 py-1.5 text-right">Spend</th>
                 <th className="px-2 py-1.5 text-right">Impressions</th>
                 <th className="px-2 py-1.5 text-right">Reach</th>
-                <th className="px-2 py-1.5 text-right">ThruPlays</th>
-                <th className="px-2 py-1.5 text-right">Cost per ThruPlay</th>
-                <th className="px-2 py-1.5 text-right">25%</th>
-                <th className="px-2 py-1.5 text-right">50%</th>
-                <th className="px-2 py-1.5 text-right">75%</th>
-                <th className="px-2 py-1.5 text-right">100%</th>
+                {!q && <th className="px-2 py-1.5 text-right">Frequency</th>}
+                {!q && <th className="px-2 py-1.5 text-right">3-sec views</th>}
+                <th className="px-2 py-1.5 text-right">{q ? "ThruPlays" : "15-sec views"}</th>
+                <th className="px-2 py-1.5 text-right">{q ? "Cost per ThruPlay" : "Cost / view"}</th>
+                {q && <th className="px-2 py-1.5 text-right">25%</th>}
+                {q && <th className="px-2 py-1.5 text-right">50%</th>}
+                {q && <th className="px-2 py-1.5 text-right">75%</th>}
+                {q && <th className="px-2 py-1.5 text-right">100%</th>}
               </tr>
             </thead>
             <tbody className="tabular-nums">
@@ -85,15 +99,17 @@ export default function AwarenessRangeView({ report, brandName }: { report: Awar
                   <td className="px-2 py-1.5 text-right">{formatIls(r.spend)}</td>
                   <td className="px-2 py-1.5 text-right">{formatNumber(r.impressions)}</td>
                   <td className="px-2 py-1.5 text-right">{num(r.reach)}</td>
+                  {!q && <td className="px-2 py-1.5 text-right">{freq(r.frequency)}</td>}
+                  {!q && <td className="px-2 py-1.5 text-right">{num(r.views3s)}</td>}
                   <td className="px-2 py-1.5 text-right font-semibold">{formatNumber(r.views15s)}</td>
                   <td className={`px-2 py-1.5 text-right font-semibold ${tone(r.cpv, goalFor(r.key))}`}>
                     {cpv(r.cpv)}
                     {goalFor(r.key) != null && <span className="ms-1 text-[10px] font-normal text-[var(--muted)]">/ {cpv(goalFor(r.key))}</span>}
                   </td>
-                  <td className="px-2 py-1.5 text-right">{formatNumber(r.q.p25)}</td>
-                  <td className="px-2 py-1.5 text-right">{formatNumber(r.q.p50)}</td>
-                  <td className="px-2 py-1.5 text-right">{formatNumber(r.q.p75)}</td>
-                  <td className="px-2 py-1.5 text-right">{formatNumber(r.q.p100)}</td>
+                  {q && <td className="px-2 py-1.5 text-right">{formatNumber(r.q.p25)}</td>}
+                  {q && <td className="px-2 py-1.5 text-right">{formatNumber(r.q.p50)}</td>}
+                  {q && <td className="px-2 py-1.5 text-right">{formatNumber(r.q.p75)}</td>}
+                  {q && <td className="px-2 py-1.5 text-right">{formatNumber(r.q.p100)}</td>}
                 </tr>
               ))}
             </tbody>
@@ -103,17 +119,22 @@ export default function AwarenessRangeView({ report, brandName }: { report: Awar
                 <td className="px-2 py-1.5 text-right">{formatIls(t.spend)}</td>
                 <td className="px-2 py-1.5 text-right">{formatNumber(t.impressions)}</td>
                 <td className="px-2 py-1.5 text-right text-[var(--muted)]">—</td>
+                {!q && <td className="px-2 py-1.5 text-right text-[var(--muted)]">—</td>}
+                {!q && <td className="px-2 py-1.5 text-right">{formatNumber(t.views3s)}</td>}
                 <td className="px-2 py-1.5 text-right">{formatNumber(t.views15s)}</td>
                 <td className="px-2 py-1.5 text-right">{cpv(t.cpv)}</td>
-                <td className="px-2 py-1.5 text-right">{formatNumber(t.q.p25)}</td>
-                <td className="px-2 py-1.5 text-right">{formatNumber(t.q.p50)}</td>
-                <td className="px-2 py-1.5 text-right">{formatNumber(t.q.p75)}</td>
-                <td className="px-2 py-1.5 text-right">{formatNumber(t.q.p100)}</td>
+                {q && <td className="px-2 py-1.5 text-right">{formatNumber(t.q.p25)}</td>}
+                {q && <td className="px-2 py-1.5 text-right">{formatNumber(t.q.p50)}</td>}
+                {q && <td className="px-2 py-1.5 text-right">{formatNumber(t.q.p75)}</td>}
+                {q && <td className="px-2 py-1.5 text-right">{formatNumber(t.q.p100)}</td>}
               </tr>
             </tfoot>
           </table>
         </div>
         <div className="mt-2 space-y-1 text-[11px] text-[var(--muted)]">
+          {report.warnings.map((w) => (
+            <div key={w} className="text-[var(--warn)]">⚠ {w}</div>
+          ))}
           <div>Reach and frequency are measured across the whole period, not summed by day — the same person seen on three days is one person reached.</div>
           {report.reachNote.map((n2) => <div key={n2}>{n2}</div>)}
         </div>
@@ -188,12 +209,12 @@ export default function AwarenessRangeView({ report, brandName }: { report: Awar
                   <th className="px-2 py-1.5 text-right">Spend</th>
                   <th className="px-2 py-1.5 text-right">Impressions</th>
                   <th className="px-2 py-1.5 text-right">Reach</th>
-                  <th className="px-2 py-1.5 text-right">ThruPlays</th>
-                  <th className="px-2 py-1.5 text-right">Cost per ThruPlay</th>
-                  <th className="px-2 py-1.5 text-right">25%</th>
-                  <th className="px-2 py-1.5 text-right">50%</th>
-                  <th className="px-2 py-1.5 text-right">75%</th>
-                  <th className="px-2 py-1.5 text-right">100%</th>
+                  <th className="px-2 py-1.5 text-right">{q ? "ThruPlays" : "15-sec views"}</th>
+                  <th className="px-2 py-1.5 text-right">{q ? "Cost per ThruPlay" : "Cost / view"}</th>
+                  {q && <th className="px-2 py-1.5 text-right">25%</th>}
+                  {q && <th className="px-2 py-1.5 text-right">50%</th>}
+                  {q && <th className="px-2 py-1.5 text-right">75%</th>}
+                  {q && <th className="px-2 py-1.5 text-right">100%</th>}
                 </tr>
               </thead>
               <tbody className="tabular-nums">
@@ -212,10 +233,10 @@ export default function AwarenessRangeView({ report, brandName }: { report: Awar
                     <td className="px-2 py-1.5 text-right">{num(c.reach)}</td>
                     <td className="px-2 py-1.5 text-right font-semibold">{formatNumber(c.views15s)}</td>
                     <td className={`px-2 py-1.5 text-right ${tone(c.cpv, target)}`}>{cpv(c.cpv)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatNumber(c.q.p25)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatNumber(c.q.p50)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatNumber(c.q.p75)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatNumber(c.q.p100)}</td>
+                    {q && <td className="px-2 py-1.5 text-right">{formatNumber(c.q.p25)}</td>}
+                    {q && <td className="px-2 py-1.5 text-right">{formatNumber(c.q.p50)}</td>}
+                    {q && <td className="px-2 py-1.5 text-right">{formatNumber(c.q.p75)}</td>}
+                    {q && <td className="px-2 py-1.5 text-right">{formatNumber(c.q.p100)}</td>}
                   </tr>
                 ))}
               </tbody>
