@@ -277,7 +277,10 @@ export const BRANDS: BrandConfig[] = [
     storeId: null,
     nativeCurrency: "ILS",
     targetRoas: 0,
-    targetCpv: 0.03, // supplements → beauty/personal-care end of the ₪0.03–0.16 CPV range
+    // Set with the client. Replaces a benchmark-derived ₪0.03, which was picked by filing
+    // supplements under beauty/personal-care and taking the cheapest end of the range — nobody had
+    // agreed to it, and it marked genuinely fine creatives (₪0.036–₪0.039) as overspending.
+    targetCpv: 0.10,
     monthlyBudget: 6000, // fixed monthly awareness budget; pace computed over the picked range
     // Video-views awareness (like Style/SCJ). Dedicated accounts → no campaign-name filter.
     awarenessSources: [
