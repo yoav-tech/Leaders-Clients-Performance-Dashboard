@@ -142,8 +142,11 @@ export default function AppReportView({ brand, report, regionReport, from, to, i
   const mtdSpend = report.sections.reduce((a, s) => a + (s.pacing?.monthSpend ?? 0), 0);
   const projSpend = report.sections.reduce((a, s) => a + (s.pacing?.projectedSpend ?? 0), 0);
 
+  // Pacing is always the calendar month — it answers "will we land on budget", which the picked
+  // range can't. Sitting unlabelled above a range-scoped Overview, it read as a contradiction.
+  const monthLabel = new Date(`${to}T00:00:00Z`).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
   const pacingPanel = budget > 0 && (
-    <Panel title="Haat · total budget pacing (all sections, from ads)">
+    <Panel title={`Haat · total budget pacing · ${monthLabel} month to date (not the selected range)`}>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat label="Monthly budget" value={formatIls(budget)} />
         <Stat label="Spent (MTD)" value={formatIls(mtdSpend)} />
@@ -180,7 +183,7 @@ export default function AppReportView({ brand, report, regionReport, from, to, i
         <div key={s.key} className="space-y-4">
           <div className="text-base font-bold">{s.title}</div>
 
-          <Panel title="Overview">
+          <Panel title={`Overview · ${from} → ${to}`}>
             <Header t={s.totals} />
             {s.kind === "leads" && (
               <div className="mt-2 flex flex-col items-stretch gap-2 sm:flex-row">
