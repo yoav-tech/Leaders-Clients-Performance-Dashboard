@@ -8,6 +8,13 @@ import { AD_LEVELS, type AdLevel } from "./adLevel";
 
 export type CampType = "reach" | "install" | "registration" | "remarketing" | "traffic" | "leads" | "other";
 
+// Haat's accounts also carry campaigns run by the client and by other agencies — ₪39,698 of them
+// in the first fortnight of September alone. Only "LDRS ||"-prefixed campaigns are ours. Both the
+// live report and the ingest must apply this, or the stored numbers drift away from the report.
+export function isOurCampaign(name: string): boolean {
+  return name.startsWith("LDRS");
+}
+
 export function classifyType(name: string): CampType {
   const n = name.toLowerCase();
   // Remarketing is checked first: "Rmkt || Reg To Purchase" also matches the registration rule,

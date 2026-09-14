@@ -6,7 +6,7 @@
 import type { BrandConfig, AppSectionConfig } from "./brands";
 import { fetchWindsor, num } from "./windsor";
 import { monthProgress, shiftDate, today } from "./dates";
-import { classifyType, parseCity, aggregateRows, type AppRow, type AggRow } from "./appRows";
+import { classifyType, isOurCampaign, parseCity, aggregateRows, type AppRow, type AggRow } from "./appRows";
 
 export { classifyType } from "./appRows";
 export type { CampType, AppRow } from "./appRows";
@@ -103,7 +103,7 @@ async function fetchSection(cfg: AppSectionConfig, brand: BrandConfig, from: str
   for (const r of adRows) {
     if (normId(r.account_id) !== acc) continue;
     const name = String(r.campaign ?? "");
-    if (!name.startsWith("LDRS")) continue; // LDRS-only
+    if (!isOurCampaign(name)) continue;
     const rcur = String(r.currency ?? nativeCur).toUpperCase();
     rows.push({
       campaign: name,

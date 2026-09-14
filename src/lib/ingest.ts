@@ -4,6 +4,7 @@ import { CHANNEL_FIELDS } from "./channelFields";
 import { campaignFieldFor } from "./adLevel";
 import { fetchUsdIlsRate, toIls } from "./fx";
 import { fetchWindsor, num } from "./windsor";
+import { isOurCampaign } from "./appRows";
 import { fetchQuickShopPaidOrders, quickshopKeyFor, type PaidOrder } from "./quickshop";
 import { fetchShopifyPaidOrders, shopifyConfigured } from "./shopify";
 import { utmToChannel } from "./utmChannel";
@@ -451,12 +452,15 @@ async function ingestAppBrand(sb: Sb, brand: BrandConfig, from: string, to: stri
       const convField = sec.kind === "app" ? "actions_mobile_app_install" : "actions_lead";
       const rows = await fetchWindsor({
         connector: "facebook",
-        fields: ["date", "account_id", "currency", "spend", "impressions", "clicks", convField],
+        fields: ["date", "account_id", "campaign", "currency", "spend", "impressions", "clicks", convField],
         dateFrom: from, dateTo: to, accounts: [sec.account], options: { attribution_window: "7d_click,1d_view" },
       });
       const acc = normId(sec.account);
       for (const r of rows) {
         if (normId(r.account_id) !== acc) continue;
+        // Same rule the live report applies. Without it the stored totals included the client's own
+        // and other agencies' campaigns — Haat's September read ₪93,376 against a true ₪54,238.
+        if (!isOurCampaign(String(r.campaign ?? ""))) continue;
         const date = String(r.date ?? "").slice(0, 10);
         if (!date) continue;
         if (r.currency) currency = String(r.currency).toUpperCase();
