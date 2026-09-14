@@ -267,6 +267,26 @@ export const BRANDS: BrandConfig[] = [
     ],
   },
   {
+    id: "tvuot",
+    name: "Tvuot",
+    nameHe: "תבואות",
+    metaAccountId: "1006617175734613", // Meta: תבואות (dedicated account)
+    googleAccountId: null,
+    tiktokAccountId: null, // no TikTok account for this brand
+    storePlatform: "quickshop", // no store — video-views awareness only (storeId null ⇒ skipped)
+    storeId: null,
+    nativeCurrency: "ILS",
+    targetRoas: 0,
+    // targetCpv deliberately unset until the client agrees one. The account is running at ₪0.118
+    // per ThruPlay over its first days; inventing a benchmark figure here is what made Protein Max
+    // and Style read red against a number nobody had signed off on.
+    monthlyBudget: 0, // awaiting the agreed monthly budget — pacing stays hidden until it's set
+    // Video-views awareness (like Style / Protein Max). Dedicated account → no campaign-name filter.
+    awarenessSources: [
+      { platform: "meta", account: "1006617175734613", title: "Meta · תבואות" },
+    ],
+  },
+  {
     id: "protein-max",
     name: "Protein Max",
     nameHe: "פרוטאין מקס",
