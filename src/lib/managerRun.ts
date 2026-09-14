@@ -2,7 +2,7 @@
 import { BRANDS } from "./brands";
 import { today, shiftDate } from "./dates";
 import { emailConfigured, sendEmail } from "./email";
-import { brandManagers } from "./recipients";
+import { brandManagers, mediaManagers } from "./recipients";
 import { getManagerReport } from "./managerReport";
 import { generateConclusions, conclusionsConfigured } from "./conclusions";
 import { renderManagerHtml, renderManagerText, managerSubject } from "./managerEmail";
@@ -18,16 +18,26 @@ function rangeFor(period: "week" | "month"): { from: string; to: string } {
 export async function sendManagerReports(
   period: "week" | "month",
   opts: { dry?: boolean; onlyBrand?: string; overrideTo?: string } = {},
-): Promise<{ range: { from: string; to: string }; brands: string[]; sent: string[]; preview?: string }> {
+): Promise<{ range: { from: string; to: string }; brands: string[]; sent: string[]; unattached: string[]; preview?: string }> {
   const range = rangeFor(period);
   const brandsWithMgr: string[] = [];
+  const fellBackToMediaManagers: string[] = [];
   const sent: string[] = [];
   let preview: string | undefined;
 
   for (const brand of BRANDS) {
     if (opts.onlyBrand && brand.id !== opts.onlyBrand) continue;
-    const to = opts.overrideTo ? [opts.overrideTo] : await brandManagers(brand.id);
+    if (brand.retired) continue; // retired client — data kept, no reports sent
+
+    // A brand with nobody attached in the permissions console used to be skipped outright, so a new
+    // client silently got no weekly or monthly report until someone remembered to attach a manager.
+    // That had quietly swallowed nine of thirteen active brands. The media managers are the backstop
+    // now: the report always goes out, and reportCoverage flags the missing attachment in the daily
+    // digest so it gets fixed rather than staying invisible.
+    const attached = opts.overrideTo ? [opts.overrideTo] : await brandManagers(brand.id);
+    const to = attached.length ? attached : mediaManagers();
     if (!to.length) continue;
+    if (!attached.length) fellBackToMediaManagers.push(brand.id);
     brandsWithMgr.push(brand.id);
     try {
       const report = await getManagerReport(brand, range.from, range.to, period);
@@ -43,5 +53,5 @@ export async function sendManagerReports(
       console.error("[managerReports]", period, brand.id, e instanceof Error ? e.message : String(e));
     }
   }
-  return { range, brands: brandsWithMgr, sent, preview };
+  return { range, brands: brandsWithMgr, sent, unattached: fellBackToMediaManagers, preview };
 }

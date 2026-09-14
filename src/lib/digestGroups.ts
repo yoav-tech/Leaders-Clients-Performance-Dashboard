@@ -12,6 +12,7 @@ import { getAppReport } from "./appReport";
 import { getSearchSnapshot } from "./searchSnapshot";
 import { eurIlsRate } from "./fx";
 import { groupAlerts } from "./digest";
+import { getCoverageGaps, renderCoverageGaps, type CoverageGap } from "./reportCoverage";
 
 export interface EcomRow { name: string; spend: number; revenue: number; blended: number | null; blendedPrev: number | null; orders: number; pacePct: number | null; target: number }
 export interface ViewsRow { name: string; spend: number; impressions: number; views: number | null; cpv: number | null }
@@ -32,6 +33,9 @@ export interface GroupedDigest {
   app: AppRow[];
   impshare: ImpShareRow[];
   alerts: Alert[];
+  // Clients that are configured but aren't reaching one of the recurring reports. Printed every
+  // morning until fixed, so a new client can't quietly sit outside the reporting.
+  coverageGaps: CoverageGap[];
 }
 
 // Colgate campaign-type codes (per the account naming), for the per-type impression-share breakdown.
@@ -48,9 +52,12 @@ export async function getGroupedDigest(alerts?: Alert[]): Promise<GroupedDigest>
   if (dow === 4) { from = shiftDate(t, -7); period = "week"; } // Thursday → past week
   else if (dow === 0) { from = shiftDate(t, -2); }             // Sunday → Fri + Sat
 
-  const [metrics, openAlerts] = await Promise.all([
+  const [metrics, openAlerts, coverageGaps] = await Promise.all([
     getBrandMetrics(from, to),
     alerts ? Promise.resolve(alerts) : collectAlerts(),
+    // A coverage problem must never take the digest down with it — an empty list just means the
+    // check couldn't run, and the digest still carries the day's numbers.
+    getCoverageGaps().catch(() => [] as CoverageGap[]),
   ]);
   const { elapsed, daysInMonth } = monthProgress();
 
@@ -127,7 +134,7 @@ export async function getGroupedDigest(alerts?: Alert[]): Promise<GroupedDigest>
     }
   }
   await Promise.all(jobs);
-  return { day: to, from, to, period, ecom, views, leads, app, impshare, alerts: openAlerts };
+  return { day: to, from, to, period, ecom, views, leads, app, impshare, alerts: openAlerts, coverageGaps };
 }
 
 // ---- ClickUp markdown (mono tables) ----
@@ -193,5 +200,7 @@ export function renderGroupedText(d: GroupedDigest, reminder: "week" | "month" |
       ["l", "r", "r", "r"]));
   }
   parts.push(d.alerts.length ? `⚠️ **צריך תשומת לב**\n${groupAlerts(d.alerts)}` : "✅ אין התראות פתוחות.");
+  const coverage = renderCoverageGaps(d.coverageGaps);
+  if (coverage) parts.push(coverage);
   return parts.join("\n");
 }

@@ -3,6 +3,7 @@
 // ClickUp recap and the email never diverge.
 import { getGroupedDigest, renderGroupedText, type GroupedDigest, type EcomRow } from "./digestGroups";
 import type { Alert } from "./alerts";
+import { summarizeBrandGaps, type CoverageGap } from "./reportCoverage";
 import { canCreateTasks } from "./clickup";
 import { signTask, appBaseUrl } from "./taskLink";
 import { BRANDS, reportGroupOf } from "./brands";
@@ -174,6 +175,16 @@ export function renderGroupedHtml(d: GroupedDigest, taskLinks: Record<string, st
     d.impshare.map((r) => [[`<b>${esc(r.name)}</b>`, "left"], [pctv(r.impShare), "right"], [ils(r.spend), "right"], [n0(r.clicks), "right"]]),
   ));
 
+  // Configured clients that aren't reaching one of the recurring reports. Shown only when there is
+  // something to fix, so it reads as an action list rather than a permanent fixture.
+  const gapsByBrand = new Map<string, CoverageGap[]>();
+  for (const g of d.coverageGaps) gapsByBrand.set(g.brandName, [...(gapsByBrand.get(g.brandName) ?? []), g]);
+  const coverage = d.coverageGaps.length ? `<tr><td style="padding:0 18px 4px">
+    <div style="padding:12px 14px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a">
+      <div style="font:700 13px/1.4 ${FONT};color:#92400e;margin-bottom:6px">לקוחות שלא מכוסים בדוחות הקבועים</div>
+      ${[...gapsByBrand].map(([name, gs]) => `<div style="font:400 12px/1.6 ${FONT};color:${C.text}">• <b>${esc(name)}</b> — ${summarizeBrandGaps(gs).map((x) => `${esc(x.report)}: ${esc(x.reason)}`).join(" · ")}</div>`).join("")}
+    </div></td></tr>` : "";
+
   const attention = `<tr><td style="padding:14px 18px 20px">
     <div style="font:700 13px/1 ${FONT};color:${C.text};margin:6px 6px 8px"><span style="display:inline-block;width:4px;height:13px;background:${alertColor};border-radius:2px;vertical-align:-2px;margin-inline-end:8px"></span>צריך תשומת לב</div>
     ${alertsBlock(d.alerts, taskLinks)}
@@ -182,7 +193,7 @@ export function renderGroupedHtml(d: GroupedDigest, taskLinks: Record<string, st
     <div style="font:400 11px/1.5 ${FONT};color:${C.muted}">Leaders · Powered by People</div></td></tr>`;
 
   const reminderBlock = reminder ? reportReminderBlock(reminder) : "";
-  return shell(`<div dir="rtl">${header}${reminderBlock}${ecom}${views}${leads}${app}${impshare}${attention}${footer}</div>`);
+  return shell(`<div dir="rtl">${header}${reminderBlock}${ecom}${views}${leads}${app}${impshare}${attention}${coverage}${footer}</div>`);
 }
 
 export async function buildGroupedEmailFrom(d: GroupedDigest, reminder: ReportReminder = null): Promise<{ subject: string; html: string; text: string }> {
