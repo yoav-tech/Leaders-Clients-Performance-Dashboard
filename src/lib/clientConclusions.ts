@@ -71,7 +71,7 @@ const VOICE: Record<InsightId, Voice> = {
   "cpv-below-target": (d) =>
     `עלות הצפייה עומדת על ${ils3(d.cpv)}, מתחת ליעד (${ils3(d.target)}). יש מרווח להרחיב נפח: תוספת של ${ils(d.addSpend)} צפויה להוסיף כ-${n0(d.addViews)} צפיות במחיר הנוכחי.`,
   "platform-cpv-gap": (d, l) =>
-    `${l.best} מספקת צפייה ב-${ils3(d.bestCpv)} מול ${ils3(d.worstCpv)} ב-${l.worst}. הסטנו ${ils(d.move)} לכיוון הערוץ היעיל — כ-${n0(d.gain)} צפיות נוספות באותו תקציב.`,
+    `${chan(l.best)} מספקת צפייה ב-${ils3(d.bestCpv)} מול ${ils3(d.worstCpv)} ב-${chan(l.worst)}. הסטנו ${ils(d.move)} לכיוון הערוץ היעיל — כ-${n0(d.gain)} צפיות נוספות באותו תקציב.`,
   "creative-cpv-gap": (d, l) =>
     `זיהינו פער של פי ${d.ratio.toFixed(1)} בין הקריאייטיבים: "${l.best}" מייצר צפייה ב-${ils3(d.bestCpv)} מול ${ils3(d.worstCpv)} ב-"${l.worst}". עצרנו את החלש והסטנו את ${ils(d.worstSpend)} שלו למוביל — כ-${n0(d.gain)} צפיות נוספות.`,
   "flight-behind-plan": (d) =>
@@ -97,7 +97,7 @@ const VOICE: Record<InsightId, Voice> = {
   "cpl-at-target": (d) =>
     `עלות הליד עומדת על ${ils(d.cpl)}, בתוך היעד (${ils(d.target)}). יש מרווח להרחיב נפח: תוספת של ${ils(d.addSpend)} שווה כ-${n0(d.addLeads)} לידים במחיר הנוכחי.`,
   "channel-cpl-gap": (d, l) =>
-    `${l.best} מייצרת לידים זולים ב-${Math.round(d.cheaperPct)}% מ-${l.worst} (${ils(d.bestCpl)} מול ${ils(d.worstCpl)}). העברנו ${ils(d.move)} לערוץ היעיל — כ-${n0(d.gain)} לידים נוספים באותו כסף.`,
+    `${chan(l.best)} מייצרת לידים זולים ב-${Math.round(d.cheaperPct)}% מ-${chan(l.worst)} (${ils(d.bestCpl)} מול ${ils(d.worstCpl)}). העברנו ${ils(d.move)} לערוץ היעיל — כ-${n0(d.gain)} לידים נוספים באותו כסף.`,
   "budget-underspend": (d) =>
     `נוצלו ${ils(d.spend)} מתוך ${ils(d.budget)} בתקופה. אנחנו פותחים את חסמי התקציב היומי כדי לנצל את המסגרת במלואה${d.missedLeads > 0 ? ` — ניצול מלא במחיר הנוכחי שווה כ-${n0(d.missedLeads)} לידים נוספים` : ""}.`,
 
@@ -229,6 +229,10 @@ export function composeDraft(opts: {
 // of the draft, and everything learned from previous sends, is composeDraft's.
 
 const n0i = (v: number | null | undefined) => (v == null ? "—" : Math.round(v).toLocaleString("en-US"));
+// Channel ids are lowercase internally; a client-facing sentence should name the platform the way
+// the client does.
+const CHANNEL_LABEL: Record<string, string> = { meta: "Meta", google: "Google", tiktok: "TikTok", site: "החנות" };
+const chan = (c: string) => CHANNEL_LABEL[c.toLowerCase()] ?? c;
 
 /** Video / awareness clients (SCJ, Style, Protein Max, Tvuot). */
 export function buildViewsClientConclusions(
@@ -242,7 +246,7 @@ export function buildViewsClientConclusions(
   const wins: string[] = [];
   const chans = m.channels.filter((c) => c.channel !== "total" && c.views > 0 && c.cpv != null);
   const best = chans.length ? chans.reduce((a, b) => ((a.cpv ?? 9e9) <= (b.cpv ?? 9e9) ? a : b)) : null;
-  if (best) wins.push(`הערוץ היעיל בתקופה: ${best.channel}, צפייה ב-${ils3(best.cpv!)}.`);
+  if (best) wins.push(`הערוץ היעיל בתקופה: ${chan(String(best.channel))}, צפייה ב-${ils3(best.cpv!)}.`);
   if (t.reach) wins.push(`נחשפו ${n0i(t.reach)} משתמשים ייחודיים.`);
   return composeDraft({ brand, headline, wins, insights, feedback, changes });
 }
@@ -259,7 +263,7 @@ export function buildLeadsClientConclusions(
   const wins: string[] = [];
   const chans = m.channels.filter((c) => c.channel !== "total" && c.leads > 0 && c.cpl != null);
   const best = chans.length ? chans.reduce((a, b) => ((a.cpl ?? 9e9) <= (b.cpl ?? 9e9) ? a : b)) : null;
-  if (best) wins.push(`הערוץ היעיל בתקופה: ${best.channel}, ליד ב-${ils(best.cpl!)}.`);
+  if (best) wins.push(`הערוץ היעיל בתקופה: ${chan(String(best.channel))}, ליד ב-${ils(best.cpl!)}.`);
   return composeDraft({ brand, headline, wins, insights, feedback, changes });
 }
 
