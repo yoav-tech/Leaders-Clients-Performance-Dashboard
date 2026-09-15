@@ -53,10 +53,19 @@ export async function POST(request: Request) {
     // is diffed against it, and that difference is what teaches the engine — so nothing has to be
     // rated by hand. See insightLearning.ts.
     const byId = new Map(insights.filter((i) => i.id).map((i) => [i.id!, i.data ?? {}]));
-    await saveDraftedLines(brand.id, from, to,
-      draft.lines.map((l) => ({ id: l.id, text: l.text, data: byId.get(l.id) ?? {} }))).catch(() => {});
+    let recorded = draft.lines.length > 0;
+    try {
+      await saveDraftedLines(brand.id, from, to,
+        draft.lines.map((l) => ({ id: l.id, text: l.text, data: byId.get(l.id) ?? {} })));
+    } catch (e) {
+      // Swallowing this silently once left the drafts table empty with nothing anywhere saying why.
+      // A failure here costs the learning, not the draft, so the response still succeeds — but it
+      // says so, and it's in the logs.
+      recorded = false;
+      console.error("[client-report/conclusions] could not record the draft for learning:", e instanceof Error ? e.message : String(e));
+    }
 
-    return NextResponse.json({ ok: true, ...draft });
+    return NextResponse.json({ ok: true, ...draft, recorded });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
