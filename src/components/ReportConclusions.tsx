@@ -62,7 +62,11 @@ export default function ReportConclusions({
       setNote(j.text);
       const learned = (j.lines ?? []).filter((l: { source?: string }) => l.source === "learned").length;
       const held = (j.withheld ?? []).length;
-      setMsg(`טיוטה נוצרה מ-${(j.lines ?? []).length} ממצאים${learned ? ` · ${learned} בניסוח שנלמד מהדוחות הקודמים` : ""}${held ? ` · ${held} ממצאים פנימיים לא נכללו` : ""} — לעבור ולערוך לפני שליחה`);
+      const n = (j.lines ?? []).length;
+      // A draft that wasn't recorded still gets sent — it just can't teach the engine, and the
+      // manager should know that rather than assume the edit was picked up.
+      const learnNote = n === 0 ? "" : j.recorded ? " · העריכות שלך ייקלטו במנוע בשליחה" : " · לא נרשמה לצורך למידה";
+      setMsg(`טיוטה נוצרה מ-${n} ממצאים${learned ? ` · ${learned} בניסוח שנלמד מדוחות קודמים` : ""}${held ? ` · ${held} ממצאים פנימיים לא נכללו` : ""}${learnNote} — לעבור ולערוך לפני שליחה`);
     } catch {
       setMsg("יצירת טיוטה נכשלה");
     } finally { setDrafting(false); }
