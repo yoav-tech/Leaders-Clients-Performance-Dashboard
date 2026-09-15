@@ -320,3 +320,25 @@ CREATE TABLE IF NOT EXISTS automation_settings (
 ALTER TABLE automation_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE automation_settings FORCE  ROW LEVEL SECURITY;
 REVOKE ALL ON automation_settings FROM anon, authenticated;
+
+-- ---- What the managers taught the recommendation engine ----
+-- One row per (brand, rule). 'approved' records that the generated wording is right for this
+-- client; 'corrected' stores the manager's own wording as a template whose figures are
+-- placeholders ({{gain|ils}}), so it is re-rendered against each new period's numbers instead of
+-- replaying the period it was written in. Keyed by brand: the same finding is phrased differently
+-- for different clients, and a correction is a judgement about one account.
+CREATE TABLE IF NOT EXISTS insight_feedback (
+  brand_id      text NOT NULL,
+  insight_id    text NOT NULL,                 -- reportInsights InsightId, e.g. 'creative-spread'
+  status        text NOT NULL,                 -- 'approved' | 'corrected'
+  template      text,                          -- corrected wording, figures placeholdered
+  corrected_raw text,                          -- exactly what the manager typed (audit)
+  original      text,                          -- the generated line they reacted to
+  unresolved    text[] NOT NULL DEFAULT '{}',  -- figures in the correction we couldn't bind
+  updated_by    text,
+  updated_at    timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (brand_id, insight_id)
+);
+ALTER TABLE insight_feedback ENABLE ROW LEVEL SECURITY;
+ALTER TABLE insight_feedback FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON insight_feedback FROM anon, authenticated;
