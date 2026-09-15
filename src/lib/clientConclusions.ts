@@ -19,6 +19,8 @@ import type { BrandConfig } from "./brands";
 import type { ClientReport } from "./clientReport";
 import type { Insight, InsightId } from "./reportInsights";
 import type { TopProductsResult } from "./topProducts";
+import type { InsightFeedback } from "./insightFeedbackStore";
+import { renderTemplate, templateUnbound } from "./insightTemplate";
 
 const ils = (v: number) => `₪${Math.round(v).toLocaleString("en-US")}`;
 const r2 = (v: number) => v.toFixed(2);
@@ -57,8 +59,27 @@ const VOICE: Record<InsightId, (d: Record<string, number>, brand: BrandConfig) =
   "attribution-gap": () => null, // internal only — see the header
 };
 
+/** One line of the draft, reviewable on its own so a correction attaches to the rule that wrote it. */
+export interface DraftLine {
+  id: InsightId;
+  text: string;
+  severity: Insight["severity"];
+  /** The engine's own wording, kept even when a learned one is in use — so the manager can see what
+   *  their correction replaced, and revert to it. */
+  generated: string;
+  /** Where this line's wording came from. */
+  source: "engine" | "learned";
+  /** Set on a learned line whose stored figures the rule no longer emits: the placeholders can't be
+   *  filled, so the wording needs another pass. */
+  staleFigures?: string[];
+  /** Previously approved by a manager, wording unchanged since. */
+  approved?: boolean;
+}
+
 export interface ClientConclusionsDraft {
   text: string;
+  /** Per-line, so the UI can offer approve / correct against the rule that produced each one. */
+  lines: DraftLine[];
   /** Which findings made it into the draft, and which were held back — shown to the manager so the
    *  draft isn't a black box and they know what they're not sending. */
   used: InsightId[];
@@ -70,6 +91,8 @@ export function buildEcomClientConclusions(
   r: ClientReport,
   insights: Insight[],
   products?: TopProductsResult | null,
+  /** What managers have already taught the engine for this brand, keyed by rule. */
+  feedback: Record<string, InsightFeedback> = {},
 ): ClientConclusionsDraft {
   const used: InsightId[] = [];
   const withheld: InsightId[] = [];
@@ -90,20 +113,36 @@ export function buildEcomClientConclusions(
   const topProduct = products?.rows?.[0];
   if (topProduct) wins.push(`המוצר המוביל: ${topProduct.name} (${ils(topProduct.revenue)}).`);
 
-  // 3. The engine's findings, each restated as work in progress.
-  const actions: string[] = [];
+  // 3. The engine's findings, each restated as work in progress — in the manager's own wording
+  //    where they have corrected this rule for this brand before.
+  const lines: DraftLine[] = [];
   for (const ins of insights) {
     if (!ins.id) continue;
     if (INTERNAL_ONLY.has(ins.id)) { withheld.push(ins.id); continue; }
-    const line = VOICE[ins.id]?.(ins.data ?? {}, brand);
-    if (!line) { withheld.push(ins.id); continue; }
-    actions.push(line);
+    const generated = VOICE[ins.id]?.(ins.data ?? {}, brand);
+    if (!generated) { withheld.push(ins.id); continue; }
+
+    const fb = feedback[ins.id];
+    const data = ins.data ?? {};
+    let text = generated;
+    let source: DraftLine["source"] = "engine";
+    let staleFigures: string[] | undefined;
+
+    if (fb?.status === "corrected" && fb.template) {
+      const unbound = templateUnbound(fb.template, data);
+      text = renderTemplate(fb.template, data);
+      source = "learned";
+      if (unbound.length) staleFigures = unbound;
+    }
+
+    lines.push({ id: ins.id, text, severity: ins.severity, generated, source, staleFigures, approved: fb?.status === "approved" });
     used.push(ins.id);
   }
+  const actions = lines.map((l) => l.text);
 
   const parts: string[] = [headline.join(" ")];
   if (wins.length) parts.push(`מה עבד בתקופה:\n${wins.map((w) => `• ${w}`).join("\n")}`);
   if (actions.length) parts.push(`מה אנחנו עושים מכאן:\n${actions.map((a) => `• ${a}`).join("\n")}`);
 
-  return { text: parts.join("\n\n"), used, withheld };
+  return { text: parts.join("\n\n"), lines, used, withheld };
 }

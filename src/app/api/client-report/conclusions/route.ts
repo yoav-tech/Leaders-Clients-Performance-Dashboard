@@ -6,6 +6,7 @@ import { getBrandMetrics } from "@/lib/queries";
 import { ecomInsights } from "@/lib/reportInsights";
 import { buildEcomClientConclusions } from "@/lib/clientConclusions";
 import { getServerSession, canAccessBrand } from "@/lib/serverSession";
+import { getInsightFeedback } from "@/lib/insightFeedbackStore";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -31,19 +32,22 @@ export async function POST(request: Request) {
   try {
     // Same inputs the monthly-preview cron feeds the rules, so the draft and the internal review
     // are built from one set of facts.
-    const [report, products, allMetrics] = await Promise.all([
+    const [report, products, allMetrics, feedback] = await Promise.all([
       getClientReport(brand, from, to),
       getTopProducts(brand, from, to).catch(() => null),
       getBrandMetrics(from, to).catch(() => []),
+      getInsightFeedback(brand.id),
     ]);
     if (!report) return NextResponse.json({ error: "אין נתונים לטווח שנבחר" }, { status: 404 });
 
     const bm = allMetrics.find((m) => m.brandId === brand.id);
     const audience = bm ? { newRevenue: bm.newRevenue, storeRevenue: bm.channels.site.revenue } : undefined;
     const insights = ecomInsights(brand, report, products, audience);
-    const draft = buildEcomClientConclusions(brand, report, insights, products);
+    const draft = buildEcomClientConclusions(brand, report, insights, products, feedback);
+    // The figures behind each line travel with it, so a correction can be bound back to them.
+    const data = Object.fromEntries(insights.filter((i) => i.id).map((i) => [i.id!, i.data ?? {}]));
 
-    return NextResponse.json({ ok: true, ...draft });
+    return NextResponse.json({ ok: true, ...draft, data });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
