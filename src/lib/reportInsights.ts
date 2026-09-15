@@ -13,7 +13,22 @@ import type { TopProductsResult } from "./topProducts";
 import { playbookFor, rampDays } from "./playbooks";
 
 export type Severity = "critical" | "warn" | "good";
-export interface Insight { severity: Severity; title: string; evidence: string; action: string }
+/** A stable key per rule. Hebrew titles are prose and change; consumers that need to react to a
+ *  specific finding (the client-facing translator in clientConclusions.ts) key off this instead. */
+export type InsightId =
+  | "paid-roas-below-floor" | "paid-roas-thin-margin" | "new-customer-share"
+  | "efficient-small-channel" | "creative-spread" | "attribution-gap"
+  | "brand-creative-behind" | "brand-creative-ahead" | "product-concentration";
+export interface Insight {
+  severity: Severity;
+  title: string;
+  evidence: string;
+  action: string;
+  id?: InsightId;
+  /** Raw figures the rule computed, so a different renderer can restate the finding in its own
+   *  words without recomputing (and diverging from) the arithmetic. */
+  data?: Record<string, number>;
+}
 
 const ils = (v: number | null | undefined) => (v == null ? "—" : `₪${Math.round(v).toLocaleString("en-US")}`);
 const ils2 = (v: number | null | undefined) => (v == null ? "—" : `₪${v.toFixed(3)}`);
@@ -212,6 +227,8 @@ export function ecomInsights(
     const margin = (paidRoas / floor - 1) * 100;
     if (paidRoas < floor) {
       out.push({
+        id: "paid-roas-below-floor",
+        data: { paidRoas, floor, spend },
         severity: "critical",
         title: `רואס חנות ממומן מתחת לרצפה של ${floor}`,
         evidence: `${paidRoas.toFixed(2)} לפי ${roasBasis} מול רצפה ${floor.toFixed(1)}${r.topLevel.paidRoas != null ? `. מטא מדווחת ${r.topLevel.paidRoas.toFixed(2)}` : ""}${siteRoas != null ? `, ורואס האתר ${siteRoas.toFixed(2)} כולל גם הכנסות שהמדיה לא ייצרה` : ""}.`,
@@ -219,6 +236,8 @@ export function ecomInsights(
       });
     } else if (margin < 15) {
       out.push({
+        id: "paid-roas-thin-margin",
+        data: { paidRoas, floor, marginPct: margin, spend },
         severity: "warn",
         title: `רואס חנות ממומן ${paidRoas.toFixed(2)} — רק ${Math.round(margin)}% מעל הרצפה`,
         evidence: `נמדד לפי ${roasBasis}. הרצפה היא ${floor.toFixed(1)}${r.topLevel.paidRoas != null ? `; מטא מדווחת ${r.topLevel.paidRoas.toFixed(2)}` : ""}${siteRoas != null ? ` ורואס האתר ${siteRoas.toFixed(2)}` : ""} — שניהם גבוהים מהמדד שקובע.`,
@@ -233,6 +252,8 @@ export function ecomInsights(
     if (share > 0 && share < pb.newCustomerShareTarget) {
       const gap = pb.newCustomerShareTarget - share;
       out.push({
+        id: "new-customer-share",
+        data: { share, target: pb.newCustomerShareTarget, newRevenue: audience.newRevenue, storeRevenue: audience.storeRevenue, gapValue: gap * audience.storeRevenue },
         severity: gap > 0.2 ? "critical" : "warn",
         title: `${Math.round(share * 100)}% מההכנסות מקהל חדש, מול יעד ${Math.round(pb.newCustomerShareTarget * 100)}%`,
         evidence: `${ils(audience.newRevenue)} מתוך ${ils(audience.storeRevenue)} — השאר מקהל חוזר.`,
@@ -252,6 +273,8 @@ export function ecomInsights(
       const tgt = cur * 2;
       const days = rampDays(cur, tgt, pb.maxDailyBudgetChange);
       out.push({
+        id: "efficient-small-channel",
+        data: { bestRoas: best.roas!, bestSpend: best.spend, biggestRoas: biggest.roas!, biggestSpend: biggest.spend, rampDays: days },
         severity: "good",
         title: `${best.platform} מחזיר ${best.roas!.toFixed(2)} על ${ils(best.spend)} בלבד`,
         evidence: `${biggest.platform} מחזיר ${biggest.roas!.toFixed(2)} על ${ils(biggest.spend)}. הפער מצדיק בדיקה — לא הגדלה אוטומטית.`,
@@ -268,6 +291,8 @@ export function ecomInsights(
     if (best.roas! > 0 && best.roas! / Math.max(worst.roas!, 0.1) >= 2.5) {
       const gain = worst.spend * (best.roas! - worst.roas!);
       out.push({
+        id: "creative-spread",
+        data: { bestRoas: best.roas!, worstRoas: worst.roas!, worstSpend: worst.spend, gain },
         severity: "warn",
         title: "פער גדול בין המודעות המובילות",
         evidence: `"${best.name}" ברואס ${best.roas!.toFixed(1)} מול "${worst.name}" ב-${worst.roas!.toFixed(1)}.`,
@@ -284,6 +309,8 @@ export function ecomInsights(
     const ratio = storeSum > 0 ? metaSum / storeSum : null;
     if (ratio != null && ratio >= 1.5) {
       out.push({
+        id: "attribution-gap",
+        data: { ratio, ads: withStore.length },
         severity: "warn",
         title: `מטא מדווחת רואס גבוה פי ${ratio.toFixed(1)} מהחנות`,
         evidence: `על ${withStore.length} המודעות המובילות, הרואס לפי מטא גבוה בעקביות מהרואס לפי הכנסות החנות בפועל.`,
@@ -310,6 +337,8 @@ export function ecomInsights(
       // The brand's own creative is the weak side — that is the thing to fix.
       const uplift = cs.brandSpend * (netInflRoas - brandRoas);
       out.push({
+        id: "brand-creative-behind",
+        data: { brandRoas, netInflRoas, inflRoas, commission, uplift, inflShare, brandSpend: cs.brandSpend },
         severity: inflShare > 0.5 ? "critical" : "warn",
         title: `קריאייטיב המותג מחזיר ${brandRoas.toFixed(2)} מול ${netInflRoas.toFixed(2)} של המשפיעניות אחרי עמלה`,
         evidence: `${Math.round(spendShare * 100)}% מהתקציב יושב בקריאייטיב מותג שמחזיר פחות. המשפיעניות מדווחות ${inflRoas.toFixed(2)} אבל העמלה (${Math.round(pb.influencerCommission * 100)}% + מע״מ, ${ils(commission)} החודש) מורידה אותן ל-${netInflRoas.toFixed(2)}.`,
@@ -317,6 +346,8 @@ export function ecomInsights(
       });
     } else {
       out.push({
+        id: "brand-creative-ahead",
+        data: { brandRoas, netInflRoas, inflRoas, commission },
         severity: "good",
         title: `אחרי עמלה, קריאייטיב המותג יעיל יותר (${brandRoas.toFixed(2)} מול ${netInflRoas.toFixed(2)})`,
         evidence: `המשפיעניות מדווחות ${inflRoas.toFixed(2)}, אבל ${ils(commission)} עמלה החודש מורידים אותן מתחת למותג.`,
@@ -330,6 +361,8 @@ export function ecomInsights(
     const share = top3 / products.storeRevenue;
     if (share > 0.5) {
       out.push({
+        id: "product-concentration",
+        data: { share, top3Revenue: top3, storeRevenue: products.storeRevenue },
         severity: "warn",
         title: `${pctv(share)} מהמכירות מרוכזות ב-3 מוצרים`,
         evidence: `${products.rows.slice(0, 3).map((p) => p.name).join(", ")}.`,
