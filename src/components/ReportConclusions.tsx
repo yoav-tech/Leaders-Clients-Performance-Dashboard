@@ -112,9 +112,14 @@ export default function ReportConclusions({
         {canEdit && badge}
       </div>
 
-      {/* Auto summary — shown to everyone; the period is restated inside it. */}
-      <div className="mb-1 text-[11px] uppercase tracking-wide text-[var(--muted)]">תקציר אוטומטי</div>
-      <p className="rounded-lg border border-[var(--panel-border)] bg-[var(--background)]/40 p-3 text-sm leading-relaxed">{summary}</p>
+      {/* Auto summary — shown to everyone; the period is restated inside it. Only the e-commerce
+          report generates one, so the block is skipped rather than shown empty. */}
+      {summary.trim() && (
+        <>
+          <div className="mb-1 text-[11px] uppercase tracking-wide text-[var(--muted)]">תקציר אוטומטי</div>
+          <p className="rounded-lg border border-[var(--panel-border)] bg-[var(--background)]/40 p-3 text-sm leading-relaxed">{summary}</p>
+        </>
+      )}
 
       {/* Manager conclusions. */}
       <div className="mt-4 mb-1 text-[11px] uppercase tracking-wide text-[var(--muted)]">

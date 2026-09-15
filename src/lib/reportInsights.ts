@@ -16,9 +16,20 @@ export type Severity = "critical" | "warn" | "good";
 /** A stable key per rule. Hebrew titles are prose and change; consumers that need to react to a
  *  specific finding (the client-facing translator in clientConclusions.ts) key off this instead. */
 export type InsightId =
+  // e-commerce
   | "paid-roas-below-floor" | "paid-roas-thin-margin" | "new-customer-share"
   | "efficient-small-channel" | "creative-spread" | "attribution-gap"
-  | "brand-creative-behind" | "brand-creative-ahead" | "product-concentration";
+  | "brand-creative-behind" | "brand-creative-ahead" | "product-concentration"
+  // video / awareness
+  | "cpv-above-target" | "cpv-below-target" | "platform-cpv-gap" | "creative-cpv-gap"
+  | "flight-behind-plan" | "leads-below-target"
+  // app (Haat)
+  | "cpreg-at-target" | "cpreg-over-ceiling" | "cities-over-ceiling" | "cities-headroom"
+  | "install-to-reg"
+  // leads
+  | "cpl-above-target" | "cpl-at-target" | "channel-cpl-gap" | "budget-underspend"
+  // search share of voice
+  | "impshare-lost-budget" | "impshare-lost-rank";
 export interface Insight {
   severity: Severity;
   title: string;
@@ -26,8 +37,12 @@ export interface Insight {
   action: string;
   id?: InsightId;
   /** Raw figures the rule computed, so a different renderer can restate the finding in its own
-   *  words without recomputing (and diverging from) the arithmetic. */
+   *  words without recomputing (and diverging from) the arithmetic. Numbers only — these are what
+   *  a learned template re-renders each period (see insightTemplate). */
   data?: Record<string, number>;
+  /** Names the finding refers to — a platform, a creative, a city, an account section. Kept apart
+   *  from `data` because they are not figures to re-render; they identify what the numbers are about. */
+  labels?: Record<string, string>;
 }
 
 const ils = (v: number | null | undefined) => (v == null ? "—" : `₪${Math.round(v).toLocaleString("en-US")}`);
@@ -61,6 +76,8 @@ export function viewsInsights(
       // What the current spend would have bought at target price.
       const wouldBuy = t.spend / target;
       out.push({
+        id: "cpv-above-target",
+        data: { cpv: t.cpv, target, overPct: over, spend: t.spend, views: t.views, wouldBuy },
         severity: over > 25 ? "critical" : "warn",
         title: `עלות הצפייה גבוהה מהיעד ב-${Math.round(over)}%`,
         evidence: `${ils2(t.cpv)} מול יעד ${ils2(target)}. באותה הוצאה (${ils(t.spend)}) יעד זה היה מניב ${n0(wouldBuy)} צפיות במקום ${n0(t.views)}.`,
@@ -68,6 +85,8 @@ export function viewsInsights(
       });
     } else {
       out.push({
+        id: "cpv-below-target",
+        data: { cpv: t.cpv, target, spend: t.spend, addSpend: t.spend * 0.2, addViews: (t.spend * 0.2) / t.cpv },
         severity: "good",
         title: "עלות הצפייה מתחת ליעד",
         evidence: `${ils2(t.cpv)} מול יעד ${ils2(target)}.`,
@@ -86,6 +105,9 @@ export function viewsInsights(
       const move = worst.spend * 0.3;
       const gain = shiftGain(move, move / worst.cpv!, best.cpv!);
       out.push({
+        id: "platform-cpv-gap",
+        data: { bestCpv: best.cpv!, worstCpv: worst.cpv!, gapPct, move, gain },
+        labels: { best: String(best.channel), worst: String(worst.channel) },
         severity: gapPct >= 60 ? "critical" : "warn",
         title: `פער של ${Math.round(gapPct)}% בעלות הצפייה בין הפלטפורמות`,
         evidence: `${best.channel} מספקת צפייה ב-${ils2(best.cpv)} מול ${ils2(worst.cpv)} ב-${worst.channel}.`,
@@ -102,6 +124,9 @@ export function viewsInsights(
     if (best.cpv! > 0 && worst.cpv! / best.cpv! >= 2) {
       const gain = shiftGain(worst.spend, worst.views, best.cpv!);
       out.push({
+        id: "creative-cpv-gap",
+        data: { bestCpv: best.cpv!, worstCpv: worst.cpv!, worstSpend: worst.spend, gain, ratio: worst.cpv! / best.cpv! },
+        labels: { best: best.name, worst: worst.name },
         severity: "warn",
         title: "פער גדול בין הקריאייטיבים",
         evidence: `"${worst.name}" מייצר צפייה ב-${ils2(worst.cpv)} בעוד "${best.name}" ב-${ils2(best.cpv)} — פי ${(worst.cpv! / best.cpv!).toFixed(1)}.`,
@@ -115,6 +140,8 @@ export function viewsInsights(
     const behind = opts.elapsedPct - opts.planPct;
     if (behind >= 10) {
       out.push({
+        id: "flight-behind-plan",
+        data: { behind, elapsedPct: opts.elapsedPct, planPct: opts.planPct },
         severity: behind >= 25 ? "critical" : "warn",
         title: `הפריסה מפגרת אחרי לוח הזמנים ב-${Math.round(behind)} נקודות`,
         evidence: `עברו ${Math.round(opts.elapsedPct)}% מהתקופה, הושגו ${Math.round(opts.planPct)}% מיעד הצפיות.`,
@@ -129,6 +156,8 @@ export function viewsInsights(
     if (pct != null && pct < 90) {
       const missing = L.targetLeads - L.leads;
       out.push({
+        id: "leads-below-target",
+        data: { missing, leads: L.leads, targetLeads: L.targetLeads, pct, cost: missing * (L.cpl ?? 0) },
         severity: pct < 60 ? "critical" : "warn",
         title: `חסרים ${n0(missing)} לידים ליעד`,
         evidence: `${n0(L.leads)} מתוך ${n0(L.targetLeads)} (${Math.round(pct)}%), בעלות ${ils(L.cpl)} לליד מול יעד ${ils(L.targetCpa)}.`,
@@ -157,9 +186,11 @@ export function appInsights(
 
   if (ceiling != null && cpReg != null) {
     out.push(cpReg <= ceiling
-      ? { severity: "good", title: "עלות ההרשמה עומדת ביעד", evidence: `${ils(cpReg)} מול תקרה של ${ils(ceiling)}.`,
+      ? { id: "cpreg-at-target", data: { cpReg, ceiling, headroom: ceiling - cpReg },
+          severity: "good", title: "עלות ההרשמה עומדת ביעד", evidence: `${ils(cpReg)} מול תקרה של ${ils(ceiling)}.`,
           action: `יש מרווח של ${ils(ceiling - cpReg)} להרשמה — אפשר להגדיל נפח בערים שמתחת לתקרה.` }
-      : { severity: "critical", title: "עלות ההרשמה חורגת מהתקרה", evidence: `${ils(cpReg)} מול תקרה של ${ils(ceiling)}.`,
+      : { id: "cpreg-over-ceiling", data: { cpReg, ceiling },
+          severity: "critical", title: "עלות ההרשמה חורגת מהתקרה", evidence: `${ils(cpReg)} מול תקרה של ${ils(ceiling)}.`,
           action: "לצמצם תקציב בערים היקרות ולהסיטו לזולות — פירוט בהמלצה הבאה." });
   }
 
@@ -173,6 +204,9 @@ export function appInsights(
       const regsNow = over.reduce((a, c) => a + c.regs, 0);
       const gain = shiftGain(spendAtRisk, regsNow, best.cpr);
       out.push({
+        id: "cities-over-ceiling",
+        data: { count: over.length, ceiling, spendAtRisk, regsNow, gain, bestCpr: best.cpr },
+        labels: { cities: over.map((c) => c.city).join(", "), best: best.city },
         severity: "critical",
         title: `${over.length} ערים מעל תקרת ה-${ils(ceiling)}`,
         evidence: `${over.map((c) => `${c.city} ${ils(c.cpr)}`).join(", ")} — יחד ${ils(spendAtRisk)} שהניבו ${n0(regsNow)} הרשמות.`,
@@ -182,6 +216,9 @@ export function appInsights(
     const cheap = cities.filter((c) => ceiling > 0 && c.cpr <= ceiling * 0.6).sort((a, b) => a.cpr - b.cpr);
     if (cheap.length) {
       out.push({
+        id: "cities-headroom",
+        data: { bestCpr: cheap[0].cpr, per1000: 1000 / cheap[0].cpr },
+        labels: { cities: cheap.slice(0, 3).map((c) => c.city).join(", "), best: cheap[0].city },
         severity: "good",
         title: "ערים עם מרווח להגדלה",
         evidence: `${cheap.slice(0, 3).map((c) => `${c.city} ${ils(c.cpr)}`).join(", ")} — הרבה מתחת לתקרה.`,
@@ -194,6 +231,8 @@ export function appInsights(
     const rate = regs / installs;
     if (rate < 0.45) {
       out.push({
+        id: "install-to-reg",
+        data: { rate, installs, regs, gain: installs * 0.55 - regs },
         severity: "warn",
         title: `רק ${pctv(rate)} מההתקנות הופכות להרשמה`,
         evidence: `${n0(installs)} התקנות ייצרו ${n0(regs)} הרשמות.`,
@@ -393,6 +432,8 @@ export function leadsInsights(brand: BrandConfig, m: CampBrandMetrics): Insight[
     if (t.cpl > target) {
       const wouldBuy = t.spend / target;
       out.push({
+        id: "cpl-above-target",
+        data: { cpl: t.cpl, target, overPct: (t.cpl / target - 1) * 100, spend: t.spend, leads: t.leads, wouldBuy },
         severity: t.cpl > target * 1.3 ? "critical" : "warn",
         title: `עלות הליד גבוהה מהיעד ב-${Math.round((t.cpl / target - 1) * 100)}%`,
         evidence: `${ils(t.cpl)} מול יעד ${ils(target)}. באותה הוצאה יעד זה היה מניב ${n0(wouldBuy)} לידים במקום ${n0(t.leads)}.`,
@@ -400,6 +441,8 @@ export function leadsInsights(brand: BrandConfig, m: CampBrandMetrics): Insight[
       });
     } else {
       out.push({
+        id: "cpl-at-target",
+        data: { cpl: t.cpl, target, addSpend: budget * 0.2, addLeads: (budget * 0.2) / t.cpl },
         severity: "good", title: "עלות הליד עומדת ביעד",
         evidence: `${ils(t.cpl)} מול יעד ${ils(target)}.`,
         action: `יש מרווח להגדיל נפח: תוספת של ${ils(budget * 0.2)} שווה כ-${n0((budget * 0.2) / t.cpl)} לידים במחיר הנוכחי.`,
@@ -415,6 +458,9 @@ export function leadsInsights(brand: BrandConfig, m: CampBrandMetrics): Insight[
       const move = worst.spend * 0.3;
       const gain = shiftGain(move, move / worst.cpl!, best.cpl!);
       out.push({
+        id: "channel-cpl-gap",
+        data: { bestCpl: best.cpl!, worstCpl: worst.cpl!, move, gain, cheaperPct: (1 - best.cpl! / worst.cpl!) * 100 },
+        labels: { best: String(best.channel), worst: String(worst.channel) },
         severity: "warn",
         title: `${best.channel} מייצרת לידים זולים ב-${Math.round((1 - best.cpl! / worst.cpl!) * 100)}% מ-${worst.channel}`,
         evidence: `${ils(best.cpl)} מול ${ils(worst.cpl)} לליד.`,
@@ -426,6 +472,8 @@ export function leadsInsights(brand: BrandConfig, m: CampBrandMetrics): Insight[
   if (budget > 0 && t.spend < budget * 0.8) {
     const unspent = budget - t.spend;
     out.push({
+      id: "budget-underspend",
+      data: { unspent, budget, spend: t.spend, share: unspent / budget, missedLeads: t.cpl != null ? unspent / t.cpl : 0 },
       severity: "warn",
       title: `${pctv(unspent / budget)} מהתקציב לא נוצל`,
       evidence: `הוצאו ${ils(t.spend)} מתוך ${ils(budget)}.`,
@@ -449,6 +497,9 @@ export function impShareInsights(brand: BrandConfig, sections: SnapSection[]): I
       const perPoint = T.cost / (is * 100);
       const toHalf = Math.max(0, 50 - is * 100) * perPoint;
       out.push({
+        id: "impshare-lost-budget",
+        data: { lostBudget, impShare: is, lostRank, perPoint, toHalf },
+        labels: { section: s.title },
         severity: lostBudget > 0.5 ? "critical" : "warn",
         title: `${s.title}: ${pctv(lostBudget)} מהחשיפות אבדו בגלל תקציב`,
         evidence: `נוכחות ${pctv(is)} בלבד, ורק ${pctv(lostRank)} אבדו בגלל דירוג — כלומר המודעות מנצחות, נגמר התקציב.`,
@@ -456,6 +507,9 @@ export function impShareInsights(brand: BrandConfig, sections: SnapSection[]): I
       });
     } else if (lostRank > 0.25) {
       out.push({
+        id: "impshare-lost-rank",
+        data: { lostRank, lostBudget, impShare: is },
+        labels: { section: s.title },
         severity: "warn",
         title: `${s.title}: ${pctv(lostRank)} מהחשיפות אבדו בגלל דירוג`,
         evidence: `אובדן התקציב הוא ${pctv(lostBudget)} בלבד — התקציב מספיק, הדירוג לא.`,

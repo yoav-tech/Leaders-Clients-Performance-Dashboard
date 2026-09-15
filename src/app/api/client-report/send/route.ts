@@ -10,7 +10,7 @@ import { emailConfigured, sendEmail } from "@/lib/email";
 import { mediaManagers, brandClients } from "@/lib/recipients";
 import { getDraftedLines, learnFromSend } from "@/lib/insightLearning";
 import { getInsightFeedback } from "@/lib/insightFeedbackStore";
-import { buildEcomDraft } from "@/lib/ecomDraft";
+import { buildClientDraft } from "@/lib/clientDraft";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
         // giving up. Learning was asked for as a mechanism that runs behind the scenes, so it must
         // not hinge on a button press or on a write having succeeded an hour earlier.
         let drafted = await getDraftedLines(brand.id, from, to);
-        if (!drafted.length) drafted = (await buildEcomDraft(brand, from, to))?.lines ?? [];
+        if (!drafted.length) drafted = (await buildClientDraft(brand, from, to))?.lines ?? [];
         if (drafted.length) {
           learned = await learnFromSend(brand.id, drafted, note.note, session.sub ?? null, await getInsightFeedback(brand.id));
         }
