@@ -14,9 +14,7 @@ import { getAwarenessReport } from "@/lib/awarenessReport";
 import { TYPE_LABEL } from "@/lib/searchSnapshot";
 import type { PlanRow, AdRow, LeadsBlock } from "@/lib/reportEmailExtra";
 import { viewsInsights, appInsights, ecomInsights, leadsInsights, impShareInsights } from "@/lib/reportInsights";
-import { buildEcomClientConclusions } from "@/lib/clientConclusions";
-import { getInsightFeedback } from "@/lib/insightFeedbackStore";
-import { getAccountChanges } from "@/lib/accountChanges";
+import { buildClientDraft } from "@/lib/clientDraft";
 import { renderEmail, renderLeadsEmail, renderViewsEmail, renderAppEmail, renderImpShareEmail } from "@/lib/reportEmailExtra";
 import { sendEmail, emailConfigured } from "@/lib/email";
 import { mediaManagers } from "@/lib/recipients";
@@ -73,13 +71,6 @@ export async function GET(request: Request) {
             targetRoas: b.targetRoas, insights: ins,
             // The client-facing draft the dashboard button produces, so the same review pass can
             // check what the client would actually read next to the internal findings.
-            // Identical inputs to the dashboard button, so reviewing here reviews what a manager
-            // would actually see.
-            clientDraft: buildEcomClientConclusions(
-              b, r, ins, products,
-              await getInsightFeedback(b.id),
-              await getAccountChanges(b, from, to).catch(() => null),
-            ),
           };
           html = renderEmail(r, "", products, ins);
         }
@@ -149,6 +140,12 @@ export async function GET(request: Request) {
         }
       }
 
+      // The client-facing draft the dashboard button produces — for every report type, so a review
+      // here reviews exactly what a manager would see.
+      if (dry) {
+        const d = await buildClientDraft(b, from, to).catch((e) => { console.error("[preview] draft", b.id, e); return null; });
+        facts[b.id] = { ...((facts[b.id] as object) ?? {}), clientDraft: d?.draft ?? null };
+      }
       if (!html) { out[b.id] = "skipped — no data"; continue; }
       if (dry) { out[b.id] = "dry"; continue; }
       await sendEmail({ to: recipients, subject: `סיכום חודשי · ${b.nameHe} · ${from} – ${to}`, html });
