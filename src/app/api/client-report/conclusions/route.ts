@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server";
 import { getBrand, reportGroupOf } from "@/lib/brands";
-import { getClientReport } from "@/lib/clientReport";
-import { getTopProducts } from "@/lib/topProducts";
-import { getBrandMetrics } from "@/lib/queries";
-import { ecomInsights } from "@/lib/reportInsights";
-import { buildEcomClientConclusions } from "@/lib/clientConclusions";
-import { getServerSession, canAccessBrand } from "@/lib/serverSession";
-import { getInsightFeedback } from "@/lib/insightFeedbackStore";
+import { buildEcomDraft } from "@/lib/ecomDraft";
 import { saveDraftedLines } from "@/lib/insightLearning";
-import { getAccountChanges } from "@/lib/accountChanges";
+import { getServerSession, canAccessBrand } from "@/lib/serverSession";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -32,40 +26,22 @@ export async function POST(request: Request) {
   if (!from || !to) return NextResponse.json({ error: "missing range" }, { status: 400 });
 
   try {
-    // Same inputs the monthly-preview cron feeds the rules, so the draft and the internal review
-    // are built from one set of facts.
-    const [report, products, allMetrics, feedback, changes] = await Promise.all([
-      getClientReport(brand, from, to),
-      getTopProducts(brand, from, to).catch(() => null),
-      getBrandMetrics(from, to).catch(() => []),
-      getInsightFeedback(brand.id),
-      // Reading the account is the slowest part and the least essential — a draft without the
-      // change list is still a draft, one that fails outright is not.
-      getAccountChanges(brand, from, to).catch(() => null),
-    ]);
-    if (!report) return NextResponse.json({ error: "אין נתונים לטווח שנבחר" }, { status: 404 });
+    const built = await buildEcomDraft(brand, from, to);
+    if (!built) return NextResponse.json({ error: "אין נתונים לטווח שנבחר" }, { status: 404 });
 
-    const bm = allMetrics.find((m) => m.brandId === brand.id);
-    const audience = bm ? { newRevenue: bm.newRevenue, storeRevenue: bm.channels.site.revenue } : undefined;
-    const insights = ecomInsights(brand, report, products, audience);
-    const draft = buildEcomClientConclusions(brand, report, insights, products, feedback, changes);
-    // Remember what was drafted. When the manager sends the report, whatever they turned this into
-    // is diffed against it, and that difference is what teaches the engine — so nothing has to be
-    // rated by hand. See insightLearning.ts.
-    const byId = new Map(insights.filter((i) => i.id).map((i) => [i.id!, i.data ?? {}]));
-    let recorded = draft.lines.length > 0;
+    // Remember what was drafted so the send can be diffed against it. This is an optimisation, not
+    // a dependency: the send path rebuilds the draft when no row is found, so learning survives a
+    // failure here. It still reports one — a write that failed silently once left the table empty
+    // with nothing anywhere saying why.
+    let recorded = built.lines.length > 0;
     try {
-      await saveDraftedLines(brand.id, from, to,
-        draft.lines.map((l) => ({ id: l.id, text: l.text, data: byId.get(l.id) ?? {} })));
+      await saveDraftedLines(brand.id, from, to, built.lines);
     } catch (e) {
-      // Swallowing this silently once left the drafts table empty with nothing anywhere saying why.
-      // A failure here costs the learning, not the draft, so the response still succeeds — but it
-      // says so, and it's in the logs.
       recorded = false;
       console.error("[client-report/conclusions] could not record the draft for learning:", e instanceof Error ? e.message : String(e));
     }
 
-    return NextResponse.json({ ok: true, ...draft, recorded });
+    return NextResponse.json({ ok: true, ...built.draft, recorded });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
