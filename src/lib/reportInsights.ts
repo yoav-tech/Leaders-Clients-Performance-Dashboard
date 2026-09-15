@@ -284,11 +284,20 @@ export function ecomInsights(
   }
 
   // 4. Creative spread — the cheapest lever, and it doesn't touch budget caps.
+  //
+  // The gain is the weak ad's spend valued at the leader's ROAS, which only means anything if the
+  // spend being moved is material. On Studio Pasha's August the weakest top ad carried ₪399 against
+  // a leader at 32.06 ROAS, so the rule produced "shift ₪399 → ₪11,037" — arithmetically correct,
+  // and a claim nobody could stand behind in front of a client. A weak line has to be carrying real
+  // money before reallocating it is a recommendation rather than rounding.
+  const MIN_SHIFT_ILS = 1000;
+  const MIN_SHIFT_SHARE = 0.02; // of the period's total spend
   const ads = r.topAds.filter((a) => a.spend > 0 && a.roas != null);
   if (ads.length >= 3) {
     const best = ads.reduce((a, b) => (a.roas! >= b.roas! ? a : b));
     const worst = ads.reduce((a, b) => (a.roas! <= b.roas! ? a : b));
-    if (best.roas! > 0 && best.roas! / Math.max(worst.roas!, 0.1) >= 2.5) {
+    const material = worst.spend >= Math.max(MIN_SHIFT_ILS, spend * MIN_SHIFT_SHARE);
+    if (material && best.roas! > 0 && best.roas! / Math.max(worst.roas!, 0.1) >= 2.5) {
       const gain = worst.spend * (best.roas! - worst.roas!);
       out.push({
         id: "creative-spread",
