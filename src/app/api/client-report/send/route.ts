@@ -8,6 +8,8 @@ import { getReportNote, markReportSent, type ReportPeriod } from "@/lib/clientRe
 import { getServerSession, canAccessBrand } from "@/lib/serverSession";
 import { emailConfigured, sendEmail } from "@/lib/email";
 import { mediaManagers, brandClients } from "@/lib/recipients";
+import { getDraftedLines, learnFromSend } from "@/lib/insightLearning";
+import { getInsightFeedback } from "@/lib/insightFeedbackStore";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -50,7 +52,21 @@ export async function POST(request: Request) {
     const to_ = mediaManagers(); // DEMO recipients; swap for the client's emails in production
     await sendEmail({ to: to_, subject: `דוח ביצועים · ${report.brandName} · ${from} – ${to} (תצוגה)`, html: renderEmail(report, note.note, products), text: report.summary + (note.note ? `\n\n${note.note}` : "") });
     await markReportSent(brand.id, period, from, to);
-    return NextResponse.json({ ok: true, sentTo: to_ });
+
+    // Teach the engine from what actually went out. The manager already did the work of editing the
+    // draft into what the client should read — diffing that against what was drafted is the whole
+    // correction, with nothing asked of them. Strictly after the send, and never allowed to throw:
+    // learning must not be able to fail a report that has already reached its recipients.
+    let learned: unknown = null;
+    try {
+      const drafted = await getDraftedLines(brand.id, from, to);
+      if (drafted.length && note.note.trim()) {
+        learned = await learnFromSend(brand.id, drafted, note.note, session.sub ?? null, await getInsightFeedback(brand.id));
+      }
+    } catch (e) {
+      console.error("[client-report/send] learning failed:", e instanceof Error ? e.message : String(e));
+    }
+    return NextResponse.json({ ok: true, sentTo: to_, learned });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }

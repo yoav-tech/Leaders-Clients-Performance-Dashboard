@@ -21,6 +21,7 @@ import type { Insight, InsightId } from "./reportInsights";
 import type { TopProductsResult } from "./topProducts";
 import type { InsightFeedback } from "./insightFeedbackStore";
 import { renderTemplate, templateUnbound } from "./insightTemplate";
+import { renderAccountChanges, type AccountChanges } from "./accountChanges";
 
 const ils = (v: number) => `₪${Math.round(v).toLocaleString("en-US")}`;
 const r2 = (v: number) => v.toFixed(2);
@@ -84,6 +85,8 @@ export interface ClientConclusionsDraft {
    *  draft isn't a black box and they know what they're not sending. */
   used: InsightId[];
   withheld: InsightId[];
+  /** The account-change lines, so a caller can show them separately from the rule findings. */
+  changes: string[];
 }
 
 export function buildEcomClientConclusions(
@@ -93,6 +96,8 @@ export function buildEcomClientConclusions(
   products?: TopProductsResult | null,
   /** What managers have already taught the engine for this brand, keyed by rule. */
   feedback: Record<string, InsightFeedback> = {},
+  /** What actually moved in the account this period, read from the platforms. */
+  changes?: AccountChanges | null,
 ): ClientConclusionsDraft {
   const used: InsightId[] = [];
   const withheld: InsightId[] = [];
@@ -123,6 +128,8 @@ export function buildEcomClientConclusions(
     if (!generated) { withheld.push(ins.id); continue; }
 
     const fb = feedback[ins.id];
+    // Deleted from the sent report enough times that drafting it again is just making work.
+    if (fb?.suppressed) { withheld.push(ins.id); continue; }
     const data = ins.data ?? {};
     let text = generated;
     let source: DraftLine["source"] = "engine";
@@ -140,9 +147,15 @@ export function buildEcomClientConclusions(
   }
   const actions = lines.map((l) => l.text);
 
+  // The work done in the account, read from the platforms rather than from a hand-kept log. It sits
+  // above the results: a client reading only outcomes is left to guess whether anything was done to
+  // produce them.
+  const changeLines = renderAccountChanges(changes ?? null);
+
   const parts: string[] = [headline.join(" ")];
+  if (changeLines.length) parts.push(`מה שינינו בחשבון בתקופה:\n${changeLines.map((c) => `• ${c}`).join("\n")}`);
   if (wins.length) parts.push(`מה עבד בתקופה:\n${wins.map((w) => `• ${w}`).join("\n")}`);
   if (actions.length) parts.push(`מה אנחנו עושים מכאן:\n${actions.map((a) => `• ${a}`).join("\n")}`);
 
-  return { text: parts.join("\n\n"), lines, used, withheld };
+  return { text: parts.join("\n\n"), lines, used, withheld, changes: changeLines };
 }

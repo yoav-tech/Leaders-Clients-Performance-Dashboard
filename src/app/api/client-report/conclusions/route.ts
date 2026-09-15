@@ -7,6 +7,8 @@ import { ecomInsights } from "@/lib/reportInsights";
 import { buildEcomClientConclusions } from "@/lib/clientConclusions";
 import { getServerSession, canAccessBrand } from "@/lib/serverSession";
 import { getInsightFeedback } from "@/lib/insightFeedbackStore";
+import { saveDraftedLines } from "@/lib/insightLearning";
+import { getAccountChanges } from "@/lib/accountChanges";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -32,22 +34,29 @@ export async function POST(request: Request) {
   try {
     // Same inputs the monthly-preview cron feeds the rules, so the draft and the internal review
     // are built from one set of facts.
-    const [report, products, allMetrics, feedback] = await Promise.all([
+    const [report, products, allMetrics, feedback, changes] = await Promise.all([
       getClientReport(brand, from, to),
       getTopProducts(brand, from, to).catch(() => null),
       getBrandMetrics(from, to).catch(() => []),
       getInsightFeedback(brand.id),
+      // Reading the account is the slowest part and the least essential — a draft without the
+      // change list is still a draft, one that fails outright is not.
+      getAccountChanges(brand, from, to).catch(() => null),
     ]);
     if (!report) return NextResponse.json({ error: "אין נתונים לטווח שנבחר" }, { status: 404 });
 
     const bm = allMetrics.find((m) => m.brandId === brand.id);
     const audience = bm ? { newRevenue: bm.newRevenue, storeRevenue: bm.channels.site.revenue } : undefined;
     const insights = ecomInsights(brand, report, products, audience);
-    const draft = buildEcomClientConclusions(brand, report, insights, products, feedback);
-    // The figures behind each line travel with it, so a correction can be bound back to them.
-    const data = Object.fromEntries(insights.filter((i) => i.id).map((i) => [i.id!, i.data ?? {}]));
+    const draft = buildEcomClientConclusions(brand, report, insights, products, feedback, changes);
+    // Remember what was drafted. When the manager sends the report, whatever they turned this into
+    // is diffed against it, and that difference is what teaches the engine — so nothing has to be
+    // rated by hand. See insightLearning.ts.
+    const byId = new Map(insights.filter((i) => i.id).map((i) => [i.id!, i.data ?? {}]));
+    await saveDraftedLines(brand.id, from, to,
+      draft.lines.map((l) => ({ id: l.id, text: l.text, data: byId.get(l.id) ?? {} }))).catch(() => {});
 
-    return NextResponse.json({ ok: true, ...draft, data });
+    return NextResponse.json({ ok: true, ...draft });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }

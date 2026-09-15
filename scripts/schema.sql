@@ -335,6 +335,8 @@ CREATE TABLE IF NOT EXISTS insight_feedback (
   corrected_raw text,                          -- exactly what the manager typed (audit)
   original      text,                          -- the generated line they reacted to
   unresolved    text[] NOT NULL DEFAULT '{}',  -- figures in the correction we couldn't bind
+  drop_count    integer NOT NULL DEFAULT 0,    -- consecutive times the manager deleted it before sending
+  suppressed    boolean NOT NULL DEFAULT false,-- drop_count hit the limit: stop drafting this rule here
   updated_by    text,
   updated_at    timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (brand_id, insight_id)
@@ -342,3 +344,18 @@ CREATE TABLE IF NOT EXISTS insight_feedback (
 ALTER TABLE insight_feedback ENABLE ROW LEVEL SECURITY;
 ALTER TABLE insight_feedback FORCE  ROW LEVEL SECURITY;
 REVOKE ALL ON insight_feedback FROM anon, authenticated;
+
+-- ---- What the drafted conclusions looked like, so the send can be diffed against them ----
+-- Written when a manager generates a draft; read when they send the report. The difference between
+-- the two is what teaches the engine (insightLearning.ts) — no approve/correct step is asked for.
+CREATE TABLE IF NOT EXISTS insight_drafts (
+  brand_id   text NOT NULL,
+  from_date  date NOT NULL,
+  to_date    date NOT NULL,
+  lines      jsonb NOT NULL,                 -- [{ id, text, data }]
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (brand_id, from_date, to_date)
+);
+ALTER TABLE insight_drafts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE insight_drafts FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON insight_drafts FROM anon, authenticated;
