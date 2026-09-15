@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import InsightReview, { type ReviewLine } from "./InsightReview";
 
 // The verbal-summary section ("מלל") of the client report. Always visible, and always states the
 // period it covers so it's unambiguous. Everyone sees the auto summary; the manager's written
@@ -37,17 +36,20 @@ export default function ReportConclusions({
   const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const [msg, setMsg] = useState("");
-  // The drafted recommendations, held for review before anything touches the editor. Reviewing is
-  // where the engine gets taught: an approval or a correction is saved against the rule that wrote
-  // the line, so the next period's draft comes back in the manager's own words.
-  const [review, setReview] = useState<ReviewLine[] | null>(null);
-  const [reviewData, setReviewData] = useState<Record<string, Record<string, number>>>({});
-  const [header, setHeader] = useState("");
+
 
   // Draft from the recommendation engine — the same rules the internal review runs, restated in a
   // client-facing voice. It's a starting point: it lands in the editor, never straight in an email,
   // and it never silently replaces something the manager already wrote.
+  // Draft from the recommendation engine — the same rules the internal review runs, restated in a
+  // client-facing voice, plus what actually changed in the account this period. It's a starting
+  // point: it lands in the editor, never straight in an email.
+  //
+  // Nothing here asks the manager to rate it. The engine learns from the send instead: whatever
+  // they edit this into is diffed against this draft when the report goes out, and that difference
+  // is the correction. See insightLearning.ts.
   const draft = async () => {
+    if (note.trim() && !confirm("יש כבר מסקנות בתיבה. להחליף אותן בטיוטה חדשה?")) return;
     setDrafting(true); setMsg("");
     try {
       const r = await fetch(`/api/client-report/conclusions`, {
@@ -57,28 +59,13 @@ export default function ReportConclusions({
       });
       const j = await r.json();
       if (!r.ok) { setMsg(j.error ?? "יצירת טיוטה נכשלה"); return; }
-      // Everything above the bullet list — the period's result and what worked — is generated from
-      // the report itself rather than by a rule, so it has nothing to approve or correct.
-      setHeader(String(j.text ?? "").split("\n\nמה אנחנו עושים מכאן:")[0]);
-      setReviewData(j.data ?? {});
-      setReview(j.lines ?? []);
+      setNote(j.text);
+      const learned = (j.lines ?? []).filter((l: { source?: string }) => l.source === "learned").length;
       const held = (j.withheld ?? []).length;
-      const learned = (j.lines ?? []).filter((l: ReviewLine) => l.source === "learned").length;
-      setMsg(`${(j.lines ?? []).length} ממצאים לבדיקה${learned ? ` · ${learned} בניסוח שלך` : ""}${held ? ` · ${held} ממצאים פנימיים לא נכללו` : ""}`);
+      setMsg(`טיוטה נוצרה מ-${(j.lines ?? []).length} ממצאים${learned ? ` · ${learned} בניסוח שנלמד מהדוחות הקודמים` : ""}${held ? ` · ${held} ממצאים פנימיים לא נכללו` : ""} — לעבור ולערוך לפני שליחה`);
     } catch {
       setMsg("יצירת טיוטה נכשלה");
     } finally { setDrafting(false); }
-  };
-
-  // Compose the reviewed lines into the editor. Separate from reviewing on purpose — corrections
-  // are saved the moment they're made, but nothing reaches the client-facing text until asked.
-  const applyReview = () => {
-    if (!review) return;
-    if (note.trim() && !confirm("יש כבר מסקנות בתיבה. להחליף אותן בטיוטה?")) return;
-    const body = review.length ? `${header}\n\nמה אנחנו עושים מכאן:\n${review.map((l) => `• ${l.text}`).join("\n")}` : header;
-    setNote(body);
-    setReview(null);
-    setMsg("הטיוטה הוכנסה לתיבה — לעבור ולערוך לפני שליחה");
   };
 
   const save = async () => {
@@ -146,16 +133,6 @@ export default function ReportConclusions({
             <button onClick={send} disabled={sending || !note.trim()} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50" title={!note.trim() ? "הוסף מסקנות לפני שליחה" : "שלח את הסיכום ללקוח"}>{sending ? "שולח…" : "שלח סיכום ללקוח"}</button>
             {msg && <span className="text-[11px] text-[var(--muted)]">{msg}</span>}
           </div>
-          {review && (
-            <InsightReview
-              brandId={brandId}
-              lines={review}
-              data={reviewData}
-              onChange={setReview}
-              onApply={applyReview}
-              onClose={() => setReview(null)}
-            />
-          )}
           <div className="mt-2 text-[11px] text-[var(--muted)]">{canDraft ? "הטיוטה נבנית ממנוע ההמלצות על נתוני התקופה — לא ממודל שפה. " : ""}רק מנהל מדיה עורך ושולח. הסיכום לא נשלח אוטומטית — נדרשות מסקנות ושליחה ידנית.</div>
         </>
       ) : note.trim() ? (

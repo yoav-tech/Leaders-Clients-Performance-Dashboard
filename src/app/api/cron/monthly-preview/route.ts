@@ -15,6 +15,8 @@ import { TYPE_LABEL } from "@/lib/searchSnapshot";
 import type { PlanRow, AdRow, LeadsBlock } from "@/lib/reportEmailExtra";
 import { viewsInsights, appInsights, ecomInsights, leadsInsights, impShareInsights } from "@/lib/reportInsights";
 import { buildEcomClientConclusions } from "@/lib/clientConclusions";
+import { getInsightFeedback } from "@/lib/insightFeedbackStore";
+import { getAccountChanges } from "@/lib/accountChanges";
 import { renderEmail, renderLeadsEmail, renderViewsEmail, renderAppEmail, renderImpShareEmail } from "@/lib/reportEmailExtra";
 import { sendEmail, emailConfigured } from "@/lib/email";
 import { mediaManagers } from "@/lib/recipients";
@@ -71,7 +73,13 @@ export async function GET(request: Request) {
             targetRoas: b.targetRoas, insights: ins,
             // The client-facing draft the dashboard button produces, so the same review pass can
             // check what the client would actually read next to the internal findings.
-            clientDraft: buildEcomClientConclusions(b, r, ins, products),
+            // Identical inputs to the dashboard button, so reviewing here reviews what a manager
+            // would actually see.
+            clientDraft: buildEcomClientConclusions(
+              b, r, ins, products,
+              await getInsightFeedback(b.id),
+              await getAccountChanges(b, from, to).catch(() => null),
+            ),
           };
           html = renderEmail(r, "", products, ins);
         }

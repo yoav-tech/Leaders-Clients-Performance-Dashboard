@@ -8,7 +8,7 @@
 // a correction is a judgement about one account, not a global rewrite of the engine.
 import { getSupabase, hasDb } from "./db";
 
-export type FeedbackStatus = "approved" | "corrected";
+export type FeedbackStatus = "approved" | "corrected" | "dropped";
 
 export interface InsightFeedback {
   insightId: string;
@@ -23,13 +23,17 @@ export interface InsightFeedback {
   unresolved: string[];
   updatedBy: string | null;
   updatedAt: string | null;
+  /** How many times in a row the manager deleted this finding before sending. */
+  dropCount: number;
+  /** Set once dropCount hits the limit — the engine stops drafting this rule for this brand. */
+  suppressed: boolean;
 }
 
 export async function getInsightFeedback(brandId: string): Promise<Record<string, InsightFeedback>> {
   if (!hasDb()) return {};
   const { data, error } = await getSupabase()
     .from("insight_feedback")
-    .select("insight_id,status,template,corrected_raw,original,unresolved,updated_by,updated_at")
+    .select("insight_id,status,template,corrected_raw,original,unresolved,updated_by,updated_at,drop_count,suppressed")
     .eq("brand_id", brandId);
   if (error) return {}; // never let a missing feedback table block a draft
   const out: Record<string, InsightFeedback> = {};
@@ -43,6 +47,8 @@ export async function getInsightFeedback(brandId: string): Promise<Record<string
       unresolved: (r.unresolved as string[]) ?? [],
       updatedBy: (r.updated_by as string) ?? null,
       updatedAt: (r.updated_at as string) ?? null,
+      dropCount: Number(r.drop_count ?? 0),
+      suppressed: Boolean(r.suppressed),
     };
   }
   return out;
@@ -62,6 +68,8 @@ export async function saveInsightFeedback(
     original: fb.original,
     unresolved: fb.unresolved,
     updated_by: fb.updatedBy,
+    drop_count: fb.dropCount ?? 0,
+    suppressed: fb.suppressed ?? false,
     updated_at: new Date().toISOString(),
   }, { onConflict: "brand_id,insight_id" });
   if (error) throw new Error(error.message);
