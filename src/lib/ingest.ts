@@ -70,13 +70,27 @@ type ChannelMap = (typeof CHANNEL_FIELDS)[keyof typeof CHANNEL_FIELDS];
 // only the target account. Cost and value are fetched separately because Windsor's
 // conversion-value pipeline lags its cost pipeline: requesting revenue alongside spend
 // drags spend to a stale snapshot. Fetching them apart keeps spend/purchases live.
+// Windsor's campaign-name field, per connector.
+const CAMPAIGN_FIELD: Record<string, string> = { facebook: "campaign", google_ads: "campaign", tiktok: "campaign_name" };
+
 function buildByDate(
   costRows: WindsorRows,
   valueRows: WindsorRows,
   map: ChannelMap,
   account: string,
+  // Set when the brand shares its ad account with campaigns that aren't ours (Soltam). Without it
+  // the whole account is summed and the client's own activity is reported back to them as our work
+  // — the same way Haat's app ingest over-counted by 72% before it filtered.
+  campaignFilter?: string,
 ): { byDate: Map<string, DailyAgg>; currency: string | null } {
   const target = normId(account);
+  const needle = (campaignFilter ?? "").toLowerCase();
+  const nameField = CAMPAIGN_FIELD[map.connector];
+  const ours = (r: WindsorRows[number]) => {
+    if (!needle) return true;
+    // No campaign name on the row means it can't be shown to be ours, so it isn't counted.
+    return String(r[nameField] ?? "").toLowerCase().includes(needle);
+  };
   const byDate = new Map<string, DailyAgg>();
   let currency: string | null = null;
   const at = (date: string) => {
@@ -90,6 +104,7 @@ function buildByDate(
 
   for (const r of costRows) {
     if (normId(r.account_id) !== target) continue;
+    if (!ours(r)) continue;
     const date = String(r.date ?? "").slice(0, 10);
     if (!date) continue;
     if (!currency && r.currency) currency = String(r.currency).toUpperCase();
@@ -101,6 +116,7 @@ function buildByDate(
   }
   for (const r of valueRows) {
     if (normId(r.account_id) !== target) continue;
+    if (!ours(r)) continue;
     const date = String(r.date ?? "").slice(0, 10);
     if (!date) continue;
     const c = at(date);
@@ -629,6 +645,11 @@ export async function runIngest(opts?: { from?: string; to?: string; brandId?: s
       if (map.impressionsField) costFields.push(map.impressionsField);
       if (map.clicksField) costFields.push(map.clicksField);
       const valueField = map.revenueField ?? map.revenueRoasField ?? null;
+      // A shared ad account needs the campaign name on every row so the rows that aren't ours can
+      // be dropped before anything is summed.
+      const campFilter = brand.campaignFilter?.toLowerCase() || undefined;
+      const campField = campFilter ? CAMPAIGN_FIELD[map.connector] : null;
+      if (campField) costFields.push(campField);
 
       try {
         const [costRows, valueRows] = await Promise.all([
@@ -643,7 +664,7 @@ export async function runIngest(opts?: { from?: string; to?: string; brandId?: s
           valueField
             ? fetchWindsor({
                 connector: map.connector,
-                fields: ["date", "account_id", valueField],
+                fields: campField ? ["date", "account_id", valueField, campField] : ["date", "account_id", valueField],
                 dateFrom: from,
                 dateTo: to,
                 accounts: [account],
@@ -651,7 +672,7 @@ export async function runIngest(opts?: { from?: string; to?: string; brandId?: s
               })
             : Promise.resolve([] as WindsorRows),
         ]);
-        const { byDate, currency } = buildByDate(costRows, valueRows, map, account);
+        const { byDate, currency } = buildByDate(costRows, valueRows, map, account, campFilter);
         // Prefer Windsor's reported account currency; fall back to config.
         const resolved =
           currency ?? brand.channelCurrency?.[channel] ?? brand.nativeCurrency;

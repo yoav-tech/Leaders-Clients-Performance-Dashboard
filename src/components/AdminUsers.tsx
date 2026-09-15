@@ -37,6 +37,14 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
   const [copied, setCopied] = useState(false);
   const [resetInfo, setResetInfo] = useState<{ username: string; password: string } | null>(null);
   const [copiedPw, setCopiedPw] = useState(false);
+  // Editing an existing user's brands in place. Until now the console only offered "delete", so
+  // giving a brand manager one more client meant removing them and re-inviting — which costs them
+  // their password and their invite link, for what is a one-field change.
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editSel, setEditSel] = useState<Set<string>>(new Set());
+  const [editRole, setEditRole] = useState<"manager" | "client">("client");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editErr, setEditErr] = useState("");
 
   const nameOf = (id: string) => brands.find((b) => b.id === id)?.name ?? id;
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -71,6 +79,30 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
     });
     const j = await res.json().catch(() => ({}));
     if (j.inviteUrl) { setInviteUrl(j.inviteUrl); setCopied(false); }
+  };
+
+  const startEdit = (u: UserSummary) => {
+    setEditing(u.id);
+    setEditSel(new Set(u.brandIds));
+    setEditRole(u.role === "manager" ? "manager" : "client");
+    setEditErr("");
+  };
+  const toggleEdit = (id: string) => setEditSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const saveEdit = async (u: UserSummary) => {
+    setSavingEdit(true); setEditErr("");
+    const res = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: u.id, brandIds: [...editSel], role: editRole }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setSavingEdit(false);
+    if (res.ok && j.ok) {
+      // Update in place rather than refetching — the row shouldn't jump while it's being read.
+      setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, brandIds: [...editSel], role: editRole } : x)));
+      setEditing(null);
+    } else setEditErr(j.error ?? "שמירה נכשלה");
   };
 
   const remove = async (u: UserSummary) => {
@@ -186,6 +218,11 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
               </div>
               <div className="flex items-center gap-2">
                 {u.role !== "admin" && (
+                  <button onClick={() => (editing === u.id ? setEditing(null) : startEdit(u))} className={chip}>
+                    {editing === u.id ? "בטל" : "ערוך מותגים"}
+                  </button>
+                )}
+                {u.role !== "admin" && (
                   <button onClick={() => reinvite(u)} className={chip}>קישור הזמנה</button>
                 )}
                 {!u.pending && (
@@ -193,6 +230,43 @@ export default function AdminUsers({ initialUsers, brands }: { initialUsers: Use
                 )}
                 <button onClick={() => remove(u)} className={chipDanger}>מחק</button>
               </div>
+
+              {editing === u.id && (
+                <div className="mt-1 w-full rounded-lg border border-[var(--panel-border)] bg-[var(--background)]/40 p-3">
+                  <div className="mb-2 text-[11px] uppercase tracking-wide text-[var(--muted)]">
+                    מותגים עבור {u.username} — הסיסמה והחשבון נשמרים
+                  </div>
+                  <div className="mb-3 flex flex-wrap gap-1.5">
+                    {brands.map((b) => (
+                      <button
+                        key={b.id} type="button" onClick={() => toggleEdit(b.id)}
+                        className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
+                          editSel.has(b.id)
+                            ? "border-blue-600 bg-blue-600/15 text-blue-500"
+                            : "border-[var(--card-border)] text-[var(--muted)] hover:border-[var(--panel-border)]"
+                        }`}
+                      >
+                        {b.name}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={editRole} onChange={(e) => setEditRole(e.target.value as "manager" | "client")}
+                      className="rounded-md border border-[var(--card-border)] bg-[var(--background)] px-2 py-1 text-xs"
+                    >
+                      {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                    </select>
+                    <button onClick={() => saveEdit(u)} disabled={savingEdit || editSel.size === 0}
+                      className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                      title={editSel.size === 0 ? "בחר לפחות מותג אחד" : "שמור"}>
+                      {savingEdit ? "שומר…" : "שמור"}
+                    </button>
+                    <span className="text-[11px] text-[var(--muted)]">{editSel.size} מותגים נבחרו</span>
+                    {editErr && <span className="text-[11px] text-[var(--bad)]">{editErr}</span>}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
           {users.length === 0 && <div className="text-sm text-[var(--muted)]">אין משתמשים עדיין.</div>}

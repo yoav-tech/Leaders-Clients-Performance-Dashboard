@@ -128,7 +128,10 @@ async function metaAdsAndRegs(brand: BrandConfig, from: string, to: string): Pro
   try {
     const rows = await fetchWindsor({
       connector: "facebook",
-      fields: ["account_id", "currency", "ad_name", "spend", "actions_purchase", "action_values_purchase", "actions_complete_registration", "instagram_permalink_url", "effective_object_story_id"],
+      // `campaign` is requested only to filter on it: on a shared account (Soltam) the client's own
+      // campaigns sit in the same account, and reporting their ads back as ours would be wrong in
+      // the one place the client actually reads.
+      fields: ["account_id", "currency", "ad_name", "spend", "actions_purchase", "action_values_purchase", "actions_complete_registration", "instagram_permalink_url", "effective_object_story_id", ...(brand.campaignFilter ? ["campaign"] : [])],
       dateFrom: from, dateTo: to, accounts: [brand.metaAccountId], cacheSeconds: 1800,
     });
     const acc = normId(brand.metaAccountId);
@@ -136,8 +139,10 @@ async function metaAdsAndRegs(brand: BrandConfig, from: string, to: string): Pro
     // preview points at the dominant creative when several ads share a name.
     const map = new Map<string, { spend: number; rev: number; best: number; ig: string; story: string }>();
     let registrations = 0;
+    const needle = (brand.campaignFilter ?? "").toLowerCase();
     for (const r of rows) {
       if (normId(r.account_id) !== acc) continue;
+      if (needle && !String(r.campaign ?? "").toLowerCase().includes(needle)) continue;
       const cur = String(r.currency ?? "ILS").toUpperCase();
       registrations += sumAction(r.actions_complete_registration);
       const name = String(r.ad_name ?? "").trim();
