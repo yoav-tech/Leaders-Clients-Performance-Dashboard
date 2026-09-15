@@ -60,6 +60,9 @@ export default async function ClientReportPanels({
         initialStatus={note.status === "sent" ? "sent" : "draft"}
         initialSentAt={note.sentAt}
         canEdit={canEdit}
+        // This panel is the e-commerce report (Argania / La Beaute / Studio Pasha), which is where
+        // the rules engine has a client-facing voice written for it.
+        canDraft
       />
     </div>
   );
