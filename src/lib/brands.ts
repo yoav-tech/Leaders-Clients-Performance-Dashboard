@@ -267,6 +267,23 @@ export const BRANDS: BrandConfig[] = [
     ],
   },
   {
+    id: "soltam",
+    name: "Soltam",
+    nameHe: "סולתם",
+    // SHARED accounts: every campaign in them today belongs to the client (99_Conversion_*,
+    // Advantage+*, conversion_*) — ours haven't started. campaignFilter is what keeps their
+    // ~₪35k and thousands of purchases from being reported back to them as our work.
+    metaAccountId: "964020252349829",   // Meta: סולתם-SOLTAM
+    googleAccountId: null,
+    tiktokAccountId: "6999613849473171457", // TikTok: Soltam - סולתם
+    campaignFilter: "ldrs",
+    storePlatform: "quickshop",
+    storeId: null, // no store connected yet
+    nativeCurrency: "ILS",
+    targetRoas: 0,      // awaiting the agreed target
+    monthlyBudget: 0,   // awaiting the agreed budget — pacing stays hidden until it's set
+  },
+  {
     id: "tvuot",
     name: "Tvuot",
     nameHe: "תבואות",
