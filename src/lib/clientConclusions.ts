@@ -18,6 +18,9 @@
 import type { BrandConfig } from "./brands";
 import type { ClientReport } from "./clientReport";
 import type { Insight, InsightId } from "./reportInsights";
+import type { CampBrandMetrics } from "./campaignMetrics";
+import type { AppReport } from "./appReport";
+import type { SnapSection } from "./searchSnapshot";
 import type { TopProductsResult } from "./topProducts";
 import type { InsightFeedback } from "./insightFeedbackStore";
 import { renderTemplate, templateUnbound } from "./insightTemplate";
@@ -26,13 +29,16 @@ import { renderAccountChanges, type AccountChanges } from "./accountChanges";
 const ils = (v: number) => `₪${Math.round(v).toLocaleString("en-US")}`;
 const r2 = (v: number) => v.toFixed(2);
 const pct = (v: number) => `${Math.round(v * 100)}%`;
+const ils3 = (v: number) => `₪${v.toFixed(3)}`;
+const n0 = (v: number) => Math.round(v).toLocaleString("en-US");
 
 /** Findings that stay inside the agency, whatever their severity. */
 const INTERNAL_ONLY = new Set<InsightId>(["attribution-gap"]);
 
 // Each rule's client-facing voice. `d` is the insight's raw data bag, so the sentence carries the
 // same figures the internal finding did. Returning null drops the finding from the draft.
-const VOICE: Record<InsightId, (d: Record<string, number>, brand: BrandConfig) => string | null> = {
+type Voice = (d: Record<string, number>, l: Record<string, string>, brand: BrandConfig) => string | null;
+const VOICE: Record<InsightId, Voice> = {
   "paid-roas-below-floor": (d) =>
     `רואס הממומן בתקופה עמד על ${r2(d.paidRoas)}, מתחת ליעד העבודה שלנו (${r2(d.floor)}). ריכזנו את התקציב בקמפיינים שמחזירים מעל היעד ועצרנו את אלה שמתחת, כדי שכל שקל יעבוד מול הרף שהגדרנו.`,
 
@@ -58,6 +64,48 @@ const VOICE: Record<InsightId, (d: Record<string, number>, brand: BrandConfig) =
     `${pct(d.share)} מהמכירות מרוכזות בשלושה מוצרים. אנחנו ממליצים על קמפיין ייעודי למוצר נוסף עם ביקוש מוכח, כדי לפזר את התלות ולהרחיב את בסיס ההכנסה.`,
 
   "attribution-gap": () => null, // internal only — see the header
+
+  // ── video / awareness ───────────────────────────────────────────────────────────────────────
+  "cpv-above-target": (d) =>
+    `עלות הצפייה בתקופה עמדה על ${ils3(d.cpv)} מול יעד ${ils3(d.target)}. אנחנו מרכזים את התקציב בקריאייטיב ובפלטפורמה שמספקים את הצפייה הזולה ביותר ועוצרים קווים חורגים — באותה הוצאה היעד שווה ${n0(d.wouldBuy)} צפיות במקום ${n0(d.views)}.`,
+  "cpv-below-target": (d) =>
+    `עלות הצפייה עומדת על ${ils3(d.cpv)}, מתחת ליעד (${ils3(d.target)}). יש מרווח להרחיב נפח: תוספת של ${ils(d.addSpend)} צפויה להוסיף כ-${n0(d.addViews)} צפיות במחיר הנוכחי.`,
+  "platform-cpv-gap": (d, l) =>
+    `${l.best} מספקת צפייה ב-${ils3(d.bestCpv)} מול ${ils3(d.worstCpv)} ב-${l.worst}. הסטנו ${ils(d.move)} לכיוון הערוץ היעיל — כ-${n0(d.gain)} צפיות נוספות באותו תקציב.`,
+  "creative-cpv-gap": (d, l) =>
+    `זיהינו פער של פי ${d.ratio.toFixed(1)} בין הקריאייטיבים: "${l.best}" מייצר צפייה ב-${ils3(d.bestCpv)} מול ${ils3(d.worstCpv)} ב-"${l.worst}". עצרנו את החלש והסטנו את ${ils(d.worstSpend)} שלו למוביל — כ-${n0(d.gain)} צפיות נוספות.`,
+  "flight-behind-plan": (d) =>
+    `הפריסה מאחורי לוח הזמנים: עברו ${Math.round(d.elapsedPct)}% מהתקופה מול ${Math.round(d.planPct)}% מיעד הצפיות. אנחנו מגדילים תקציב יומי בקווים שמפגרים ומעבירים יעד צפיות לקווים שמספקים מתחת ליעד העלות.`,
+  "leads-below-target": (d) =>
+    `נאספו ${n0(d.leads)} לידים מתוך יעד ${n0(d.targetLeads)}. ${d.cost > 0 ? `במחיר הנוכחי סגירת הפער דורשת תוספת של כ-${ils(d.cost)}` : "אנחנו מחדדים קהלים וקריאייטיב לפני הגדלת תקציב"}.`,
+
+  // ── app ─────────────────────────────────────────────────────────────────────────────────────
+  "cpreg-at-target": (d) =>
+    `עלות ההרשמה עומדת על ${ils(d.cpReg)}, מתחת לתקרה (${ils(d.ceiling)}). המרווח של ${ils(d.headroom)} להרשמה מאפשר לנו להרחיב נפח בערים שמתחת לתקרה.`,
+  "cpreg-over-ceiling": (d) =>
+    `עלות ההרשמה בתקופה הייתה ${ils(d.cpReg)} מול תקרה של ${ils(d.ceiling)}. אנחנו מצמצמים תקציב בערים היקרות ומסיטים אותו לזולות כדי להחזיר את העלות אל מתחת לתקרה.`,
+  "cities-over-ceiling": (d, l) =>
+    `${Math.round(d.count)} ערים חרגו מהתקרה (${l.cities}). הסטנו את ${ils(d.spendAtRisk)} שלהן ל${l.best}, שמספקת הרשמה ב-${ils(d.bestCpr)} — כ-${n0(d.gain)} הרשמות נוספות באותו תקציב.`,
+  "cities-headroom": (d, l) =>
+    `${l.cities} מספקות הרשמה הרבה מתחת לתקרה. אנחנו מגדילים בהן תקציב: כל ₪1,000 נוספים ב${l.best} שווים כ-${n0(d.per1000)} הרשמות.`,
+  "install-to-reg": (d) =>
+    `${pct(d.rate)} מההתקנות הופכות להרשמה. שיפור השלב הזה ל-55% שווה כ-${n0(d.gain)} הרשמות נוספות באותו תקציב — נשמח לעבור יחד על מסך ההרשמה והאונבורדינג באפליקציה.`,
+
+  // ── leads ───────────────────────────────────────────────────────────────────────────────────
+  "cpl-above-target": (d) =>
+    `עלות הליד בתקופה עמדה על ${ils(d.cpl)} מול יעד ${ils(d.target)}. אנחנו עוצרים את הקווים היקרים ומסיטים את תקציבם למובילים — באותה הוצאה היעד שווה ${n0(d.wouldBuy)} לידים במקום ${n0(d.leads)}.`,
+  "cpl-at-target": (d) =>
+    `עלות הליד עומדת על ${ils(d.cpl)}, בתוך היעד (${ils(d.target)}). יש מרווח להרחיב נפח: תוספת של ${ils(d.addSpend)} שווה כ-${n0(d.addLeads)} לידים במחיר הנוכחי.`,
+  "channel-cpl-gap": (d, l) =>
+    `${l.best} מייצרת לידים זולים ב-${Math.round(d.cheaperPct)}% מ-${l.worst} (${ils(d.bestCpl)} מול ${ils(d.worstCpl)}). העברנו ${ils(d.move)} לערוץ היעיל — כ-${n0(d.gain)} לידים נוספים באותו כסף.`,
+  "budget-underspend": (d) =>
+    `נוצלו ${ils(d.spend)} מתוך ${ils(d.budget)} בתקופה. אנחנו פותחים את חסמי התקציב היומי כדי לנצל את המסגרת במלואה${d.missedLeads > 0 ? ` — ניצול מלא במחיר הנוכחי שווה כ-${n0(d.missedLeads)} לידים נוספים` : ""}.`,
+
+  // ── search share of voice ───────────────────────────────────────────────────────────────────
+  "impshare-lost-budget": (d, l) =>
+    `ב${l.section} אנחנו נוכחים ב-${pct(d.impShare)} מהחיפושים הרלוונטיים, ו-${pct(d.lostBudget)} מהחשיפות אבדו בגלל תקציב ולא בגלל איכות — כלומר המודעות מנצחות את המכרז וייגמר להן התקציב. נקודת נוכחות עולה כ-${ils(d.perPoint)} בחודש; הגעה ל-50% דורשת תוספת של כ-${ils(d.toHalf)} בחודש.`,
+  "impshare-lost-rank": (d, l) =>
+    `ב${l.section} ${pct(d.lostRank)} מהחשיפות אבדו בגלל דירוג. אנחנו משפרים רלוונטיות ודפי נחיתה כדי לנצח יותר מכרזים באותו תקציב.`,
 };
 
 /** One line of the draft, reviewable on its own so a correction attaches to the rule that wrote it. */
@@ -99,8 +147,6 @@ export function buildEcomClientConclusions(
   /** What actually moved in the account this period, read from the platforms. */
   changes?: AccountChanges | null,
 ): ClientConclusionsDraft {
-  const used: InsightId[] = [];
-  const withheld: InsightId[] = [];
   const t = r.topLevel;
 
   // 1. Open on the period's result. Whatever follows, the client should first see the outcome.
@@ -118,13 +164,31 @@ export function buildEcomClientConclusions(
   const topProduct = products?.rows?.[0];
   if (topProduct) wins.push(`המוצר המוביל: ${topProduct.name} (${ils(topProduct.revenue)}).`);
 
-  // 3. The engine's findings, each restated as work in progress — in the manager's own wording
-  //    where they have corrected this rule for this brand before.
+  return composeDraft({ brand, headline, wins, insights, feedback, changes });
+}
+
+/** The shared shape of every client draft: the period's result, the work done in the account, what
+ *  worked, and what happens next. Only the first two sections differ by report type, so the rest —
+ *  including everything the engine learned — lives here and is written once. */
+export function composeDraft(opts: {
+  brand: BrandConfig;
+  headline: string[];
+  wins: string[];
+  insights: Insight[];
+  feedback?: Record<string, InsightFeedback>;
+  changes?: AccountChanges | null;
+}): ClientConclusionsDraft {
+  const { brand, headline, wins, insights } = opts;
+  const feedback = opts.feedback ?? {};
+  const changes = opts.changes;
+  const used: InsightId[] = [];
+  const withheld: InsightId[] = [];
+
   const lines: DraftLine[] = [];
   for (const ins of insights) {
     if (!ins.id) continue;
     if (INTERNAL_ONLY.has(ins.id)) { withheld.push(ins.id); continue; }
-    const generated = VOICE[ins.id]?.(ins.data ?? {}, brand);
+    const generated = VOICE[ins.id]?.(ins.data ?? {}, ins.labels ?? {}, brand);
     if (!generated) { withheld.push(ins.id); continue; }
 
     const fb = feedback[ins.id];
@@ -158,4 +222,81 @@ export function buildEcomClientConclusions(
   if (actions.length) parts.push(`מה אנחנו עושים מכאן:\n${actions.map((a) => `• ${a}`).join("\n")}`);
 
   return { text: parts.join("\n\n"), lines, used, withheld, changes: changeLines };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// The other report types. Each supplies only its own opening and its own "what worked" — the rest
+// of the draft, and everything learned from previous sends, is composeDraft's.
+
+const n0i = (v: number | null | undefined) => (v == null ? "—" : Math.round(v).toLocaleString("en-US"));
+
+/** Video / awareness clients (SCJ, Style, Protein Max, Tvuot). */
+export function buildViewsClientConclusions(
+  brand: BrandConfig, periodLabel: string, m: CampBrandMetrics, insights: Insight[],
+  feedback?: Record<string, InsightFeedback>, changes?: AccountChanges | null,
+): ClientConclusionsDraft {
+  const t = m.total;
+  const headline = [`בתקופת ${periodLabel} הושקעו ${ils(t.spend)} במדיה, שייצרו ${n0i(t.impressions)} חשיפות${t.views ? ` ו-${n0i(t.views)} צפיות` : ""}.`];
+  if (t.cpv != null) headline.push(`עלות לצפייה ${ils3(t.cpv)}${brand.targetCpv ? ` מול יעד ${ils3(brand.targetCpv)}` : ""}.`);
+
+  const wins: string[] = [];
+  const chans = m.channels.filter((c) => c.channel !== "total" && c.views > 0 && c.cpv != null);
+  const best = chans.length ? chans.reduce((a, b) => ((a.cpv ?? 9e9) <= (b.cpv ?? 9e9) ? a : b)) : null;
+  if (best) wins.push(`הערוץ היעיל בתקופה: ${best.channel}, צפייה ב-${ils3(best.cpv!)}.`);
+  if (t.reach) wins.push(`נחשפו ${n0i(t.reach)} משתמשים ייחודיים.`);
+  return composeDraft({ brand, headline, wins, insights, feedback, changes });
+}
+
+/** Lead-generation clients (Leaders, Bestie). */
+export function buildLeadsClientConclusions(
+  brand: BrandConfig, periodLabel: string, m: CampBrandMetrics, insights: Insight[],
+  feedback?: Record<string, InsightFeedback>, changes?: AccountChanges | null,
+): ClientConclusionsDraft {
+  const t = m.total;
+  const headline = [`בתקופת ${periodLabel} הושקעו ${ils(t.spend)} במדיה ונאספו ${n0i(t.leads)} לידים.`];
+  if (t.cpl != null) headline.push(`עלות לליד ${ils(t.cpl)}${brand.targetCpl ? ` מול יעד ${ils(brand.targetCpl)}` : ""}.`);
+
+  const wins: string[] = [];
+  const chans = m.channels.filter((c) => c.channel !== "total" && c.leads > 0 && c.cpl != null);
+  const best = chans.length ? chans.reduce((a, b) => ((a.cpl ?? 9e9) <= (b.cpl ?? 9e9) ? a : b)) : null;
+  if (best) wins.push(`הערוץ היעיל בתקופה: ${best.channel}, ליד ב-${ils(best.cpl!)}.`);
+  return composeDraft({ brand, headline, wins, insights, feedback, changes });
+}
+
+/** App clients (Haat) — the KPI is registrations, not leads. */
+export function buildAppClientConclusions(
+  brand: BrandConfig, periodLabel: string, r: AppReport, insights: Insight[],
+  feedback?: Record<string, InsightFeedback>, changes?: AccountChanges | null,
+): ClientConclusionsDraft {
+  const app = r.sections.filter((s) => s.kind === "app");
+  const spend = r.sections.reduce((a, s) => a + s.totals.spend, 0);
+  const appSpend = app.reduce((a, s) => a + s.totals.spend, 0);
+  const regs = app.reduce((a, s) => a + s.totals.registrations, 0);
+  const installs = app.reduce((a, s) => a + s.totals.installs, 0);
+  const cpReg = regs ? appSpend / regs : null;
+
+  const headline = [`בתקופת ${periodLabel} הושקעו ${ils(spend)} במדיה, שייצרו ${n0i(installs)} התקנות ו-${n0i(regs)} הרשמות.`];
+  if (cpReg != null) headline.push(`עלות להרשמה ${ils(cpReg)}${brand.targetCpReg ? ` מול תקרה של ${ils(brand.targetCpReg)}` : ""}.`);
+
+  const wins: string[] = [];
+  const bestSec = app.filter((s) => s.totals.registrations > 0)
+    .sort((a, b) => (a.totals.spend / a.totals.registrations) - (b.totals.spend / b.totals.registrations))[0];
+  if (bestSec && app.length > 1) wins.push(`המקטע היעיל: ${bestSec.title}, הרשמה ב-${ils(bestSec.totals.spend / bestSec.totals.registrations)}.`);
+  return composeDraft({ brand, headline, wins, insights, feedback, changes });
+}
+
+/** Search share-of-voice clients (Colgate). */
+export function buildImpshareClientConclusions(
+  brand: BrandConfig, periodLabel: string, sections: SnapSection[], insights: Insight[],
+  feedback?: Record<string, InsightFeedback>, changes?: AccountChanges | null,
+): ClientConclusionsDraft {
+  const live = sections.filter((s) => s.totals.impressions > 0);
+  const spend = live.reduce((a, s) => a + s.totals.cost, 0);
+  const headline = [`בתקופת ${periodLabel} הושקעו ${ils(spend)} בחיפוש על פני ${live.length} חשבונות.`];
+
+  const wins: string[] = [];
+  for (const s of live.sort((a, b) => (b.totals.impShare ?? 0) - (a.totals.impShare ?? 0)).slice(0, 3)) {
+    if (s.totals.impShare != null) wins.push(`${s.title}: נוכחות ${pct(s.totals.impShare)} מהחיפושים הרלוונטיים.`);
+  }
+  return composeDraft({ brand, headline, wins, insights, feedback, changes });
 }

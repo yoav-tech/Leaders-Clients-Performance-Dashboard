@@ -34,6 +34,7 @@ import CampaignBrandView from "@/components/CampaignBrandView";
 import { getCampaignBrandMetrics } from "@/lib/campaignMetrics";
 import ClientSummaryView from "@/components/ClientSummaryView";
 import ClientReportPanels from "@/components/ClientReportPanels";
+import ConclusionsPanel from "@/components/ConclusionsPanel";
 import CommandCenterView from "@/components/CommandCenterView";
 import { getClientReport } from "@/lib/clientReport";
 import { getTopProducts } from "@/lib/topProducts";
@@ -89,6 +90,16 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
   // Views/leads clients (SCJ, Style, Leaders, Bestie) — the unified DB-backed layout: overview +
   // budget pacing + channel funnel + trend + breakdown explorer + daily, KPI-adapted per profile.
   const profile = campaignProfileOf(brand);
+  // Every report type gets the verbal summary — drafting, editing and sending. The panel streams in
+  // separately so the report itself never waits on it.
+  const withConclusions = (view: React.ReactNode) => (
+    <div className="space-y-4">
+      {view}
+      <Suspense fallback={null}>
+        <ConclusionsPanel brand={brand} from={range.from} to={range.to} canEdit={!isClient} />
+      </Suspense>
+    </div>
+  );
   // Range-level awareness reporting: deduplicated reach (which cannot be summed by day), the
   // Facebook/Instagram split, and a per-creative breakdown. Two column sets, because the two
   // clients asked for different things — SCJ for frequency and the 3-second hook, Protein Max for
@@ -98,7 +109,7 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
   if (awarenessVariant) {
     const rep = await getAwarenessRange(brand, range.from, range.to);
     return rep
-      ? <AwarenessRangeView report={rep} brandName={brand.name} variant={awarenessVariant} />
+      ? withConclusions(<AwarenessRangeView report={rep} brandName={brand.name} variant={awarenessVariant} />)
       : <div className="panel p-4 text-sm text-[var(--muted)]">No campaign data for this range.</div>;
   }
   if (profile === "views" || profile === "leads") {
@@ -106,7 +117,7 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
       getCampaignBrandMetrics(brand, range.from, range.to),
       getBrandMonthSpend(brandId),
     ]);
-    return (
+    return withConclusions(
       <CampaignBrandView
         brand={brand}
         metrics={cm}
@@ -115,7 +126,7 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
         to={range.to}
         channels={explorerChannels(brand).map((c) => ({ id: c.id, label: c.label }))}
         isClient={isClient}
-      />
+      />,
     );
   }
 
@@ -134,9 +145,9 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
       // Weekly registrations come from the team's sheet, captured by cron (Sun/Tue/Thu).
       getSnapshot<HaatWeekSummary>(HAAT_WEEKLY_KEY).catch(() => null),
     ]);
-    return appReport ? <AppReportView brand={brand} report={appReport} regionReport={regionReport} from={range.from} to={range.to} isClient={isClient} budgetRequests={budgetRequests} cityDailyBudgets={cityDailyBudgets} weekSummary={weekSnap?.payload ?? null} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No app data for this range.</div>;
+    return appReport ? withConclusions(<AppReportView brand={brand} report={appReport} regionReport={regionReport} from={range.from} to={range.to} isClient={isClient} budgetRequests={budgetRequests} cityDailyBudgets={cityDailyBudgets} weekSummary={weekSnap?.payload ?? null} />) : <div className="panel p-4 text-sm text-[var(--muted)]">No app data for this range.</div>;
   }
-  if (isSnapshot) return <SearchSnapshotView brandId={brandId} brandName={brand.name} from={range.from} to={range.to} />;
+  if (isSnapshot) return withConclusions(<SearchSnapshotView brandId={brandId} brandName={brand.name} from={range.from} to={range.to} />);
 
   // Conversion brand.
   const [allMetrics, monthSpend, breakdownMap, sourceMap, forecast, store] = await Promise.all([

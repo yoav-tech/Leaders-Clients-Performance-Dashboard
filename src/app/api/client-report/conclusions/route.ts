@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getBrand, reportGroupOf } from "@/lib/brands";
-import { buildEcomDraft } from "@/lib/ecomDraft";
+import { getBrand } from "@/lib/brands";
+import { buildClientDraft } from "@/lib/clientDraft";
 import { saveDraftedLines } from "@/lib/insightLearning";
 import { getServerSession, canAccessBrand } from "@/lib/serverSession";
 
@@ -9,8 +9,7 @@ export const maxDuration = 60;
 
 // POST /api/client-report/conclusions { brand, from, to }
 // Drafts client-facing conclusions from the recommendation engine (no model call). Media managers
-// only, and only for e-commerce brands — the other report types have their own insight generators
-// but no client-facing voice written for them yet.
+// only. Every report type is supported — buildClientDraft routes by the brand's profile.
 export async function POST(request: Request) {
   const session = await getServerSession();
   if (!(session?.role === "admin" || session?.role === "manager")) {
@@ -19,14 +18,11 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const brand = getBrand(String(body.brand ?? ""));
   if (!brand || !canAccessBrand(session, brand.id)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  if (reportGroupOf(brand) !== "ecommerce") {
-    return NextResponse.json({ error: "טיוטת מסקנות זמינה כרגע ללקוחות איקומרס בלבד" }, { status: 400 });
-  }
   const from = String(body.from ?? ""), to = String(body.to ?? "");
   if (!from || !to) return NextResponse.json({ error: "missing range" }, { status: 400 });
 
   try {
-    const built = await buildEcomDraft(brand, from, to);
+    const built = await buildClientDraft(brand, from, to);
     if (!built) return NextResponse.json({ error: "אין נתונים לטווח שנבחר" }, { status: 404 });
 
     // Remember what was drafted so the send can be diffed against it. This is an optimisation, not
