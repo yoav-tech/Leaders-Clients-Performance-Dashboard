@@ -24,11 +24,13 @@ export async function GET(request: Request) {
   const to = sp.get("to") ?? "";
   if (!from || !to) return NextResponse.json({ error: "missing from/to" }, { status: 400 });
 
-  const stats = await getYouTubeVideoStats(brand.googleAccountId, from, to);
+  const diag: { error?: string } = {};
+  const stats = await getYouTubeVideoStats(brand.googleAccountId, from, to, diag);
   if (!stats) {
     return NextResponse.json({
       ok: false,
       configured: googleAdsConfigured(),
+      apiError: diag.error ?? null,
       reason: googleAdsConfigured()
         ? "the API is configured but returned nothing — token rejected, no permission on this customer, or no data in range"
         : "GOOGLE_ADS_* env vars are not all set",

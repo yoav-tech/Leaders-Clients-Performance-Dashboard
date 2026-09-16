@@ -45,6 +45,9 @@ function classify(subType: string | null, name: string): YouTubeCampaignStats["k
  */
 export async function getYouTubeVideoStats(
   customerId: string, from: string, to: string,
+  /** Filled in with the API's own error when the call fails, so a caller that is diagnosing can
+   *  tell a rejected token from a customer this login has no access to. */
+  diag?: { error?: string },
 ): Promise<YouTubeCampaignStats[] | null> {
   if (!googleAdsConfigured()) return null;
   try {
@@ -91,7 +94,8 @@ export async function getYouTubeVideoStats(
     }
     const out = [...byName.values()].sort((a, b) => b.cost - a.cost);
     return out.length ? out : null;
-  } catch {
+  } catch (e) {
+    if (diag) diag.error = e instanceof Error ? e.message : String(e);
     return null;
   }
 }
