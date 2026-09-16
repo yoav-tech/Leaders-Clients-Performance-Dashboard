@@ -126,7 +126,7 @@ async function fetchTikTok(brand: BrandConfig, from: string, to: string, filter:
   const acc = normId(brand.tiktokAccountId);
   const rows = await fetchWindsor({
     connector: "tiktok",
-    fields: ["account_id", "currency", "campaign_name", "adgroup_name", "ad_name", "spend", "impressions", "reach", "video_watched_2s", "video_watched_6s", "video_views_p100", "leads", "conversions"],
+    fields: ["account_id", "currency", "campaign_name", "adgroup_name", "ad_name", "spend", "impressions", "reach", "video_watched_2s", "focused_view_15s", "video_views_p100", "leads", "conversions"],
     dateFrom: from, dateTo: to, accounts: [brand.tiktokAccountId], cacheSeconds: 1800,
   }).catch(() => []);
   const out: AdActual[] = [];
@@ -140,7 +140,7 @@ async function fetchTikTok(brand: BrandConfig, from: string, to: string, filter:
       platform: "tiktok", creatorId: cr.id, creatorName: cr.name, content: cleanContent(String(r.ad_name ?? "")),
       spend: toIls(num(r.spend), String(r.currency ?? brand.nativeCurrency).toUpperCase(), usdIls),
       impressions: num(r.impressions), views: num(r.video_watched_2s),
-      thruplay: num(r.video_watched_6s), completedViews: num(r.video_views_p100),
+      thruplay: num(r.focused_view_15s), completedViews: num(r.video_views_p100),
       isLead: lead, leads: num(r.leads) || num(r.conversions),
     });
   }

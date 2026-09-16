@@ -116,13 +116,13 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
     tiktok ? fetchWindsor({
       connector: "tiktok",
       fields: ["account_id", "currency", "campaign_name", "spend", "impressions", "reach",
-        "video_watched_6s", "video_watched_2s",
+        "focused_view_15s", "video_watched_2s",
         "video_views_p25", "video_views_p50", "video_views_p75", "video_views_p100"],
       dateFrom: from, dateTo: to, accounts: [tiktok.account], cacheSeconds: 1800,
     }).catch(() => []) : Promise.resolve([]),
     tiktok ? fetchWindsor({
       connector: "tiktok",
-      fields: ["account_id", "currency", "campaign_name", "ad_name", "spend", "impressions", "reach", "video_watched_6s",
+      fields: ["account_id", "currency", "campaign_name", "ad_name", "spend", "impressions", "reach", "focused_view_15s",
         "video_views_p25", "video_views_p50", "video_views_p75", "video_views_p100"],
       dateFrom: from, dateTo: to, accounts: [tiktok.account], cacheSeconds: 1800,
     }).catch(() => []) : Promise.resolve([]),
@@ -200,7 +200,7 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
       if (filter && !String(r.campaign_name ?? "").toLowerCase().includes(filter)) continue;
       if (r.currency) cur = String(r.currency).toUpperCase();
       spend += num(r.spend); impr += num(r.impressions); reach += num(r.reach);
-      v6 += num(r.video_watched_6s); v2 += num(r.video_watched_2s);
+      v6 += num(r.focused_view_15s); v2 += num(r.video_watched_2s);
       addQ(tq, { p25: num(r.video_views_p25), p50: num(r.video_views_p50), p75: num(r.video_views_p75), p100: num(r.video_views_p100) });
     }
     for (const r of tkAds) {
@@ -209,7 +209,7 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
       const name = String(r.ad_name ?? "").trim();
       if (!name) continue;
       const e = adMap.get(name) ?? { spend: 0, impr: 0, reach: 0, v6: 0, q: zeroQ() };
-      e.spend += num(r.spend); e.impr += num(r.impressions); e.reach += num(r.reach); e.v6 += num(r.video_watched_6s);
+      e.spend += num(r.spend); e.impr += num(r.impressions); e.reach += num(r.reach); e.v6 += num(r.focused_view_15s);
       addQ(e.q, { p25: num(r.video_views_p25), p50: num(r.video_views_p50), p75: num(r.video_views_p75), p100: num(r.video_views_p100) });
       adMap.set(name, e);
     }

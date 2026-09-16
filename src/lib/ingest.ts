@@ -361,7 +361,7 @@ async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to:
         ? ch.id === "meta"
           ? ["reach", "video_thruplay_watched_actions", "video_p100_watched_actions", "actions_video_view"]
           : ch.id === "tiktok"
-            ? ["reach", "video_watched_6s", "video_views_p100"]
+            ? ["reach", "focused_view_15s", "video_views_p100"]
             : ["unique_users", "video_views", "video_quartile_p75_rate", "video_quartile_p100_rate"] // google/YouTube: reach=unique_users; video_views is null in Windsor
         : ch.id === "meta"
           ? ["actions_lead"]
@@ -409,7 +409,7 @@ async function ingestCampaignBrand(sb: Sb, brand: BrandConfig, from: string, to:
               // 3-second view, so it stays 0 there rather than being quietly conflated.
               a.views3s += sumAction(r.actions_video_view);
             }
-          else if (ch.id === "tiktok") { a.views += num(r.video_watched_6s); a.completed += num(r.video_views_p100); }
+          else if (ch.id === "tiktok") { a.views += num(r.focused_view_15s); a.completed += num(r.video_views_p100); }
           else {
             // Google/YouTube: reach = unique_users (Google's "reach" field is null); video_views is
             // null too — derive views ≈ TrueView (75%+ watched) and completed = 100%, impressions × rate.
