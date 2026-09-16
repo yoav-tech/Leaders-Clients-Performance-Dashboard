@@ -140,7 +140,16 @@ export default function AwarenessRangeView({ report, brandName, variant = "hook"
         </div>
       </div>
 
-      {report.plan.length > 0 && report.planTotals && (
+      {report.plan.length > 0 && report.planTotals && (() => {
+      // Only plans that committed to these get the columns — SCJ's plan is budget and views only,
+      // and empty columns read as missing data rather than as "not planned".
+      const hasCompleted = report.plan.some((p) => p.planCompleted != null);
+      const hasImpr = report.plan.some((p) => p.planImpressions != null);
+      const pctCell = (v: number | null | undefined) =>
+        v == null ? "—" : `${Math.round(v)}%`;
+      const pctTone = (v: number | null | undefined) =>
+        v == null ? "" : v >= 100 ? "text-[var(--good)]" : v >= 80 ? "text-[var(--warn)]" : "text-[var(--bad)]";
+      return (
         <div className="panel p-4">
           <div className="mb-3 text-[11px] uppercase tracking-wide text-[var(--muted)]">Media plan vs delivery</div>
           <div className="overflow-x-auto">
@@ -154,6 +163,8 @@ export default function AwarenessRangeView({ report, brandName, variant = "hook"
                   <th className="px-2 py-1.5 text-right">Planned views</th>
                   <th className="px-2 py-1.5 text-right">Delivered</th>
                   <th className="px-2 py-1.5 text-right">% of target</th>
+                  {hasCompleted && <><th className="px-2 py-1.5 text-right">Planned 100% views</th><th className="px-2 py-1.5 text-right">Delivered</th><th className="px-2 py-1.5 text-right">%</th></>}
+                  {hasImpr && <><th className="px-2 py-1.5 text-right">Planned impressions</th><th className="px-2 py-1.5 text-right">Delivered</th><th className="px-2 py-1.5 text-right">%</th></>}
                   <th className="px-2 py-1.5 text-right">Cost / view vs plan</th>
                 </tr>
               </thead>
@@ -169,6 +180,16 @@ export default function AwarenessRangeView({ report, brandName, variant = "hook"
                     <td className={`px-2 py-1.5 text-right font-semibold ${p.viewsPct == null ? "" : p.viewsPct >= 100 ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>
                       {p.viewsPct == null ? "—" : `${Math.round(p.viewsPct)}%`}
                     </td>
+                    {hasCompleted && (<>
+                      <td className="px-2 py-1.5 text-right text-[var(--muted)]">{p.planCompleted == null ? "—" : formatNumber(p.planCompleted)}</td>
+                      <td className="px-2 py-1.5 text-right font-semibold">{p.planCompleted == null ? "—" : formatNumber(p.completed ?? 0)}</td>
+                      <td className={`px-2 py-1.5 text-right font-semibold ${pctTone(p.completedPct)}`}>{pctCell(p.completedPct)}</td>
+                    </>)}
+                    {hasImpr && (<>
+                      <td className="px-2 py-1.5 text-right text-[var(--muted)]">{p.planImpressions == null ? "—" : formatNumber(p.planImpressions)}</td>
+                      <td className="px-2 py-1.5 text-right font-semibold">{p.planImpressions == null ? "—" : formatNumber(p.impressions ?? 0)}</td>
+                      <td className={`px-2 py-1.5 text-right font-semibold ${pctTone(p.impressionsPct)}`}>{pctCell(p.impressionsPct)}</td>
+                    </>)}
                     <td className={`px-2 py-1.5 text-right ${p.beat == null ? "" : p.beat ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>
                       {cpv(p.cpv)} <span className="text-[10px] text-[var(--muted)]">/ {cpv(p.planCpv)}</span>
                     </td>
@@ -186,6 +207,16 @@ export default function AwarenessRangeView({ report, brandName, variant = "hook"
                   <td className={`px-2 py-1.5 text-right ${(report.planTotals.viewsPct ?? 0) >= 100 ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>
                     {report.planTotals.viewsPct == null ? "—" : `${Math.round(report.planTotals.viewsPct)}%`}
                   </td>
+                  {hasCompleted && (<>
+                    <td className="px-2 py-1.5 text-right text-[var(--muted)]">{formatNumber(report.planTotals.planCompleted ?? 0)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatNumber(report.planTotals.completed ?? 0)}</td>
+                    <td className={`px-2 py-1.5 text-right ${pctTone(report.planTotals.completedPct)}`}>{pctCell(report.planTotals.completedPct)}</td>
+                  </>)}
+                  {hasImpr && (<>
+                    <td className="px-2 py-1.5 text-right text-[var(--muted)]">{formatNumber(report.planTotals.planImpressions ?? 0)}</td>
+                    <td className="px-2 py-1.5 text-right">{formatNumber(report.planTotals.impressions ?? 0)}</td>
+                    <td className={`px-2 py-1.5 text-right ${pctTone(report.planTotals.impressionsPct)}`}>{pctCell(report.planTotals.impressionsPct)}</td>
+                  </>)}
                   <td className={`px-2 py-1.5 text-right ${report.planTotals.beat ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>
                     {cpv(report.planTotals.cpv)} <span className="text-[10px] font-normal text-[var(--muted)]">/ {cpv(report.planTotals.planCpv)}</span>
                   </td>
@@ -195,7 +226,8 @@ export default function AwarenessRangeView({ report, brandName, variant = "hook"
           </div>
           <div className="mt-2 text-[11px] text-[var(--muted)]">Targets are the signed media plan, phase 1 and scaling combined. Each platform carries its own view target, so its cost-per-view goal differs.</div>
         </div>
-      )}
+      );
+      })()}
 
       {report.creatives.length > 0 && (
         <div className="panel p-4">
