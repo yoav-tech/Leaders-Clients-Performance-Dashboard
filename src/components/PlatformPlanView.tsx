@@ -73,8 +73,10 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
       <Panel title="מבט על · הוצאה מול פריסת המדיה">
         <div className={`grid grid-cols-2 gap-2 ${overviewCols}`}>
           <Stat label="תקציב פריסה" value={formatIls(T.budget)} />
-          <Stat label="הוצאה בפועל" value={formatIls(T.spend)} sub={`${pct1(T.spendPct)} מהתקציב`} />
-          <Stat label="נותר" value={formatIls(Math.max(0, T.budget - T.spend))} />
+          {/* The plan funds the whole account, so attainment counts leadgen too. Cost-per-view
+              figures still divide by views spend alone — leadgen bought no views. */}
+          <Stat label="הוצאה בפועל" value={formatIls(T.totalSpend)} sub={T.leadSpend > 0 ? `${pct1(T.spendPct)} · צפיות ${formatIls(T.spend)} + לידים ${formatIls(T.leadSpend)}` : `${pct1(T.spendPct)} מהתקציב`} />
+          <Stat label="נותר" value={formatIls(Math.max(0, T.budget - T.totalSpend))} />
           <Stat label="קצב זמן" value={pct1(elapsedFrac)} sub={`${exec.elapsedDays} מתוך ${exec.totalDays} ימים`} />
           {hasLeads && leadTarget ? (
             <Stat label={`לידים · יעד ${formatNumber(leadTarget.leads)}`} value={`${formatNumber(totalLeads)} / ${formatNumber(leadTarget.leads)}`} sub={`${pct1(leadsPct)} מהיעד · ${formatNumber(bonusLeads)} בונוס`} tone={paceTone(leadsPct, elapsedFrac)} />
@@ -116,7 +118,7 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
         <Panel key={l.line.platform + l.line.title} title={`${l.line.title} · תכנון מול ביצוע`} note={isClient ? undefined : "live · Windsor"}>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
             <Stat label="תקציב" value={formatIls(l.line.budget)} />
-            <Stat label="הוצאה" value={formatIls(l.actual.spend)} sub={pct1(l.spendPct)} />
+            <Stat label="הוצאה" value={formatIls(l.totalSpend)} sub={l.actual.leadSpend > 0 ? `${pct1(l.spendPct)} · צפיות ${formatIls(l.actual.spend)} + לידים ${formatIls(l.actual.leadSpend)}` : pct1(l.spendPct)} />
             <Stat label="צפיות 15 שנ׳" value={formatNumber(l.actual.thruplay)} sub={l.line.thruplay ? `יעד ${formatNumber(l.line.thruplay)}` : undefined} tone={paceTone(l.thruplayPct, elapsedFrac)} />
             <Stat label="% עמידה · 15 שנ׳" value={pct1(l.thruplayPct)} tone={paceTone(l.thruplayPct, elapsedFrac)} />
             <Stat label="עלות ל-15 שנ׳" value={ils2(l.cpv)} sub={l.planCpv ? `יעד ${ils2(l.planCpv)}` : undefined} tone={l.cpv != null && l.planCpv != null ? (l.cpv <= l.planCpv ? "text-[var(--good)]" : "text-[var(--bad)]") : ""} />
@@ -136,7 +138,7 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
         <Panel title="YouTube · תכנון מול ביצוע" note={isClient ? undefined : "live · Google Ads API"}>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Stat label="תקציב" value={formatIls(ytLine.line.budget)} />
-            <Stat label="הוצאה" value={formatIls(ytLine.actual.spend)} sub={pct1(ytLine.spendPct)} />
+            <Stat label="הוצאה" value={formatIls(ytLine.totalSpend)} sub={pct1(ytLine.spendPct)} />
             <Stat label="TrueView views" value={formatNumber(ytLine.actual.trueviewViews ?? 0)} />
             <Stat label="TrueView CPV" value={ils2(ytLine.actual.trueviewCpv ?? null)} />
           </div>
@@ -180,34 +182,58 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
 
       {/* Leads / conversions from all leaders campaigns (views campaigns convert too) */}
       {exec.leads.length > 0 && (
-        <Panel title="לידים / המרות · קמפייני Leaders" note="Meta = לידים (טפסים) · TikTok/Google = המרות">
+        <Panel title="לידים · תכנון מול ביצוע" note={leadTarget ? `יעד ${formatNumber(leadTarget.leads)} לידים · CPA ₪${formatNumber(leadTarget.cpa)}` : "אין יעד לידים בפריסה"}>
+          {leadTarget && (
+            <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Stat label="תקציב לידים · לפי הפריסה" value={formatIls(leadTarget.leads * leadTarget.cpa)} />
+              <Stat label="הוצאה בפועל" value={formatIls(T.leadSpend)} sub={pct1(leadTarget.leads * leadTarget.cpa ? T.leadSpend / (leadTarget.leads * leadTarget.cpa) : null)} />
+              <Stat label="לידים" value={`${formatNumber(totalLeads)} / ${formatNumber(leadTarget.leads)}`} sub={pct1(leadsPct)} tone={paceTone(leadsPct, elapsedFrac)} />
+              <Stat label="עלות לליד" value={cplTotal == null ? "—" : formatIls(cplTotal)} sub={`יעד ${formatIls(leadTarget.cpa)}`} tone={cplTone} />
+            </div>
+          )}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] border-collapse text-sm">
+            <table className="w-full min-w-[720px] border-collapse text-sm">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
                   <th className="px-2 py-1.5 text-right">פלטפורמה</th>
-                  <th className="px-2 py-1.5 text-left">סה״כ המרות</th>
-                  <th className="px-2 py-1.5 text-left">מתוכם Leadgen</th>
-                  <th className="px-2 py-1.5 text-left">בונוס (צפיות)</th>
                   <th className="px-2 py-1.5 text-left">הוצאת Leadgen</th>
+                  <th className="px-2 py-1.5 text-left">לידים · Leadgen</th>
                   <th className="px-2 py-1.5 text-left">CPL</th>
+                  <th className="px-2 py-1.5 text-left">יעד CPL</th>
+                  <th className="px-2 py-1.5 text-left">בונוס מצפיות</th>
+                  <th className="px-2 py-1.5 text-left">סה״כ המרות</th>
                 </tr>
               </thead>
               <tbody className="tabular-nums">
-                {exec.leads.map((l) => (
-                  <tr key={l.platform} className="border-t border-[var(--card-border)]">
-                    <td className="px-2 py-1.5 text-right font-medium">{l.title}</td>
-                    <td className="px-2 py-1.5 text-left font-semibold">{formatNumber(l.leads)}</td>
-                    <td className="px-2 py-1.5 text-left">{l.leadgenLeads ? formatNumber(l.leadgenLeads) : "—"}</td>
-                    <td className="px-2 py-1.5 text-left text-[var(--muted)]">{formatNumber(l.leads - l.leadgenLeads)}</td>
-                    <td className="px-2 py-1.5 text-left text-[var(--muted)]">{l.leadgenSpend ? formatIls(l.leadgenSpend) : "—"}</td>
-                    <td className="px-2 py-1.5 text-left font-medium">{l.cpl == null ? "—" : formatIls(l.cpl)}</td>
-                  </tr>
-                ))}
+                {exec.leads.map((l) => {
+                  const beat = l.cpl != null && leadTarget ? l.cpl <= leadTarget.cpa : null;
+                  return (
+                    <tr key={l.platform} className="border-t border-[var(--card-border)]">
+                      <td className="px-2 py-1.5 text-right font-medium">{l.title}</td>
+                      <td className="px-2 py-1.5 text-left font-semibold">{l.leadgenSpend ? formatIls(l.leadgenSpend) : "—"}</td>
+                      <td className="px-2 py-1.5 text-left">{l.leadgenLeads ? formatNumber(l.leadgenLeads) : "—"}</td>
+                      <td className={`px-2 py-1.5 text-left font-medium ${beat == null ? "" : beat ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>{l.cpl == null ? "—" : formatIls(l.cpl)}</td>
+                      <td className="px-2 py-1.5 text-left text-[var(--muted)]">{leadTarget ? formatIls(leadTarget.cpa) : "—"}</td>
+                      <td className="px-2 py-1.5 text-left text-[var(--muted)]">{formatNumber(l.leads - l.leadgenLeads)}</td>
+                      <td className="px-2 py-1.5 text-left">{formatNumber(l.leads)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-[var(--card-border)] font-semibold tabular-nums">
+                  <td className="px-2 py-1.5 text-right">סה״כ</td>
+                  <td className="px-2 py-1.5 text-left">{formatIls(T.leadSpend)}</td>
+                  <td className="px-2 py-1.5 text-left">{formatNumber(totalLeadgenLeads)}</td>
+                  <td className={`px-2 py-1.5 text-left ${cplTone}`}>{cplTotal == null ? "—" : formatIls(cplTotal)}</td>
+                  <td className="px-2 py-1.5 text-left text-[var(--muted)]">{leadTarget ? formatIls(leadTarget.cpa) : "—"}</td>
+                  <td className="px-2 py-1.5 text-left text-[var(--muted)]">{formatNumber(bonusLeads)}</td>
+                  <td className="px-2 py-1.5 text-left">{formatNumber(totalLeads)}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
-          <div className="mt-2 text-[11px] text-[var(--muted)]">CPL מחושב מהוצאת קמפייני ה-Leadgen בלבד. המרות מקמפייני צפיות (Awareness) הן בונוס ואינן מייקרות את העלות לליד. לצ׳רי אין קמפיין Leadgen ייעודי, לכן כל ההמרות שלה בונוס.</div>
+          <div className="mt-2 text-[11px] text-[var(--muted)]">CPL מחושב מהוצאת קמפייני ה-Leadgen בלבד — המרות שמגיעות מקמפייני צפיות הן בונוס ואינן מייקרות את העלות לליד. הוצאת הלידים נספרת מול תקציב הפריסה הכולל, אך לא נכנסת לחישובי עלות הצפייה.</div>
         </Panel>
       )}
 
