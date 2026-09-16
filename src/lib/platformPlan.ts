@@ -8,7 +8,7 @@ import type { BrandConfig, PlatformPlanLine, CreatorConfig } from "./brands";
 import { fetchWindsor, num } from "./windsor";
 import { fetchUsdIlsRate, toIls } from "./fx";
 import { today } from "./dates";
-import { getYouTubeVideoStats, formatLabel } from "./googleVideo";
+import { getYouTubeVideoStats, getYouTubeVideoBreakdown, formatLabel, type YouTubeVideoRow } from "./googleVideo";
 
 export interface PlatformActual {
   spend: number; impressions: number; reach: number; views: number; thruplay: number; completedViews: number;
@@ -55,6 +55,9 @@ export interface PlatformPlanExecution {
   contents: ContentRow[];
   leads: LeadRow[]; // leadgen campaigns (separate objective, kept out of the views metrics)
   youtubeFormats: YouTubeFormatRow[];
+  /** YouTube creative, per video per ad format, from the Ads API — real TrueView counts and Google's
+   *  own format, rather than Windsor ad names and a quartile-derived view. */
+  youtubeVideos: YouTubeVideoRow[];
   totals: {
     budget: number; spend: number; thruplayTarget: number; thruplay: number; completedTarget: number; completedViews: number;
     spendPct: number | null; thruplayPct: number | null; completedPct: number | null; cpv: number | null; planCpv: number | null;
@@ -286,6 +289,10 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
     e.trueviewViews += c.views; e.completedViews += c.q100;
     fmtMap.set(c.format, e);
   }
+  const youtubeVideos = (plan.lines.some((l) => l.platform === "youtube") && brand.googleAccountId
+    ? await getYouTubeVideoBreakdown(brand.googleAccountId, from, asOf, filter).catch(() => null)
+    : null) ?? [];
+
   const youtubeFormats = [...fmtMap.values()].map((e) => ({
     ...e,
     trueviewCpv: e.trueviewViews ? e.spend / e.trueviewViews : null,
@@ -338,7 +345,7 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
   return {
     flightStart: plan.flightStart, flightEnd: plan.flightEnd, asOf,
     elapsedDays: daysInclusive(plan.flightStart, asOf), totalDays: daysInclusive(plan.flightStart, plan.flightEnd),
-    lines, creators, contents, leads, youtubeFormats,
+    lines, creators, contents, leads, youtubeFormats, youtubeVideos,
     totals: {
       budget, spend, thruplayTarget, thruplay, completedTarget, completedViews,
       spendPct: pct(spend, budget), thruplayPct: pct(thruplay, thruplayTarget), completedPct: pct(completedViews, completedTarget),

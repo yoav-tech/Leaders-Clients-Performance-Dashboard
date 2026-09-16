@@ -132,3 +132,74 @@ export async function getYouTubeVideoStats(
     return null;
   }
 }
+
+export interface YouTubeVideoRow {
+  title: string;
+  durationSec: number;
+  format: string;
+  label: string;          // the format, named the way a client would
+  impressions: number;
+  trueviewViews: number;
+  trueviewCpv: number | null;
+  completedViews: number;
+  completionRate: number | null;  // of impressions
+  spend: number;
+}
+
+/**
+ * Per video, per ad format, for the campaigns whose name contains `filter`.
+ *
+ * The campaign filter matters more here than anywhere: `FROM video` carries no campaign of its own,
+ * so an unfiltered read mixes the client's campaigns into ours. On Chery that pulled in 670,227
+ * impressions of the client's own creative and it was the basis of a conclusion I had to retract —
+ * the "same video in two formats" comparison it appeared to support came entirely from their
+ * campaigns, not ours.
+ */
+export async function getYouTubeVideoBreakdown(
+  customerId: string, from: string, to: string, filter: string,
+): Promise<YouTubeVideoRow[] | null> {
+  if (!googleAdsConfigured()) return null;
+  try {
+    const rows = await gaql(customerId, `
+      SELECT campaign.name, video.title, video.duration_millis, segments.ad_format_type,
+             metrics.cost_micros, metrics.impressions,
+             metrics.video_trueview_views, metrics.video_quartile_p100_rate
+      FROM video
+      WHERE segments.date BETWEEN '${from}' AND '${to}'`);
+
+    const needle = filter.toLowerCase();
+    const byKey = new Map<string, YouTubeVideoRow>();
+    for (const r of rows) {
+      const c = (r.campaign ?? {}) as Record<string, unknown>;
+      if (needle && !String(c.name ?? "").toLowerCase().includes(needle)) continue;
+      const v = (r.video ?? {}) as Record<string, unknown>;
+      const seg = (r.segments ?? {}) as Record<string, unknown>;
+      const m = (r.metrics ?? {}) as Record<string, unknown>;
+      const title = String(v.title ?? "").trim();
+      if (!title) continue;
+      const format = String(seg.adFormatType ?? "").trim() || "UNKNOWN";
+      const impr = n(m.impressions);
+      const key = `${title}|${format}`;
+      const e = byKey.get(key) ?? {
+        title, durationSec: n(v.durationMillis) / 1000, format, label: formatLabel(format),
+        impressions: 0, trueviewViews: 0, trueviewCpv: null, completedViews: 0, completionRate: null, spend: 0,
+      };
+      e.impressions += impr;
+      e.trueviewViews += n(m.videoTrueviewViews);
+      e.completedViews += impr * n(m.videoQuartileP100Rate);
+      e.spend += n(m.costMicros) / 1e6;
+      byKey.set(key, e);
+    }
+    const out = [...byKey.values()]
+      .filter((e) => e.impressions > 0)
+      .map((e) => ({
+        ...e,
+        trueviewCpv: e.trueviewViews ? e.spend / e.trueviewViews : null,
+        completionRate: e.impressions ? e.completedViews / e.impressions : null,
+      }))
+      .sort((a, b) => b.impressions - a.impressions);
+    return out.length ? out : null;
+  } catch {
+    return null;
+  }
+}
