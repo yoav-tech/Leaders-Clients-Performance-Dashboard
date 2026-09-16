@@ -11,7 +11,13 @@ import { today } from "./dates";
 import { getYouTubeVideoStats, getYouTubeVideoBreakdown, formatLabel, type YouTubeVideoRow } from "./googleVideo";
 
 export interface PlatformActual {
-  spend: number; impressions: number; reach: number; views: number; thruplay: number; completedViews: number;
+  /** Views-campaign spend ONLY. Every cost-per-view figure divides by this, so leadgen money — which
+   *  bought no views — must never enter it. */
+  spend: number;
+  /** Dedicated leadgen-campaign spend. Counted against the budget (the plan funds the whole
+   *  account) but kept out of every views metric. */
+  leadSpend: number;
+  impressions: number; reach: number; views: number; thruplay: number; completedViews: number;
   /** YouTube only. Google's own TrueView view count and average CPV, straight from the Ads API —
    *  the numbers the client reads in Google Ads. Meta and TikTok are judged on 15-second views and
    *  100% views instead, because that is what those platforms actually measure. */
@@ -20,6 +26,9 @@ export interface PlatformActual {
 export interface PlatformLineExecution {
   line: PlatformPlanLine;
   actual: PlatformActual;
+  /** Views + leadgen — what the line actually cost, which is what the budget has to cover. */
+  totalSpend: number;
+  /** totalSpend ÷ budget. */
   spendPct: number | null; thruplayPct: number | null; completedPct: number | null;
   cpv: number | null; planCpv: number | null; cpCompleted: number | null; connected: boolean;
 }
@@ -59,7 +68,11 @@ export interface PlatformPlanExecution {
    *  own format, rather than Windsor ad names and a quartile-derived view. */
   youtubeVideos: YouTubeVideoRow[];
   totals: {
-    budget: number; spend: number; thruplayTarget: number; thruplay: number; completedTarget: number; completedViews: number;
+    budget: number;
+    /** Views spend only — the denominator of every cost-per-view figure. */
+    spend: number;
+    /** Dedicated leadgen spend, and the two together, which is what the budget covers. */
+    leadSpend: number; totalSpend: number; thruplayTarget: number; thruplay: number; completedTarget: number; completedViews: number;
     spendPct: number | null; thruplayPct: number | null; completedPct: number | null; cpv: number | null; planCpv: number | null;
     /** Cost per 100% view: what the plan implies, and what was actually paid. The plan sells the
      *  flight on this, so the report should show both rather than attainment alone. */
@@ -81,7 +94,7 @@ function sumAction(v: unknown): number {
 function daysInclusive(a: string, b: string): number {
   return Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 86400000) + 1;
 }
-const empty = (): PlatformActual => ({ spend: 0, impressions: 0, reach: 0, views: 0, thruplay: 0, completedViews: 0 });
+const empty = (): PlatformActual => ({ spend: 0, leadSpend: 0, impressions: 0, reach: 0, views: 0, thruplay: 0, completedViews: 0 });
 const pct = (a: number, b: number): number | null => (b > 0 ? a / b : null);
 
 function classifyCreator(creators: CreatorConfig[] | undefined, ...parts: unknown[]): { id: string; name: string } {
@@ -240,6 +253,9 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
     p.spend += a.spend; p.impressions += a.impressions; p.views += a.views; p.thruplay += a.thruplay; p.completedViews += a.completedViews;
     if (a.trueviewViews) p.trueviewViews = (p.trueviewViews ?? 0) + a.trueviewViews;
   }
+  // Leadgen spend, per platform. The plan funds the whole account, so this counts against the
+  // budget — but it bought no views, so it stays out of everything above.
+  for (const a of allAds) if (a.isLead) byPlatform[a.platform].leadSpend += a.spend;
   // Blended TrueView CPV across the platform's campaigns — cost over Google's own view count, which
   // reproduces its per-campaign average CPV to the agora.
   const yt = byPlatform.youtube;
@@ -265,11 +281,12 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
     const a = byPlatform[line.platform] ?? empty();
     return {
       line, actual: a,
-      spendPct: pct(a.spend, line.budget), thruplayPct: pct(a.thruplay, line.thruplay), completedPct: pct(a.completedViews, line.completedViews),
+      totalSpend: a.spend + a.leadSpend,
+      spendPct: pct(a.spend + a.leadSpend, line.budget), thruplayPct: pct(a.thruplay, line.thruplay), completedPct: pct(a.completedViews, line.completedViews),
       cpv: a.thruplay ? a.spend / a.thruplay : null,
       planCpv: line.thruplay ? line.budget / line.thruplay : null,
       cpCompleted: a.completedViews ? a.spend / a.completedViews : null,
-      connected: a.spend > 0 || a.impressions > 0,
+      connected: a.spend + a.leadSpend > 0 || a.impressions > 0,
     };
   });
 
@@ -341,14 +358,16 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
   const completedTarget = sum((l) => l.line.completedViews);
   const thruplay = sum((l) => l.actual.thruplay);
   const completedViews = sum((l) => l.actual.completedViews);
+  const leadSpend = sum((l) => l.actual.leadSpend);
+  const totalSpend = spend + leadSpend;
 
   return {
     flightStart: plan.flightStart, flightEnd: plan.flightEnd, asOf,
     elapsedDays: daysInclusive(plan.flightStart, asOf), totalDays: daysInclusive(plan.flightStart, plan.flightEnd),
     lines, creators, contents, leads, youtubeFormats, youtubeVideos,
     totals: {
-      budget, spend, thruplayTarget, thruplay, completedTarget, completedViews,
-      spendPct: pct(spend, budget), thruplayPct: pct(thruplay, thruplayTarget), completedPct: pct(completedViews, completedTarget),
+      budget, spend, leadSpend, totalSpend, thruplayTarget, thruplay, completedTarget, completedViews,
+      spendPct: pct(totalSpend, budget), thruplayPct: pct(thruplay, thruplayTarget), completedPct: pct(completedViews, completedTarget),
       cpv: thruplay ? spend / thruplay : null, planCpv: thruplayTarget ? budget / thruplayTarget : null,
       cpCompleted: completedViews ? spend / completedViews : null,
       planCpCompleted: completedTarget ? budget / completedTarget : null,
