@@ -130,7 +130,7 @@ async function _getBreakdownData(brandId: string, channel: Channel, dimension: D
         ? channel === "meta"
           ? ["reach", "video_thruplay_watched_actions", "video_p100_watched_actions"]
           : channel === "tiktok"
-            ? ["reach", "video_watched_2s", "video_watched_6s"]
+            ? ["reach", "focused_view_15s", "video_views_p100"]
             : ["video_views"]
         : channel === "meta"
           ? ["clicks", "actions_lead"]
@@ -173,7 +173,7 @@ async function _getBreakdownData(brandId: string, channel: Channel, dimension: D
       if (profile === "views") {
         a.reach += num(r.reach);
         if (channel === "meta") { a.views += sumAction(r.video_thruplay_watched_actions); a.completed += sumAction(r.video_p100_watched_actions); }
-        else if (channel === "tiktok") { a.views += num(r.video_watched_2s); a.completed += num(r.video_watched_6s); }
+        else if (channel === "tiktok") { a.views += num(r.focused_view_15s); a.completed += num(r.video_views_p100); }
         else { a.views += num(r.video_views); }
       } else {
         a.clicks += num(r.clicks);

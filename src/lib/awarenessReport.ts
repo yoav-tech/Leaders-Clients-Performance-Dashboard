@@ -58,7 +58,7 @@ async function fetchSource(cfg: AwarenessSourceConfig, brand: BrandConfig, from:
     cfg.platform === "meta"
       ? ["currency", "reach", "video_thruplay_watched_actions", "video_p100_watched_actions"]
       : cfg.platform === "tiktok"
-        ? ["currency", "reach", "video_watched_2s", "video_watched_6s"]
+        ? ["currency", "reach", "video_watched_2s", "focused_view_15s", "video_views_p100"]
         : ["video_views"];
   const fields = [...new Set(["account_id", "spend", "impressions", campField, groupField, ...metricFields])];
 
@@ -87,7 +87,7 @@ async function fetchSource(cfg: AwarenessSourceConfig, brand: BrandConfig, from:
     } else if (cfg.platform === "tiktok") {
       c.reach += num(r.reach);
       c.views += num(r.video_watched_2s); // matches the media plan's TikTok "views" definition
-      c.completedViews += num(r.video_watched_6s); // 6s+ views (TikTok's qualified-view metric)
+      c.completedViews += num(r.video_views_p100); // 100% views — the same thing Meta's p100 counts
     } else {
       c.views += num(r.video_views);
     }

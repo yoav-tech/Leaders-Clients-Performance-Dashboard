@@ -94,7 +94,7 @@ export async function getMediaPlanExecution(brand: BrandConfig): Promise<MediaPl
     try {
       const rows = await fetchWindsor({
         connector: "tiktok",
-        fields: ["account_id", "campaign_name", "ad_name", "spend", "impressions", "reach", "video_watched_2s", "video_watched_6s"],
+        fields: ["account_id", "campaign_name", "ad_name", "spend", "impressions", "reach", "video_watched_2s", "focused_view_15s"],
         dateFrom: mp.flightStart,
         dateTo: asOf,
         accounts: [brand.tiktokAccountId],
@@ -104,7 +104,7 @@ export async function getMediaPlanExecution(brand: BrandConfig): Promise<MediaPl
         if (normId(r.account_id) !== acc) continue;
         const type = classify(r.campaign_name, r.ad_name);
         if (!type) continue;
-        add("tiktok", type, { spend: num(r.spend), impressions: num(r.impressions), reach: num(r.reach), views: num(r.video_watched_2s), thruplay: num(r.video_watched_6s) });
+        add("tiktok", type, { spend: num(r.spend), impressions: num(r.impressions), reach: num(r.reach), views: num(r.video_watched_2s), thruplay: num(r.focused_view_15s) });
       }
     } catch {
       /* leave empty */
