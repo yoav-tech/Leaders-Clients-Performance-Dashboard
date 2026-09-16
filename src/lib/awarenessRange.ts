@@ -47,6 +47,11 @@ export interface PlanCompare {
   planBudget: number; spend: number; budgetPct: number | null;
   planViews: number; views: number; viewsPct: number | null;
   planCpv: number | null; cpv: number | null; beat: boolean | null;
+  // Set only where the signed plan actually committed to them (Chery / Xpeng). SCJ's plan is
+  // budget-and-views only, so these stay undefined and their columns aren't rendered.
+  planCompleted?: number; completed?: number; completedPct?: number | null;
+  planImpressions?: number; impressions?: number; impressionsPct?: number | null;
+  planReach?: number; reach?: number | null; reachPct?: number | null;
 }
 export interface AwarenessRangeReport {
   from: string;
@@ -295,30 +300,62 @@ export async function getAwarenessRange(brand: BrandConfig, from: string, to: st
   // Plan vs execution, against the client's signed per-platform split.
   const plan: PlanCompare[] = [];
   let planTotals: PlanCompare | null = null;
-  if (brand.awarenessPlan) {
-    for (const l of brand.awarenessPlan.lines) {
-      const row = rows.find((r) => r.key === l.key);
-      const spend = row?.spend ?? 0;
-      const views = row?.views15s ?? 0;
-      const planCpv = l.thruplays ? l.budget / l.thruplays : null;
+
+  // Two plan shapes exist. SCJ's awarenessPlan commits to budget and 15-second views per platform;
+  // Chery's and Xpeng's platformPlan also commits to completed views, impressions and reach — and
+  // was sitting in the config unread, so those two clients had no plan-vs-delivery at all.
+  type PlanLine = { key: string; label: string; budget: number; views: number; completed?: number; impressions?: number; reach?: number };
+  const planLines: PlanLine[] = brand.awarenessPlan
+    ? brand.awarenessPlan.lines.map((l) => ({ key: l.key, label: l.label, budget: l.budget, views: l.thruplays }))
+    : (brand.platformPlan?.lines ?? []).map((l) => ({
+        // The report keys YouTube rows by their connector, "google".
+        key: l.platform === "youtube" ? "google" : l.platform,
+        label: l.title, budget: l.budget, views: l.thruplay,
+        completed: l.completedViews || undefined,
+        impressions: l.impressions, reach: l.reach,
+      }));
+
+  if (planLines.length) {
+    for (const l of planLines) {
+      // Meta is reported split by publisher platform ("meta:facebook", "meta:instagram") while the
+      // plan commits to Meta as one line — so matching on an exact key found nothing and showed
+      // Chery 0% of a Meta plan it had spent ₪89k against. Match the family and sum its rows.
+      const matched = rows.filter((r) => r.key === l.key || r.key.startsWith(`${l.key}:`));
+      const row = matched.length === 1 ? matched[0] : null;
+      const spend = matched.reduce((a, r) => a + r.spend, 0);
+      const views = matched.reduce((a, r) => a + r.views15s, 0);
+      const impressions = matched.reduce((a, r) => a + r.impressions, 0);
+      const completed = matched.reduce((a, r) => a + r.q.p100, 0);
+      // Reach can't be summed across split rows without inflating it; only a single row's reach is
+      // a real number.
+      const reach = row?.reach ?? null;
+      const planCpv = l.views ? l.budget / l.views : null;
       const cpv = views ? spend / views : null;
       plan.push({
         key: l.key, label: l.label,
         planBudget: l.budget, spend, budgetPct: l.budget ? (spend / l.budget) * 100 : null,
-        planViews: l.thruplays, views, viewsPct: l.thruplays ? (views / l.thruplays) * 100 : null,
+        planViews: l.views, views, viewsPct: l.views ? (views / l.views) * 100 : null,
         planCpv, cpv, beat: cpv != null && planCpv != null ? cpv <= planCpv : null,
+        ...(l.completed ? { planCompleted: l.completed, completed, completedPct: (completed / l.completed) * 100 } : {}),
+        ...(l.impressions ? { planImpressions: l.impressions, impressions, impressionsPct: (impressions / l.impressions) * 100 } : {}),
+        ...(l.reach ? { planReach: l.reach, reach, reachPct: reach != null ? (reach / l.reach) * 100 : null } : {}),
       });
     }
-    const pb = plan.reduce((a, x) => a + x.planBudget, 0);
-    const sp = plan.reduce((a, x) => a + x.spend, 0);
-    const pv = plan.reduce((a, x) => a + x.planViews, 0);
-    const av = plan.reduce((a, x) => a + x.views, 0);
+    const sum = (f: (x: PlanCompare) => number | null | undefined) => plan.reduce((a, x) => a + (f(x) ?? 0), 0);
+    const pb = sum((x) => x.planBudget), sp = sum((x) => x.spend);
+    const pv = sum((x) => x.planViews), av = sum((x) => x.views);
+    const pcv = sum((x) => x.planCompleted), acv = sum((x) => x.completed);
+    const pim = sum((x) => x.planImpressions), aim = sum((x) => x.impressions);
     const pc = pv ? pb / pv : null;
     const ac = av ? sp / av : null;
     planTotals = {
       key: "total", label: "Total", planBudget: pb, spend: sp, budgetPct: pb ? (sp / pb) * 100 : null,
       planViews: pv, views: av, viewsPct: pv ? (av / pv) * 100 : null,
       planCpv: pc, cpv: ac, beat: ac != null && pc != null ? ac <= pc : null,
+      ...(pcv ? { planCompleted: pcv, completed: acv, completedPct: (acv / pcv) * 100 } : {}),
+      ...(pim ? { planImpressions: pim, impressions: aim, impressionsPct: (aim / pim) * 100 } : {}),
+      // Reach is not additive across platforms, so a plan total for it would be a number that
+      // means nothing — deliberately left off.
     };
   }
 

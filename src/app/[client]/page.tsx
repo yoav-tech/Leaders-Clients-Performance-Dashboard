@@ -104,7 +104,12 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
   // Facebook/Instagram split, and a per-creative breakdown. Two column sets, because the two
   // clients asked for different things — SCJ for frequency and the 3-second hook, Protein Max for
   // ThruPlays and view quartiles. Everything else stays on the shared campaign view.
-  const AWARENESS_VIEW: Record<string, "hook" | "quartiles"> = { scj: "hook", "protein-max": "quartiles" };
+  // Chery and Xpeng joined this report so their tables split Meta / TikTok / YouTube, carry the
+  // signed plan against delivery, and link out to each creative — all of which this view already
+  // does and CampaignBrandView does not.
+  const AWARENESS_VIEW: Record<string, "hook" | "quartiles"> = {
+    scj: "hook", "protein-max": "quartiles", chery: "quartiles", xpeng: "quartiles",
+  };
   const awarenessVariant = AWARENESS_VIEW[brand.id];
   if (awarenessVariant) {
     const rep = await getAwarenessRange(brand, range.from, range.to);
