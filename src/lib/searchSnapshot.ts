@@ -257,8 +257,13 @@ const buildSectionViaApi = unstable_cache(
 async function _buildSectionViaApi(cfg: GoogleSnapshotConfig, from: string, to: string, prevFrom: string, prevTo: string): Promise<SnapSection> {
   const cust = cfg.account;
   const dateBetween = (a: string, b: string) => `segments.date BETWEEN '${a}' AND '${b}'`;
+  // Every one of these used to swallow its error with .catch(() => []), so an expired refresh token
+  // surfaced as "the API returned no rows" — which reads like an empty date range and sent us
+  // looking in the wrong place for an hour. The first query is the canary: if the credentials are
+  // dead it throws, and the caller's own catch logs the real reason. The rest stay tolerant,
+  // because a single missing report (auction insights on a customer without it) is not an outage.
   const [camp, kw, st, daily, auc, aucPrev] = await Promise.all([
-    gaql(cust, `SELECT campaign.name, customer.currency_code, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.search_impression_share, metrics.search_absolute_top_impression_share, metrics.search_rank_lost_impression_share, metrics.search_budget_lost_impression_share FROM campaign WHERE ${dateBetween(from, to)} AND metrics.impressions > 0`).catch(() => []),
+    gaql(cust, `SELECT campaign.name, customer.currency_code, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.search_impression_share, metrics.search_absolute_top_impression_share, metrics.search_rank_lost_impression_share, metrics.search_budget_lost_impression_share FROM campaign WHERE ${dateBetween(from, to)} AND metrics.impressions > 0`),
     gaql(cust, `SELECT campaign.name, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, metrics.impressions, metrics.clicks, metrics.cost_micros FROM keyword_view WHERE ${dateBetween(from, to)} AND metrics.impressions > 0`).catch(() => []),
     gaql(cust, `SELECT campaign.name, search_term_view.search_term, metrics.impressions, metrics.clicks, metrics.cost_micros FROM search_term_view WHERE ${dateBetween(from, to)} AND metrics.impressions > 0`).catch(() => []),
     gaql(cust, `SELECT segments.date, campaign.name, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.search_impression_share FROM campaign WHERE ${dateBetween(from, to)} AND metrics.impressions > 0`).catch(() => []),
