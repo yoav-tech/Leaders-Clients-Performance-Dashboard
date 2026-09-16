@@ -345,14 +345,24 @@ export const BRANDS: BrandConfig[] = [
       { platform: "tiktok", account: "7196963878691995650", title: "TikTok · Chery" },
       { platform: "google", account: "258-293-1615", title: "YouTube · Chery" },
     ],
-    // Media plan — צ'רי 2026. Meta ₪270k + TikTok ₪270k + YouTube ₪20k (עינת נתן) = ₪560k.
+    // Media plan — צ'רי 2026. Revised 2026-09-17: the flight totals ₪540k, TikTok was stopped at
+    // ₪206,093.93, and what that freed moved to YouTube. Meta is unchanged.
+    //
+    // TikTok's view targets are scaled by the same 0.7633 its budget was, because they were derived
+    // from budget × planned CPV in the first place — holding them at the ₪270k level would score the
+    // line against money it was never given. The original targets are one line up in git if the
+    // client's commitment is meant to stand as signed.
+    //
+    // YouTube carries no view target: none was ever agreed, and it is measured on TrueView views,
+    // which is not the same event as a 15-second view (in-stream counts 30s, Shorts counts its own
+    // way). Its budget share is now large enough that a target is worth setting with the client.
     platformPlan: {
       flightStart: "2026-06-01",
       flightEnd: "2026-10-05",
       lines: [
         { platform: "meta", title: "Meta", budget: 270000, thruplay: 1495305, completedViews: 314014, views: 3604000, impressions: 9642857, reach: 4383117 },
-        { platform: "tiktok", title: "TikTok", budget: 270000, thruplay: 1801695, completedViews: 378356, views: 4496000, impressions: 13500000, reach: 6136364 },
-        { platform: "youtube", title: "YouTube", budget: 20000, thruplay: 0, completedViews: 0 },
+        { platform: "tiktok", title: "TikTok", budget: 206093.93, thruplay: 1375253, completedViews: 288803, views: 3431846, impressions: 10304696, reach: 4683953 },
+        { platform: "youtube", title: "YouTube", budget: 63906.07, thruplay: 0, completedViews: 0 },
       ],
     },
     creators: [
