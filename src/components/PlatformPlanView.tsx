@@ -90,17 +90,21 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
 
       {/* Cost & target attainment */}
       <Panel title="עלות צפייה ועמידה ביעד">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
           <Stat label="CPV · צפיית 15 שנ׳" value={ils2(T.cpv)} sub={`יעד ${ils2(T.planCpv)}`} tone={T.cpv != null && T.planCpv != null ? (T.cpv <= T.planCpv ? "text-[var(--good)]" : "text-[var(--bad)]") : ""} />
           <Stat label="עמידה ביעד · 15 שנ׳" value={pct1(T.thruplayPct)} sub={`${formatNumber(T.thruplay)} / ${formatNumber(T.thruplayTarget)}`} tone={paceTone(T.thruplayPct, elapsedFrac)} />
           <Stat label="עמידה ביעד · צפייה מלאה 100%" value={pct1(T.completedPct)} sub={`${formatNumber(T.completedViews)} / ${formatNumber(T.completedTarget)}`} tone={paceTone(T.completedPct, elapsedFrac)} />
           <Stat label="צפיות מלאות בפועל" value={formatNumber(T.completedViews)} />
+          {/* Cost per completed view. Unlike the 15-second column this IS comparable across all
+              three platforms — everyone counts a 100% view the same way — so YouTube is in it. */}
+          <Stat label="עלות לצפייה מלאה 100%" value={T.completedViews ? ils2(T.spend / T.completedViews) : "—"} sub="כולל YouTube" />
         </div>
         <div className="mt-2 text-[11px] text-[var(--muted)]">צבע לפי קצב: ירוק = בקצב/מקדים את היעד היחסי לזמן שחלף, כתום/אדום = מפגר.</div>
       </Panel>
 
-      {/* Per-platform planned vs actual. The total's cost-per-100%-view excludes YouTube, which is
-          measured on TrueView instead — blending the two would average different things. */}
+      {/* Per-platform planned vs actual. Cost per 100% view spans every platform — a completed view
+          means the same thing everywhere. The 15-second column does not: Google has no such metric,
+          so YouTube is blank there and carries TrueView instead. */}
       <Panel title="לפי פלטפורמה · תכנון מול ביצוע" note={isClient ? undefined : "live · Windsor"}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1040px] border-collapse text-sm">
@@ -132,16 +136,21 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
                   <td className="px-2 py-1.5 text-left text-[var(--muted)]">{formatIls(l.line.budget)}</td>
                   <td className="px-2 py-1.5 text-left font-semibold">{formatIls(l.actual.spend)}</td>
                   <td className="px-2 py-1.5 text-left">{pct1(l.spendPct)}</td>
-                  <td className={`px-2 py-1.5 text-left ${l.cpv != null && l.planCpv != null ? (l.cpv <= l.planCpv ? "text-[var(--good)]" : "text-[var(--bad)]") : ""}`}>{ils2(l.cpv)}</td>
+                  <td className={`px-2 py-1.5 text-left ${l.cpv != null && l.planCpv != null ? (l.cpv <= l.planCpv ? "text-[var(--good)]" : "text-[var(--bad)]") : ""}`}>{l.line.platform === "youtube" ? "—" : ils2(l.cpv)}</td>
                   <td className="px-2 py-1.5 text-left text-[var(--muted)]">{l.line.thruplay ? formatNumber(l.line.thruplay) : "—"}</td>
-                  <td className="px-2 py-1.5 text-left">{formatNumber(l.actual.thruplay)}</td>
+                  {/* Google has no 15-second metric. What sat here was impressions × the 75%
+                      quartile rate — a guess whose answer depends on the video's length, and one
+                      that read 419,670 where Google's own view count is 741,427. TrueView replaces
+                      it in its own column; this one stays empty rather than carrying a number that
+                      cannot be reconciled with anything the client can see. */}
+                  <td className="px-2 py-1.5 text-left">{l.line.platform === "youtube" ? "—" : formatNumber(l.actual.thruplay)}</td>
                   <td className={`px-2 py-1.5 text-left font-medium ${paceTone(l.thruplayPct, elapsedFrac)}`}>{pct1(l.thruplayPct)}</td>
                   <td className="px-2 py-1.5 text-left text-[var(--muted)]">{l.line.completedViews ? formatNumber(l.line.completedViews) : "—"}</td>
                   <td className="px-2 py-1.5 text-left">{formatNumber(l.actual.completedViews)}</td>
                   <td className={`px-2 py-1.5 text-left font-medium ${paceTone(l.completedPct, elapsedFrac)}`}>{pct1(l.completedPct)}</td>
                   {/* Each platform on the metric it actually measures: Meta and TikTok are bought
                       on 15-second and 100% views, YouTube on TrueView views and Google's own CPV. */}
-                  <td className="px-2 py-1.5 text-left">{l.line.platform === "youtube" ? "—" : l.actual.completedViews ? ils2(l.actual.spend / l.actual.completedViews) : "—"}</td>
+                  <td className="px-2 py-1.5 text-left">{l.actual.completedViews ? ils2(l.actual.spend / l.actual.completedViews) : "—"}</td>
                   <td className="px-2 py-1.5 text-left font-semibold">{l.line.platform === "youtube" ? formatNumber(l.actual.trueviewViews ?? 0) : "—"}</td>
                   <td className="px-2 py-1.5 text-left">{l.line.platform === "youtube" ? ils2(l.actual.trueviewCpv ?? null) : "—"}</td>
                 </tr>
@@ -158,14 +167,14 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
                 <td className="px-2 py-1.5 text-left">{formatNumber(T.completedTarget)}</td>
                 <td className="px-2 py-1.5 text-left">{formatNumber(T.completedViews)}</td>
                 <td className={`px-2 py-1.5 text-left ${paceTone(T.completedPct, elapsedFrac)}`}>{pct1(T.completedPct)}</td>
-                <td className="px-2 py-1.5 text-left">{ytLine && T.completedViews - (ytLine.actual.completedViews ?? 0) > 0 ? ils2((T.spend - ytLine.actual.spend) / (T.completedViews - ytLine.actual.completedViews)) : T.completedViews ? ils2(T.spend / T.completedViews) : "—"}</td>
+                <td className="px-2 py-1.5 text-left">{T.completedViews ? ils2(T.spend / T.completedViews) : "—"}</td>
                 <td className="px-2 py-1.5 text-left">{ytLine ? formatNumber(ytLine.actual.trueviewViews ?? 0) : "—"}</td>
                 <td className="px-2 py-1.5 text-left">{ytLine ? ils2(ytLine.actual.trueviewCpv ?? null) : "—"}</td>
               </tr>
             </tbody>
           </table>
         </div>
-        <div className="mt-2 text-[11px] text-[var(--muted)]">15ש׳ = צפיית 15 שניות (Meta ThruPlay · TikTok 15-second focused views — סך הכל, כולל אורגני, כ-10% מעל העמודה (paid views) באדס מנג׳ר · YouTube נמדד בנפרד) · 100% = צפייה מלאה · הוצאה בדולרים הומרה לשקלים. YouTube נמדד ב-TrueView views ובעלות ל-TrueView של גוגל עצמה (API ישיר), ולא בצפיות 15 שניות — לכן אינו נכלל ב-% העמידה, ב-CPV הכולל ובעלות לצפייה מלאה הכוללת. קמפייני לידים (Leadgen) מופרדים מטה ואינם משוקללים במדדי הצפיות.</div>
+        <div className="mt-2 text-[11px] text-[var(--muted)]">15ש׳ = צפיית 15 שניות (Meta ThruPlay · TikTok 15-second focused views — סך הכל, כולל אורגני, כ-10% מעל העמודה (paid views) באדס מנג׳ר · YouTube נמדד בנפרד) · 100% = צפייה מלאה · הוצאה בדולרים הומרה לשקלים. ל-YouTube אין מדד של 15 שניות, ולכן העמודות האלה ריקות אצלו והוא נמדד ב-TrueView views ובעלות ל-TrueView של גוגל עצמה (API ישיר). צפיות מלאות כן נמדדות זהה בשלוש הפלטפורמות, ולכן העמודה הזו והסה״כ שלה כוללים את כולן. קמפייני לידים (Leadgen) מופרדים מטה ואינם משוקללים במדדי הצפיות.</div>
       </Panel>
 
       {/* Leads / conversions from all leaders campaigns (views campaigns convert too) */}
