@@ -8,7 +8,7 @@ import type { BrandConfig, PlatformPlanLine, CreatorConfig } from "./brands";
 import { fetchWindsor, num } from "./windsor";
 import { fetchUsdIlsRate, toIls } from "./fx";
 import { today } from "./dates";
-import { getYouTubeVideoStats } from "./googleVideo";
+import { getYouTubeVideoStats, formatLabel } from "./googleVideo";
 
 export interface PlatformActual {
   spend: number; impressions: number; reach: number; views: number; thruplay: number; completedViews: number;
@@ -39,15 +39,28 @@ export interface LeadRow {
   leadgenSpend: number; // spend of dedicated leadgen campaigns only
   cpl: number | null; // leadgenSpend ÷ leadgenLeads — dedicated lead cost only (bonus excluded)
 }
+/** YouTube split by Google's own ad format. A TrueView view means a different thing in each, so
+ *  they are reported side by side rather than summed into one "views" number. */
+export interface YouTubeFormatRow {
+  format: string; label: string;
+  spend: number; impressions: number;
+  trueviewViews: number; trueviewCpv: number | null;
+  completedViews: number; cpCompleted: number | null;
+}
+
 export interface PlatformPlanExecution {
   flightStart: string; flightEnd: string; asOf: string; elapsedDays: number; totalDays: number;
   lines: PlatformLineExecution[];
   creators: CreatorRow[];
   contents: ContentRow[];
   leads: LeadRow[]; // leadgen campaigns (separate objective, kept out of the views metrics)
+  youtubeFormats: YouTubeFormatRow[];
   totals: {
     budget: number; spend: number; thruplayTarget: number; thruplay: number; completedTarget: number; completedViews: number;
     spendPct: number | null; thruplayPct: number | null; completedPct: number | null; cpv: number | null; planCpv: number | null;
+    /** Cost per 100% view: what the plan implies, and what was actually paid. The plan sells the
+     *  flight on this, so the report should show both rather than attainment alone. */
+    cpCompleted: number | null; planCpCompleted: number | null;
   };
 }
 
@@ -257,6 +270,28 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
     };
   });
 
+  // YouTube split by Google's own ad-format segment. Spend is in the account currency, which for
+  // this account is ILS, so it lines up with everything else without conversion.
+  const ytStats = plan.lines.some((l) => l.platform === "youtube") && brand.googleAccountId
+    ? await getYouTubeVideoStats(brand.googleAccountId, from, asOf).catch(() => null)
+    : null;
+  const fmtMap = new Map<string, YouTubeFormatRow>();
+  for (const c of ytStats ?? []) {
+    if (filter && !c.name.toLowerCase().includes(filter)) continue;
+    const e = fmtMap.get(c.format) ?? {
+      format: c.format, label: formatLabel(c.format),
+      spend: 0, impressions: 0, trueviewViews: 0, trueviewCpv: null, completedViews: 0, cpCompleted: null,
+    };
+    e.spend += c.cost; e.impressions += c.impressions;
+    e.trueviewViews += c.views; e.completedViews += c.q100;
+    fmtMap.set(c.format, e);
+  }
+  const youtubeFormats = [...fmtMap.values()].map((e) => ({
+    ...e,
+    trueviewCpv: e.trueviewViews ? e.spend / e.trueviewViews : null,
+    cpCompleted: e.completedViews ? e.spend / e.completedViews : null,
+  })).sort((a, b) => b.spend - a.spend);
+
   // Per-creator breakdown.
   const crMap = new Map<string, CreatorRow>();
   for (const a of ads) {
@@ -303,11 +338,13 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
   return {
     flightStart: plan.flightStart, flightEnd: plan.flightEnd, asOf,
     elapsedDays: daysInclusive(plan.flightStart, asOf), totalDays: daysInclusive(plan.flightStart, plan.flightEnd),
-    lines, creators, contents, leads,
+    lines, creators, contents, leads, youtubeFormats,
     totals: {
       budget, spend, thruplayTarget, thruplay, completedTarget, completedViews,
       spendPct: pct(spend, budget), thruplayPct: pct(thruplay, thruplayTarget), completedPct: pct(completedViews, completedTarget),
       cpv: thruplay ? spend / thruplay : null, planCpv: thruplayTarget ? budget / thruplayTarget : null,
+      cpCompleted: completedViews ? spend / completedViews : null,
+      planCpCompleted: completedTarget ? budget / completedTarget : null,
     },
   };
 }
