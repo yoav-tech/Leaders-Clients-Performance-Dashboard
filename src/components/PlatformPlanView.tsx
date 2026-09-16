@@ -243,47 +243,91 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
         </Panel>
       )}
 
-      {/* By content */}
-      {exec.contents.length > 0 && (
-        <Panel title="לפי תוכן" note={`${exec.contents.length} שורות · תוכן × פלטפורמה · קישור למודעה במטא`}>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse text-sm">
-              <thead>
-                <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
-                  <th className="px-2 py-1.5 text-right">תוכן</th>
-                  <th className="px-2 py-1.5 text-right">משפיען</th>
-                  <th className="px-2 py-1.5 text-left">פלטפורמה</th>
-                  <th className="px-2 py-1.5 text-left">הוצאה</th>
-                  <th className="px-2 py-1.5 text-left">CPV 15ש׳</th>
-                  <th className="px-2 py-1.5 text-left">צפיות 15ש׳</th>
-                  <th className="px-2 py-1.5 text-left">צפיות 100%</th>
-                </tr>
-              </thead>
-              <tbody className="tabular-nums">
-                {exec.contents.map((c, i) => (
-                  <tr key={i} className="border-t border-[var(--card-border)]">
-                    <td className="px-2 py-1.5 text-right font-medium">
-                      {c.previewUrl ? (
-                        <a href={c.previewUrl} target="_blank" rel="noopener noreferrer"
-                           className="text-blue-500 underline decoration-dotted underline-offset-2 hover:decoration-solid"
-                           title="פתח את המודעה">
-                          {c.content} <span className="text-[10px] text-[var(--muted)]">↗</span>
-                        </a>
-                      ) : c.content}
-                    </td>
-                    <td className="px-2 py-1.5 text-right text-[var(--muted)]">{c.creatorName}</td>
-                    <td className="px-2 py-1.5 text-left text-[var(--muted)]" dir="ltr">{c.platforms}</td>
-                    <td className="px-2 py-1.5 text-left font-semibold">{formatIls(c.spend)}</td>
-                    <td className="px-2 py-1.5 text-left">{ils2(c.cpv)}</td>
-                    <td className="px-2 py-1.5 text-left">{formatNumber(c.thruplay)}</td>
-                    <td className="px-2 py-1.5 text-left">{formatNumber(c.completedViews)}</td>
+      {/* Content, one table per platform. A single list mixed Meta, TikTok and YouTube rows whose
+            cost-per-view figures are not the same measurement, so the sort read as a ranking when it
+            wasn't one. YouTube's rows come from the Ads API — real TrueView counts and Google's own
+            ad format — rather than Windsor ad names and a quartile-derived view. */}
+        {(["Meta", "TikTok"] as const).map((plat) => {
+          const rows = exec.contents.filter((c) => c.platforms === plat);
+          if (!rows.length) return null;
+          return (
+            <Panel key={plat} title={`תוכן · ${plat}`} note={`${rows.length} יצירות${plat === "Meta" ? " · קישור למודעה" : ""}`}>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[620px] border-collapse text-sm">
+                  <thead>
+                    <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
+                      <th className="px-2 py-1.5 text-right">תוכן</th>
+                      <th className="px-2 py-1.5 text-right">משפיען</th>
+                      <th className="px-2 py-1.5 text-left">הוצאה</th>
+                      <th className="px-2 py-1.5 text-left">צפיות 15ש׳</th>
+                      <th className="px-2 py-1.5 text-left">עלות ל-15ש׳</th>
+                      <th className="px-2 py-1.5 text-left">צפיות מלאות</th>
+                      <th className="px-2 py-1.5 text-left">עלות לצפייה מלאה</th>
+                    </tr>
+                  </thead>
+                  <tbody className="tabular-nums">
+                    {rows.map((c, i) => (
+                      <tr key={i} className="border-t border-[var(--card-border)]">
+                        <td className="px-2 py-1.5 text-right font-medium">
+                          {c.previewUrl ? (
+                            <a href={c.previewUrl} target="_blank" rel="noopener noreferrer"
+                               className="text-blue-500 underline decoration-dotted underline-offset-2 hover:decoration-solid" title="פתח את המודעה">
+                              {c.content} <span className="text-[10px] text-[var(--muted)]">↗</span>
+                            </a>
+                          ) : c.content}
+                        </td>
+                        <td className="px-2 py-1.5 text-right text-[var(--muted)]">{c.creatorName}</td>
+                        <td className="px-2 py-1.5 text-left font-semibold">{formatIls(c.spend)}</td>
+                        <td className="px-2 py-1.5 text-left">{formatNumber(c.thruplay)}</td>
+                        <td className="px-2 py-1.5 text-left">{ils2(c.cpv)}</td>
+                        <td className="px-2 py-1.5 text-left">{formatNumber(c.completedViews)}</td>
+                        <td className="px-2 py-1.5 text-left font-semibold">{c.completedViews ? ils2(c.spend / c.completedViews) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
+          );
+        })}
+
+        {exec.youtubeVideos.length > 0 && (
+          <Panel title="תוכן · YouTube" note={`${exec.youtubeVideos.length} סרטונים · לפי פורמט`}>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] border-collapse text-sm">
+                <thead>
+                  <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
+                    <th className="px-2 py-1.5 text-right">סרטון</th>
+                    <th className="px-2 py-1.5 text-left">פורמט</th>
+                    <th className="px-2 py-1.5 text-left">אורך</th>
+                    <th className="px-2 py-1.5 text-left">הוצאה</th>
+                    <th className="px-2 py-1.5 text-left">TrueView views</th>
+                    <th className="px-2 py-1.5 text-left">TrueView CPV</th>
+                    <th className="px-2 py-1.5 text-left">צפיות מלאות</th>
+                    <th className="px-2 py-1.5 text-left">% סיום</th>
+                    <th className="px-2 py-1.5 text-left">עלות לצפייה מלאה</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
-      )}
+                </thead>
+                <tbody className="tabular-nums">
+                  {exec.youtubeVideos.map((v, i) => (
+                    <tr key={i} className="border-t border-[var(--card-border)]">
+                      <td className="px-2 py-1.5 text-right font-medium">{v.title}</td>
+                      <td className="px-2 py-1.5 text-left text-[var(--muted)]">{v.label}</td>
+                      <td className="px-2 py-1.5 text-left text-[var(--muted)]">{Math.round(v.durationSec)}ש׳</td>
+                      <td className="px-2 py-1.5 text-left font-semibold">{formatIls(v.spend)}</td>
+                      <td className="px-2 py-1.5 text-left">{formatNumber(v.trueviewViews)}</td>
+                      <td className="px-2 py-1.5 text-left">{ils2(v.trueviewCpv)}</td>
+                      <td className="px-2 py-1.5 text-left">{formatNumber(v.completedViews)}</td>
+                      <td className="px-2 py-1.5 text-left">{v.completionRate == null ? "—" : `${(v.completionRate * 100).toFixed(1)}%`}</td>
+                      <td className="px-2 py-1.5 text-left font-semibold">{v.completedViews ? ils2(v.spend / v.completedViews) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-2 text-[11px] text-[var(--muted)]">מקור: Google Ads API, קמפייני Leaders בלבד. TrueView נספר אחרת בכל פורמט, ולכן העמודה שניתנת להשוואה בין הפורמטים ובין הפלטפורמות היא עלות לצפייה מלאה.</div>
+          </Panel>
+        )}
     </div>
   );
 }
