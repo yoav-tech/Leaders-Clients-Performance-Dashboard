@@ -152,7 +152,7 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
             </tbody>
           </table>
         </div>
-        <div className="mt-2 text-[11px] text-[var(--muted)]">15ש׳ = צפיית 15 שניות (Meta ThruPlay · TikTok 6ש׳ · YouTube ≈TrueView/75% צפייה) · 100% = צפייה מלאה · הוצאה בדולרים הומרה לשקלים. ל-YouTube אין יעד מוגדר, לכן אינו נכלל ב-% העמידה וב-CPV הכולל. קמפייני לידים (Leadgen) מופרדים מטה ואינם משוקללים במדדי הצפיות.</div>
+        <div className="mt-2 text-[11px] text-[var(--muted)]">15ש׳ = צפיית 15 שניות (Meta ThruPlay · TikTok 15-second focused views — סך הכל, כולל אורגני, כ-10% מעל העמודה (paid views) באדס מנג׳ר · YouTube ≈TrueView/75% צפייה) · 100% = צפייה מלאה · הוצאה בדולרים הומרה לשקלים. ל-YouTube אין יעד מוגדר, לכן אינו נכלל ב-% העמידה וב-CPV הכולל. קמפייני לידים (Leadgen) מופרדים מטה ואינם משוקללים במדדי הצפיות.</div>
       </Panel>
 
       {/* Leads / conversions from all leaders campaigns (views campaigns convert too) */}

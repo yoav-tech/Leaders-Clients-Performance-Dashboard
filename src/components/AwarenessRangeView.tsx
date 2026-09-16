@@ -274,7 +274,7 @@ export default function AwarenessRangeView({ report, brandName, variant = "hook"
               </tbody>
             </table>
           </div>
-          <div className="mt-2 text-[11px] text-[var(--muted)]">Ranked by ThruPlays. The 25/50/75/100% columns show how far through the video viewers got. Meta creatives link to the live post; TikTok does not expose a public permalink.</div>
+          <div className="mt-2 text-[11px] text-[var(--muted)]">Ranked by ThruPlays. The 25/50/75/100% columns show how far through the video viewers got. Meta creatives link to the live post; TikTok does not expose a public permalink. TikTok 15-second views are its total focused views — Ads Manager's &quot;(paid views)&quot; column excludes the organic tail and runs ~10% lower.</div>
         </div>
       )}
     </div>
