@@ -18,6 +18,11 @@ import { gaql, googleAdsConfigured } from "./googleAds";
 
 export interface YouTubeCampaignStats {
   name: string;
+  /** Google's own ad-format classification — SHORTS, INSTREAM_SKIPPABLE, IN_FEED … A TrueView view
+   *  is not one event: in-stream counts 30 seconds (or completion, or an interaction), Shorts is
+   *  counted on its own terms. Summing them gives a "views" figure that has no single definition,
+   *  so the format travels with the numbers and the report shows them apart. */
+  format: string;
   /** VIDEO, DISPLAY, … */
   channelType: string;
   /** VIDEO_OUTSTREAM / VIDEO_NON_SKIPPABLE_IN_STREAM / … — null when Google doesn't set one. */
@@ -37,12 +42,20 @@ export interface YouTubeCampaignStats {
 const n = (v: unknown) => (typeof v === "number" ? v : Number(v ?? 0) || 0);
 
 /** Shorts campaigns aren't flagged directly; Google models them as outstream/efficient-reach video. */
-function classify(subType: string | null, name: string): YouTubeCampaignStats["kind"] {
-  const s = (subType ?? "").toUpperCase();
-  const nm = name.toLowerCase();
-  if (s.includes("OUTSTREAM") || s.includes("REACH") || nm.includes("short")) return "shorts";
-  if (s.includes("IN_STREAM") || s.includes("SEQUENCE") || s.includes("ACTION")) return "in-stream";
+function classify(format: string): YouTubeCampaignStats["kind"] {
+  const f = format.toUpperCase();
+  if (f.includes("SHORTS")) return "shorts";
+  if (f.includes("INSTREAM") || f.includes("IN_STREAM")) return "in-stream";
   return "other";
+}
+
+/** How the client would name the format. */
+export function formatLabel(format: string): string {
+  const f = format.toUpperCase();
+  if (f.includes("SHORTS")) return "Shorts";
+  if (f.includes("INSTREAM") || f.includes("IN_STREAM")) return "In-stream";
+  if (f.includes("IN_FEED") || f.includes("INFEED")) return "In-feed";
+  return format;
 }
 
 /**
@@ -60,6 +73,7 @@ export async function getYouTubeVideoStats(
   try {
     const rows = await gaql(customerId, `
       SELECT campaign.name,
+             segments.ad_format_type,
              campaign.advertising_channel_type,
              campaign.advertising_channel_sub_type,
              metrics.cost_micros,
@@ -79,15 +93,18 @@ export async function getYouTubeVideoStats(
     for (const r of rows) {
       const c = (r.campaign ?? {}) as Record<string, unknown>;
       const m = (r.metrics ?? {}) as Record<string, unknown>;
+      const seg = (r.segments ?? {}) as Record<string, unknown>;
       const name = String(c.name ?? "").trim();
       if (!name) continue;
+      const format = String(seg.adFormatType ?? "").trim() || "UNKNOWN";
       const subType = c.advertisingChannelSubType ? String(c.advertisingChannelSubType) : null;
       const impr = n(m.impressions);
-      const e = byName.get(name) ?? {
-        name,
+      const key = `${name}|${format}`;
+      const e = byName.get(key) ?? {
+        name, format,
         channelType: String(c.advertisingChannelType ?? ""),
         subType,
-        kind: classify(subType, name),
+        kind: "other",
         cost: 0, impressions: 0, views: 0, cpv: null, cpvMicros: 0, cpvRows: 0, q25: 0, q50: 0, q75: 0, q100: 0,
       };
       e.cost += n(m.costMicros) / 1e6;
@@ -100,10 +117,11 @@ export async function getYouTubeVideoStats(
       e.q50 += impr * n(m.videoQuartileP50Rate);
       e.q75 += impr * n(m.videoQuartileP75Rate);
       e.q100 += impr * n(m.videoQuartileP100Rate);
-      byName.set(name, e);
+      byName.set(key, e);
     }
     // Prefer Google's own average CPV; fall back to cost ÷ views, which matches it to the agora.
     for (const e of byName.values()) {
+      e.kind = classify(e.format);
       const reported = e.cpvRows ? e.cpvMicros / e.cpvRows / 1e6 : 0;
       e.cpv = reported > 0 ? reported : e.views ? e.cost / e.views : null;
     }
