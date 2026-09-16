@@ -8,9 +8,14 @@ import type { BrandConfig, PlatformPlanLine, CreatorConfig } from "./brands";
 import { fetchWindsor, num } from "./windsor";
 import { fetchUsdIlsRate, toIls } from "./fx";
 import { today } from "./dates";
+import { getYouTubeVideoStats } from "./googleVideo";
 
 export interface PlatformActual {
   spend: number; impressions: number; reach: number; views: number; thruplay: number; completedViews: number;
+  /** YouTube only. Google's own TrueView view count and average CPV, straight from the Ads API —
+   *  the numbers the client reads in Google Ads. Meta and TikTok are judged on 15-second views and
+   *  100% views instead, because that is what those platforms actually measure. */
+  trueviewViews?: number; trueviewCpv?: number | null;
 }
 export interface PlatformLineExecution {
   line: PlatformPlanLine;
@@ -47,7 +52,7 @@ export interface PlatformPlanExecution {
 }
 
 type Platform = "meta" | "tiktok" | "youtube";
-interface AdActual { platform: Platform; creatorId: string; creatorName: string; previewUrl?: string | null; content: string; spend: number; impressions: number; views: number; thruplay: number; completedViews: number; isLead: boolean; leads: number; }
+interface AdActual { platform: Platform; creatorId: string; creatorName: string; previewUrl?: string | null; trueviewViews?: number; trueviewCpv?: number | null; content: string; spend: number; impressions: number; views: number; thruplay: number; completedViews: number; isLead: boolean; leads: number; }
 // Lead-gen campaigns have a different objective than the views plan; detect by name ("leadgen").
 // Note "leaders" also contains "lead" — match the full "leadgen" token so the filter isn't tripped.
 const isLeadgen = (name: string) => /leadgen/i.test(name);
@@ -150,6 +155,16 @@ async function fetchTikTok(brand: BrandConfig, from: string, to: string, filter:
 async function fetchYouTube(brand: BrandConfig, from: string, to: string, filter: string, usdIls: number): Promise<AdActual[]> {
   if (!brand.googleAccountId) return [];
   const acc = normId(brand.googleAccountId);
+
+  // Google's own TrueView numbers, per campaign, straight from the Ads API. Windsor cannot supply
+  // them — its Google connector returns zero for every view field — and a view derived from a
+  // quartile rate is not the number the client sees in Google Ads: on Chery it read 419,517 where
+  // Google reports 741,398. When the API is unavailable the rest of this function still runs and
+  // the old quartile derivation stands, so YouTube degrades rather than disappears.
+  const api = await getYouTubeVideoStats(brand.googleAccountId, from, to);
+  const tvByCampaign = new Map<string, { views: number; cpv: number | null }>();
+  for (const c of api ?? []) tvByCampaign.set(c.name, { views: c.views, cpv: c.cpv });
+  const tvSeen = new Set<string>();
   const rows = await fetchWindsor({
     connector: "google_ads",
     fields: ["account_id", "currency", "campaign", "ad_name", "spend", "impressions", "video_quartile_p75_rate", "video_quartile_p100_rate", "conversions"],
@@ -171,8 +186,12 @@ async function fetchYouTube(brand: BrandConfig, from: string, to: string, filter
       spend: toIls(num(r.spend), String(r.currency ?? brand.nativeCurrency).toUpperCase(), usdIls),
       impressions: impr, views: impr * num(r.video_quartile_p75_rate),
       thruplay: impr * num(r.video_quartile_p75_rate), completedViews: impr * num(r.video_quartile_p100_rate),
+      // The API figure is per campaign; attach it to one row only so summing rows can't multiply it.
+      trueviewViews: tvSeen.has(campaign) ? 0 : (tvByCampaign.get(campaign)?.views ?? 0),
+      trueviewCpv: tvSeen.has(campaign) ? null : (tvByCampaign.get(campaign)?.cpv ?? null),
       isLead: lead, leads: num(r.conversions),
     });
+    tvSeen.add(campaign);
   }
   return out;
 }
@@ -203,7 +222,12 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
   for (const a of ads) {
     const p = byPlatform[a.platform];
     p.spend += a.spend; p.impressions += a.impressions; p.views += a.views; p.thruplay += a.thruplay; p.completedViews += a.completedViews;
+    if (a.trueviewViews) p.trueviewViews = (p.trueviewViews ?? 0) + a.trueviewViews;
   }
+  // Blended TrueView CPV across the platform's campaigns — cost over Google's own view count, which
+  // reproduces its per-campaign average CPV to the agora.
+  const yt = byPlatform.youtube;
+  if (yt.trueviewViews) yt.trueviewCpv = yt.spend / yt.trueviewViews;
 
   // Leads / conversions summary (per platform). Total conversions come from ALL leaders campaigns,
   // but CPL is charged ONLY to dedicated leadgen campaigns — conversions that arrive from views
