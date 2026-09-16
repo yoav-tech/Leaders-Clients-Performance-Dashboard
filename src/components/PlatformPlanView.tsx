@@ -222,7 +222,7 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
 
       {/* By content */}
       {exec.contents.length > 0 && (
-        <Panel title="לפי תוכן" note={`${exec.contents.length} יצירות`}>
+        <Panel title="לפי תוכן" note={`${exec.contents.length} שורות · תוכן × פלטפורמה · קישור למודעה במטא`}>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-sm">
               <thead>
@@ -239,7 +239,15 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
               <tbody className="tabular-nums">
                 {exec.contents.map((c, i) => (
                   <tr key={i} className="border-t border-[var(--card-border)]">
-                    <td className="px-2 py-1.5 text-right font-medium">{c.content}</td>
+                    <td className="px-2 py-1.5 text-right font-medium">
+                      {c.previewUrl ? (
+                        <a href={c.previewUrl} target="_blank" rel="noopener noreferrer"
+                           className="text-blue-500 underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                           title="פתח את המודעה">
+                          {c.content} <span className="text-[10px] text-[var(--muted)]">↗</span>
+                        </a>
+                      ) : c.content}
+                    </td>
                     <td className="px-2 py-1.5 text-right text-[var(--muted)]">{c.creatorName}</td>
                     <td className="px-2 py-1.5 text-left text-[var(--muted)]" dir="ltr">{c.platforms}</td>
                     <td className="px-2 py-1.5 text-left font-semibold">{formatIls(c.spend)}</td>

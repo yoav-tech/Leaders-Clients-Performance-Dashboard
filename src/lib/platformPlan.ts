@@ -23,6 +23,9 @@ export interface CreatorRow {
 }
 export interface ContentRow {
   content: string; creatorName: string; platforms: string; spend: number; thruplay: number; completedViews: number; cpv: number | null;
+  /** Link to the ad itself. Meta only — TikTok and YouTube don't return a permalink through Windsor,
+   *  so those rows carry null rather than a link that goes nowhere. */
+  previewUrl: string | null;
 }
 export interface LeadRow {
   platform: string; title: string;
@@ -44,7 +47,7 @@ export interface PlatformPlanExecution {
 }
 
 type Platform = "meta" | "tiktok" | "youtube";
-interface AdActual { platform: Platform; creatorId: string; creatorName: string; content: string; spend: number; impressions: number; views: number; thruplay: number; completedViews: number; isLead: boolean; leads: number; }
+interface AdActual { platform: Platform; creatorId: string; creatorName: string; previewUrl?: string | null; content: string; spend: number; impressions: number; views: number; thruplay: number; completedViews: number; isLead: boolean; leads: number; }
 // Lead-gen campaigns have a different objective than the views plan; detect by name ("leadgen").
 // Note "leaders" also contains "lead" — match the full "leadgen" token so the filter isn't tripped.
 const isLeadgen = (name: string) => /leadgen/i.test(name);
@@ -77,12 +80,24 @@ function normContent(s: string): string {
 }
 const cleanContent = (s: string) => normContent(s) || "(ללא שם)";
 
+// Instagram permalink when there is one, else the Facebook page-post built from the story id.
+function adPreviewUrl(ig: string, story: string): string | null {
+  const i = ig.trim();
+  if (i) return i;
+  const st = story.trim();
+  if (st.includes("_")) {
+    const [page, post] = st.split("_");
+    if (page && post) return `https://www.facebook.com/${page}/posts/${post}`;
+  }
+  return null;
+}
+
 async function fetchMeta(brand: BrandConfig, from: string, to: string, filter: string, usdIls: number): Promise<AdActual[]> {
   if (!brand.metaAccountId) return [];
   const acc = normId(brand.metaAccountId);
   const rows = await fetchWindsor({
     connector: "facebook",
-    fields: ["account_id", "currency", "campaign", "adset_name", "ad_name", "spend", "impressions", "reach", "actions_video_view", "video_thruplay_watched_actions", "video_p100_watched_actions", "actions_lead"],
+    fields: ["account_id", "currency", "campaign", "adset_name", "ad_name", "spend", "impressions", "reach", "actions_video_view", "video_thruplay_watched_actions", "video_p100_watched_actions", "actions_lead", "instagram_permalink_url", "effective_object_story_id"],
     dateFrom: from, dateTo: to, accounts: [brand.metaAccountId], options: { attribution_window: "7d_click,1d_view" }, cacheSeconds: 1800,
   }).catch(() => []);
   const out: AdActual[] = [];
@@ -94,6 +109,7 @@ async function fetchMeta(brand: BrandConfig, from: string, to: string, filter: s
     const lead = isLeadgen(campaign);
     out.push({
       platform: "meta", creatorId: cr.id, creatorName: cr.name, content: cleanContent(String(r.ad_name ?? "")),
+      previewUrl: adPreviewUrl(String(r.instagram_permalink_url ?? ""), String(r.effective_object_story_id ?? "")),
       spend: toIls(num(r.spend), String(r.currency ?? brand.nativeCurrency).toUpperCase(), usdIls),
       impressions: num(r.impressions), views: num(r.actions_video_view),
       thruplay: sumAction(r.video_thruplay_watched_actions), completedViews: sumAction(r.video_p100_watched_actions),
@@ -226,17 +242,27 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
   }
   const creators = [...crMap.values()].map((c) => ({ ...c, cpv: c.thruplay ? c.spend / c.thruplay : null })).sort((a, b) => b.spend - a.spend);
 
-  // Per-content breakdown (merged across platforms; creator kept for context).
-  const coMap = new Map<string, ContentRow & { plats: Set<string> }>();
+  // Per-content breakdown, one row per content PER PLATFORM.
+  //
+  // These rows used to be merged across platforms, which produced "Meta · TikTok" lines whose cost
+  // per view was a blend of two very different prices — exactly the comparison the split is for,
+  // hidden. The same creative can be the cheapest view on one platform and the most expensive on
+  // another, and only separate rows show it.
+  const platLabel: Record<string, string> = { meta: "Meta", tiktok: "TikTok", youtube: "YouTube" };
+  const coMap = new Map<string, ContentRow>();
   for (const a of ads) {
-    const key = a.creatorId + "|" + a.content;
-    const e = coMap.get(key) ?? { content: a.content, creatorName: a.creatorName, platforms: "", spend: 0, thruplay: 0, completedViews: 0, cpv: null, plats: new Set<string>() };
-    e.spend += a.spend; e.thruplay += a.thruplay; e.completedViews += a.completedViews; e.plats.add(a.platform);
+    const key = `${a.platform}|${a.creatorId}|${a.content}`;
+    const e = coMap.get(key) ?? {
+      content: a.content, creatorName: a.creatorName, platforms: platLabel[a.platform] ?? a.platform,
+      spend: 0, thruplay: 0, completedViews: 0, cpv: null, previewUrl: null,
+    };
+    e.spend += a.spend; e.thruplay += a.thruplay; e.completedViews += a.completedViews;
+    // Several rows share an ad name; take the link from the one carrying the most spend.
+    if (a.previewUrl && !e.previewUrl) e.previewUrl = a.previewUrl;
     coMap.set(key, e);
   }
-  const platLabel: Record<string, string> = { meta: "Meta", tiktok: "TikTok", youtube: "YouTube" };
   const contents = [...coMap.values()]
-    .map((e) => ({ content: e.content, creatorName: e.creatorName, platforms: [...e.plats].map((p) => platLabel[p] ?? p).join(" · "), spend: e.spend, thruplay: e.thruplay, completedViews: e.completedViews, cpv: e.thruplay ? e.spend / e.thruplay : null }))
+    .map((e) => ({ ...e, cpv: e.thruplay ? e.spend / e.thruplay : null }))
     .filter((c) => c.spend > 0)
     .sort((a, b) => b.spend - a.spend);
 
