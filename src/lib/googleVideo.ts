@@ -10,6 +10,10 @@
 // Shorts campaign from in-stream — the distinction that matters most here: Chery's in-stream
 // campaign delivers as many 100%-views as its Shorts campaign for an eighth of the money, and
 // nothing shows that while the two are summed into one "YouTube" line.
+// v22 renamed the TrueView metrics: metrics.video_views → metrics.video_trueview_views and
+// metrics.average_cpv → metrics.trueview_average_cpv. The old names are not deprecated, they are
+// rejected outright as UNRECOGNIZED_FIELD, and every API version that still had them is sunset
+// (v17–v21 all return 404), so there is no older version to fall back to.
 import { gaql, googleAdsConfigured } from "./googleAds";
 
 export interface YouTubeCampaignStats {
@@ -22,8 +26,11 @@ export interface YouTubeCampaignStats {
   kind: "shorts" | "in-stream" | "other";
   cost: number;         // account currency
   impressions: number;
-  /** Google's own TrueView view count — the number in the Ads Manager "Views" column. */
+  /** Google's own TrueView view count — the number in the Ads Manager "TrueView views" column. */
   views: number;
+  /** Google's own TrueView average CPV, in account currency. */
+  cpv: number | null;
+  cpvMicros: number; cpvRows: number;
   q25: number; q50: number; q75: number; q100: number;
 }
 
@@ -57,7 +64,8 @@ export async function getYouTubeVideoStats(
              campaign.advertising_channel_sub_type,
              metrics.cost_micros,
              metrics.impressions,
-             metrics.video_views,
+             metrics.video_trueview_views,
+             metrics.trueview_average_cpv,
              metrics.video_quartile_p25_rate,
              metrics.video_quartile_p50_rate,
              metrics.video_quartile_p75_rate,
@@ -80,17 +88,24 @@ export async function getYouTubeVideoStats(
         channelType: String(c.advertisingChannelType ?? ""),
         subType,
         kind: classify(subType, name),
-        cost: 0, impressions: 0, views: 0, q25: 0, q50: 0, q75: 0, q100: 0,
+        cost: 0, impressions: 0, views: 0, cpv: null, cpvMicros: 0, cpvRows: 0, q25: 0, q50: 0, q75: 0, q100: 0,
       };
       e.cost += n(m.costMicros) / 1e6;
       e.impressions += impr;
-      e.views += n(m.videoViews);
+      e.views += n(m.videoTrueviewViews);
+      e.cpvMicros += n(m.trueviewAverageCpv);
+      e.cpvRows += 1;
       // Quartiles come back as rates; turn them into counts against the same row's impressions.
       e.q25 += impr * n(m.videoQuartileP25Rate);
       e.q50 += impr * n(m.videoQuartileP50Rate);
       e.q75 += impr * n(m.videoQuartileP75Rate);
       e.q100 += impr * n(m.videoQuartileP100Rate);
       byName.set(name, e);
+    }
+    // Prefer Google's own average CPV; fall back to cost ÷ views, which matches it to the agora.
+    for (const e of byName.values()) {
+      const reported = e.cpvRows ? e.cpvMicros / e.cpvRows / 1e6 : 0;
+      e.cpv = reported > 0 ? reported : e.views ? e.cost / e.views : null;
     }
     const out = [...byName.values()].sort((a, b) => b.cost - a.cost);
     return out.length ? out : null;
