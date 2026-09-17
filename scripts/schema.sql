@@ -359,3 +359,32 @@ CREATE TABLE IF NOT EXISTS insight_drafts (
 ALTER TABLE insight_drafts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE insight_drafts FORCE  ROW LEVEL SECURITY;
 REVOKE ALL ON insight_drafts FROM anon, authenticated;
+
+-- ---- Media-plan targets a media manager can set from the dashboard ----
+-- The plan lines live in brands.ts; these rows override them per platform, so a mid-flight revision
+-- is a form submission rather than a code change. A NULL column falls back to the signed plan,
+-- which keeps the signed figures visible instead of being silently replaced by a zero.
+CREATE TABLE IF NOT EXISTS platform_plan_targets (
+  brand_id        text NOT NULL,
+  platform        text NOT NULL,              -- meta | tiktok | youtube
+  budget          numeric,
+  thruplay        numeric,                    -- 15-second view target
+  completed_views numeric,                    -- 100% view target
+  updated_by      text,
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (brand_id, platform)
+);
+ALTER TABLE platform_plan_targets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_plan_targets FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON platform_plan_targets FROM anon, authenticated;
+
+CREATE TABLE IF NOT EXISTS platform_plan_lead_targets (
+  brand_id   text PRIMARY KEY,
+  leads      numeric,
+  cpa        numeric,
+  updated_by text,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE platform_plan_lead_targets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_plan_lead_targets FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON platform_plan_lead_targets FROM anon, authenticated;

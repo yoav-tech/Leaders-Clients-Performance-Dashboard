@@ -1,6 +1,7 @@
 import type { BrandConfig } from "@/lib/brands";
 import type { PlatformPlanExecution, PlatformLineExecution } from "@/lib/platformPlan";
 import { formatIls, formatNumber } from "@/lib/metrics";
+import PlanTargetsEditor, { type EditableLine } from "./PlanTargetsEditor";
 
 // Chery / Xpeng — per-platform plan-vs-execution. Overview (spend vs media plan), headline cost &
 // target-attainment KPIs (CPV 15s, % of 15s-view target, % of 100%-view target), then a per-platform
@@ -56,7 +57,7 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
   const hasLeads = totalLeads > 0;
   const hasLeadgen = totalLeadgenLeads > 0;
   // Optional lead goal (Xpeng): 470 leads @ ₪153 CPA — % attainment against the flight, CPL vs target.
-  const leadTarget = brand.platformPlan?.leadTarget ?? null;
+  const leadTarget = exec.leadTarget ?? null;
   const leadsPct = leadTarget && leadTarget.leads ? totalLeads / leadTarget.leads : null;
   const cplTone = cplTotal != null && leadTarget ? (cplTotal <= leadTarget.cpa ? "text-[var(--good)]" : cplTotal <= leadTarget.cpa * 1.15 ? "text-[var(--warn)]" : "text-[var(--bad)]") : "";
   const extraBubbles = (hasLeads ? 1 : 0) + (hasLeadgen ? 1 : 0);
@@ -89,6 +90,33 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
           <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, (T.spendPct ?? 0) * 100)}%` }} />
         </div>
       </Panel>
+
+      {/* Targets a media manager can revise without a deploy. Client view never sees it. */}
+      {!isClient && (
+        <PlanTargetsEditor
+          brandId={brand.id}
+          lines={exec.lines.map((l): EditableLine => ({
+            platform: l.line.platform,
+            title: l.line.title,
+            signed: {
+              budget: brand.platformPlan?.lines.find((x) => x.platform === l.line.platform)?.budget ?? 0,
+              thruplay: brand.platformPlan?.lines.find((x) => x.platform === l.line.platform)?.thruplay ?? 0,
+              completedViews: brand.platformPlan?.lines.find((x) => x.platform === l.line.platform)?.completedViews ?? 0,
+            },
+            current: {
+              budget: l.overridden.includes("budget") ? l.line.budget : null,
+              thruplay: l.overridden.includes("thruplay") ? l.line.thruplay : null,
+              completedViews: l.overridden.includes("completedViews") ? l.line.completedViews : null,
+            },
+          }))}
+          leadTarget={{
+            signed: brand.platformPlan?.leadTarget ?? null,
+            current: exec.leadTarget && exec.leadTarget !== brand.platformPlan?.leadTarget ? exec.leadTarget : null,
+          }}
+          editedBy={exec.targetsEditedBy}
+          editedAt={exec.targetsEditedAt}
+        />
+      )}
 
       {/* Cost & target attainment */}
       <Panel title="עלות צפייה ועמידה ביעד">
