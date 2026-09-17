@@ -14,13 +14,15 @@ import { getTopProducts } from "./topProducts";
 import { getBrandMetrics } from "./queries";
 import { getCampaignBrandMetrics } from "./campaignMetrics";
 import { getAppReport } from "./appReport";
+import { getPlatformPlanExecution } from "./platformPlan";
+import { planInsights } from "./planInsights";
 import { getSearchSnapshot } from "./searchSnapshot";
 import { viewsInsights, appInsights, ecomInsights, leadsInsights, impShareInsights, type Insight } from "./reportInsights";
 import { getInsightFeedback } from "./insightFeedbackStore";
 import { getAccountChanges } from "./accountChanges";
 import {
   buildEcomClientConclusions, buildViewsClientConclusions, buildLeadsClientConclusions,
-  buildAppClientConclusions, buildImpshareClientConclusions, type ClientConclusionsDraft,
+  buildAppClientConclusions, buildImpshareClientConclusions, buildPlanClientConclusions, type ClientConclusionsDraft,
 } from "./clientConclusions";
 import type { DraftedLine } from "./insightLearning";
 
@@ -58,6 +60,16 @@ export async function buildClientDraft(brand: BrandConfig, from: string, to: str
     const audience = bm ? { newRevenue: bm.newRevenue, storeRevenue: bm.channels.site.revenue } : undefined;
     const insights = ecomInsights(brand, report, products, audience);
     return pack(buildEcomClientConclusions(brand, report, insights, products, feedback, changes), insights);
+  }
+
+  // Chery / Xpeng return on their platform plan in the dashboard too, so the draft has to be built
+  // from the same execution — the generic views path would read blended campaign metrics and say
+  // nothing about the plan their report is organised around.
+  if (brand.platformPlan) {
+    const [exec, changes] = await Promise.all([getPlatformPlanExecution(brand), changesFor(brand, from, to)]);
+    if (!exec) return null;
+    const insights = planInsights(brand, exec);
+    return pack(buildPlanClientConclusions(brand, label, exec, insights, feedback, changes), insights);
   }
 
   if (profile === "app") {

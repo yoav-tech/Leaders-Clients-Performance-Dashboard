@@ -29,7 +29,10 @@ export type InsightId =
   // leads
   | "cpl-above-target" | "cpl-at-target" | "channel-cpl-gap" | "budget-underspend"
   // search share of voice
-  | "impshare-lost-budget" | "impshare-lost-rank";
+  | "impshare-lost-budget" | "impshare-lost-rank"
+  // per-platform media plan (Chery, Xpeng)
+  | "plan-cost-per-completed" | "platform-completed-gap" | "youtube-format-gap"
+  | "plan-budget-pace" | "plan-lead-goal";
 export interface Insight {
   severity: Severity;
   title: string;
