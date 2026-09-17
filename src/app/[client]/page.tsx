@@ -75,12 +75,24 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
     return <CommandCenterView brand={brand} range={range} canEdit={!isClient} />;
   }
 
+  // Every report type gets the verbal summary — drafting, editing and sending. Declared before the
+  // first branch that returns, because the platform-plan brands return above everything else and
+  // were the one report type left without it.
+  const withConclusions = (view: React.ReactNode) => (
+    <div className="space-y-4">
+      {view}
+      <Suspense fallback={null}>
+        <ConclusionsPanel brand={brand} from={range.from} to={range.to} canEdit={!isClient} />
+      </Suspense>
+    </div>
+  );
+
   // Per-platform media plan (Chery / Xpeng): plan-vs-execution across Meta/TikTok/YouTube, leaders
   // campaigns only. Wins over the standard views layout (these brands also carry awarenessSources
   // for ingest + the digest).
   if (brand.platformPlan) {
     const exec = await getPlatformPlanExecution(brand);
-    return <PlatformPlanView brand={brand} exec={exec} isClient={isClient} />;
+    return withConclusions(<PlatformPlanView brand={brand} exec={exec} isClient={isClient} />);
   }
 
   const isMediaPlan = !!brand.mediaPlan;
@@ -90,16 +102,6 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
   // Views/leads clients (SCJ, Style, Leaders, Bestie) — the unified DB-backed layout: overview +
   // budget pacing + channel funnel + trend + breakdown explorer + daily, KPI-adapted per profile.
   const profile = campaignProfileOf(brand);
-  // Every report type gets the verbal summary — drafting, editing and sending. The panel streams in
-  // separately so the report itself never waits on it.
-  const withConclusions = (view: React.ReactNode) => (
-    <div className="space-y-4">
-      {view}
-      <Suspense fallback={null}>
-        <ConclusionsPanel brand={brand} from={range.from} to={range.to} canEdit={!isClient} />
-      </Suspense>
-    </div>
-  );
   // Range-level awareness reporting: deduplicated reach (which cannot be summed by day), the
   // Facebook/Instagram split, and a per-creative breakdown. Two column sets, because the two
   // clients asked for different things — SCJ for frequency and the 3-second hook, Protein Max for

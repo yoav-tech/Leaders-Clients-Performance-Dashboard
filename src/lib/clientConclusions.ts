@@ -21,6 +21,7 @@ import type { Insight, InsightId } from "./reportInsights";
 import type { CampBrandMetrics } from "./campaignMetrics";
 import type { AppReport } from "./appReport";
 import type { SnapSection } from "./searchSnapshot";
+import type { PlatformPlanExecution } from "./platformPlan";
 import type { TopProductsResult } from "./topProducts";
 import type { InsightFeedback } from "./insightFeedbackStore";
 import { renderTemplate, templateUnbound } from "./insightTemplate";
@@ -100,6 +101,22 @@ const VOICE: Record<InsightId, Voice> = {
     `${chan(l.best)} מייצרת לידים זולים ב-${Math.round(d.cheaperPct)}% מ-${chan(l.worst)} (${ils(d.bestCpl)} מול ${ils(d.worstCpl)}). העברנו ${ils(d.move)} לערוץ היעיל — כ-${n0(d.gain)} לידים נוספים באותו כסף.`,
   "budget-underspend": (d) =>
     `נוצלו ${ils(d.spend)} מתוך ${ils(d.budget)} בתקופה. אנחנו פותחים את חסמי התקציב היומי כדי לנצל את המסגרת במלואה${d.missedLeads > 0 ? ` — ניצול מלא במחיר הנוכחי שווה כ-${n0(d.missedLeads)} לידים נוספים` : ""}.`,
+
+  // ── per-platform media plan (Chery, Xpeng) ─────────────────────────────────────────────────
+  "plan-cost-per-completed": (d) =>
+    d.actual <= d.plan
+      ? `עלות הצפייה המלאה בתקופה עמדה על ${ils3(d.actual)} מול יעד ${ils3(d.plan)} בפריסה — פי ${d.ratio.toFixed(1)} טוב מהמתוכנן. ${n0(d.completed)} צפיות מלאות נרשמו על ${ils(d.spend)}, ויש מרווח להרחיב נפח בערוץ היעיל ביותר.`
+      : `עלות הצפייה המלאה עמדה על ${ils3(d.actual)} מול יעד ${ils3(d.plan)}. אנחנו מרכזים את התקציב בערוץ עם העלות הנמוכה ביותר כדי להחזיר אותה אל היעד.`,
+  "platform-completed-gap": (d, l) =>
+    `${l.best} מייצרת צפייה מלאה ב-${ils3(d.bestCp)} מול ${ils3(d.worstCp)} ב-${l.worst}. אנחנו מסיטים משקל לכיוון היעיל — העברת ${ils(d.move)} שווה כ-${n0(d.gain)} צפיות מלאות נוספות באותו תקציב.`,
+  "youtube-format-gap": (d, l) =>
+    `ביוטיוב, ${l.best} מייצר צפייה מלאה ב-${ils3(d.bestCp)} מול ${ils3(d.worstCp)} ב-${l.worst} — פי ${d.ratio.toFixed(1)}. אנחנו מעבירים משקל לפורמט היעיל: העברת ${ils(d.move)} שווה כ-${n0(d.gain)} צפיות מלאות נוספות.`,
+  "plan-budget-pace": (d) =>
+    d.spendPct >= d.elapsedPct
+      ? `ניצול התקציב ${pct(d.spendPct)} מול ${pct(d.elapsedPct)} מהתקופה — הפריסה מקדימה את לוח הזמנים.`
+      : `נותרו ${ils(d.left)} ל-${n0(d.daysLeft)} ימי פעילות. אנחנו מגדילים קצב ל-${ils(d.perDay)} ליום כדי לנצל את הפריסה במלואה.`,
+  "plan-lead-goal": (d) =>
+    `${n0(d.leads)} לידים מתוך יעד ${n0(d.target)}, בעלות ${ils(d.cpl)} לליד מול יעד ${ils(d.targetCpa)}${d.bonus > 0 ? ` — ובנוסף ${n0(d.bonus)} המרות שהגיעו מקמפייני הצפיות ללא עלות ייעודית` : ""}.`,
 
   // ── search share of voice ───────────────────────────────────────────────────────────────────
   "impshare-lost-budget": (d, l) =>
@@ -286,6 +303,28 @@ export function buildAppClientConclusions(
   const bestSec = app.filter((s) => s.totals.registrations > 0)
     .sort((a, b) => (a.totals.spend / a.totals.registrations) - (b.totals.spend / b.totals.registrations))[0];
   if (bestSec && app.length > 1) wins.push(`המקטע היעיל: ${bestSec.title}, הרשמה ב-${ils(bestSec.totals.spend / bestSec.totals.registrations)}.`);
+  return composeDraft({ brand, headline, wins, insights, feedback, changes });
+}
+
+/** Per-platform media-plan clients (Chery, Xpeng) — plan attainment across Meta/TikTok/YouTube. */
+export function buildPlanClientConclusions(
+  brand: BrandConfig, periodLabel: string, e: PlatformPlanExecution, insights: Insight[],
+  feedback?: Record<string, InsightFeedback>, changes?: AccountChanges | null,
+): ClientConclusionsDraft {
+  const T = e.totals;
+  const headline = [`בתקופת ${periodLabel} הושקעו ${ils(T.totalSpend)} מתוך פריסה של ${ils(T.budget)} (${pct(T.spendPct ?? 0)}), שייצרו ${n0i(T.thruplay)} צפיות ${n0i(T.completedViews)} מהן צפיות מלאות.`];
+  if (T.cpCompleted != null) headline.push(`עלות לצפייה מלאה ${ils3(T.cpCompleted)}${T.planCpCompleted ? ` מול יעד ${ils3(T.planCpCompleted)}` : ""}.`);
+
+  const wins: string[] = [];
+  const byCp = e.lines.filter((l) => l.actual.completedViews > 0)
+    .map((l) => ({ t: l.line.title, cp: l.actual.spend / l.actual.completedViews }))
+    .sort((a, b) => a.cp - b.cp);
+  if (byCp[0]) wins.push(`הערוץ היעיל בתקופה: ${byCp[0].t}, צפייה מלאה ב-${ils3(byCp[0].cp)}.`);
+  const beat = e.lines.filter((l) => (l.completedPct ?? 0) >= 1).map((l) => l.line.title);
+  if (beat.length) wins.push(`${beat.join(" ו-")} עברו את יעד הצפיות המלאות בפריסה.`);
+  const topVideo = [...e.youtubeVideos].filter((v) => (v.completionRate ?? 0) > 0).sort((a, b) => (b.completionRate ?? 0) - (a.completionRate ?? 0))[0];
+  if (topVideo) wins.push(`התוכן עם שיעור הסיום הגבוה ביותר: "${topVideo.title}" (${pct(topVideo.completionRate ?? 0)}).`);
+
   return composeDraft({ brand, headline, wins, insights, feedback, changes });
 }
 
