@@ -134,11 +134,12 @@ export async function getYouTubeVideoStats(
 }
 
 export interface YouTubeVideoRow {
-  /** The ad's name — what the client sees in Google Ads, and what the report is keyed on. */
+  /** The video's own title — the name the report shows. Falls back to the ad's name when the two
+   *  can't be matched. */
   title: string;
-  /** The title of the video inside the ad, when it differs from the ad's name. Chery has two ads
-   *  whose names point at a different episode than the video they run. */
-  videoTitle: string | null;
+  /** Reserved for the ad's name. Left null: joining ad to video reliably needs an asset-level
+   *  query, and matching on spend produced duplicate rows. */
+  adName: string | null;
   durationSec: number;
   format: string;
   label: string;          // the format, named the way a client would
@@ -164,64 +165,41 @@ export async function getYouTubeVideoBreakdown(
 ): Promise<YouTubeVideoRow[] | null> {
   if (!googleAdsConfigured()) return null;
   try {
-    // Keyed on the AD, not the video asset.
+    // One query, one source. Spend, views and quartiles all come from the same video rows, so the
+    // figures on a line are consistent with each other and with what Google Ads bills for that
+    // video.
     //
-    // Reading `FROM video` grouped by video.title looked equivalent and wasn't: an ad's name and the
-    // title of the video inside it drift apart, and on Chery two of five had swapped — the ad called
-    // "chapter 3" runs the video titled "פרק 3", and the ad called "פרק 3" runs "פרק 4". Every figure
-    // matched to the shekel while the rows appeared to disagree, because the two lists were naming
-    // different things. The ad name is what the client sees in Google Ads, so that is what the report
-    // is keyed on; the video title rides along for context.
-    const [adRows, videoRows] = await Promise.all([
-      gaql(customerId, `
-        SELECT campaign.name, ad_group_ad.ad.name, ad_group_ad.ad.id, segments.ad_format_type,
-               metrics.cost_micros, metrics.impressions,
-               metrics.video_trueview_views, metrics.video_quartile_p100_rate
-        FROM ad_group_ad
-        WHERE segments.date BETWEEN '${from}' AND '${to}'`),
-      gaql(customerId, `
-        SELECT campaign.name, video.title, video.duration_millis, metrics.cost_micros
-        FROM video
-        WHERE segments.date BETWEEN '${from}' AND '${to}'`).catch(() => []),
-    ]);
+    // An earlier version keyed rows on the AD instead, to match the names in the Ads Manager, and
+    // carried the video title across by matching on spend. That was unstable: the two queries run
+    // moments apart and the day's figures move between them, so rows failed to pair and the same
+    // episode appeared twice. A display convenience is not worth an unreliable join — the ad name
+    // is dropped rather than shown wrong.
+    //
+    // The campaign filter is what matters most here: `FROM video` carries no campaign of its own,
+    // so an unfiltered read mixes the client's campaigns into ours. On Chery that pulled in 670,227
+    // impressions of the client's creative and became the basis of a conclusion I had to retract.
+    const rows = await gaql(customerId, `
+      SELECT campaign.name, video.title, video.duration_millis, segments.ad_format_type,
+             metrics.cost_micros, metrics.impressions,
+             metrics.video_trueview_views, metrics.video_quartile_p100_rate
+      FROM video
+      WHERE segments.date BETWEEN '${from}' AND '${to}'`);
 
     const needle = filter.toLowerCase();
-
-    // Spend is unique enough per video to carry the title and duration across — and where it isn't,
-    // the row simply goes without them rather than borrowing the wrong ones.
-    const bySpend = new Map<string, { title: string; dur: number }>();
-    const spendSeen = new Map<string, number>();
-    for (const r of videoRows) {
+    const byKey = new Map<string, YouTubeVideoRow>();
+    for (const r of rows) {
       const c = (r.campaign ?? {}) as Record<string, unknown>;
       if (needle && !String(c.name ?? "").toLowerCase().includes(needle)) continue;
       const v = (r.video ?? {}) as Record<string, unknown>;
+      const seg = (r.segments ?? {}) as Record<string, unknown>;
       const m = (r.metrics ?? {}) as Record<string, unknown>;
       const title = String(v.title ?? "").trim();
       if (!title) continue;
-      const key = title;
-      const prev = spendSeen.get(key) ?? 0;
-      spendSeen.set(key, prev + n(m.costMicros) / 1e6);
-      bySpend.set(key, { title, dur: n(v.durationMillis) / 1000 });
-    }
-    const byRounded = new Map<number, { title: string; dur: number }>();
-    for (const [title, spend] of spendSeen) {
-      const meta = bySpend.get(title);
-      if (meta) byRounded.set(Math.round(spend * 100), meta);
-    }
-
-    const byKey = new Map<string, YouTubeVideoRow>();
-    for (const r of adRows) {
-      const c = (r.campaign ?? {}) as Record<string, unknown>;
-      if (needle && !String(c.name ?? "").toLowerCase().includes(needle)) continue;
-      const ad = ((r.adGroupAd ?? r.ad_group_ad ?? {}) as Record<string, unknown>).ad as Record<string, unknown> | undefined;
-      const seg = (r.segments ?? {}) as Record<string, unknown>;
-      const m = (r.metrics ?? {}) as Record<string, unknown>;
-      const name = String(ad?.name ?? "").trim() || `#${String(ad?.id ?? "?")}`;
       const format = String(seg.adFormatType ?? "").trim() || "UNKNOWN";
       const impr = n(m.impressions);
-      const key = `${name}|${format}`;
+      const key = `${title}|${format}`;
       const e = byKey.get(key) ?? {
-        title: name, videoTitle: null, durationSec: 0, format, label: formatLabel(format),
+        title, adName: null, durationSec: n(v.durationMillis) / 1000, format, label: formatLabel(format),
         impressions: 0, trueviewViews: 0, trueviewCpv: null, completedViews: 0, completionRate: null, spend: 0,
       };
       e.impressions += impr;
@@ -230,19 +208,13 @@ export async function getYouTubeVideoBreakdown(
       e.spend += n(m.costMicros) / 1e6;
       byKey.set(key, e);
     }
-
     const out = [...byKey.values()]
       .filter((e) => e.impressions > 0)
-      .map((e) => {
-        const meta = byRounded.get(Math.round(e.spend * 100));
-        return {
-          ...e,
-          videoTitle: meta && meta.title !== e.title ? meta.title : null,
-          durationSec: meta?.dur ?? 0,
-          trueviewCpv: e.trueviewViews ? e.spend / e.trueviewViews : null,
-          completionRate: e.impressions ? e.completedViews / e.impressions : null,
-        };
-      })
+      .map((e) => ({
+        ...e,
+        trueviewCpv: e.trueviewViews ? e.spend / e.trueviewViews : null,
+        completionRate: e.impressions ? e.completedViews / e.impressions : null,
+      }))
       .sort((a, b) => b.spend - a.spend);
     return out.length ? out : null;
   } catch {
