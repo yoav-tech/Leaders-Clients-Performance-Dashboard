@@ -9,6 +9,7 @@ import { fetchWindsor, num } from "./windsor";
 import { fetchUsdIlsRate, toIls } from "./fx";
 import { today } from "./dates";
 import { getYouTubeVideoStats, getYouTubeVideoBreakdown, formatLabel, type YouTubeVideoRow } from "./googleVideo";
+import { getPlanTargets, type PlanTargets } from "./planTargets";
 
 export interface PlatformActual {
   /** Views-campaign spend ONLY. Every cost-per-view figure divides by this, so leadgen money — which
@@ -24,7 +25,10 @@ export interface PlatformActual {
   trueviewViews?: number; trueviewCpv?: number | null;
 }
 export interface PlatformLineExecution {
+  /** The line in force: the signed plan, with any dashboard override applied on top. */
   line: PlatformPlanLine;
+  /** Which of this line's figures a media manager overrode, so the report can say so. */
+  overridden: ("budget" | "thruplay" | "completedViews")[];
   actual: PlatformActual;
   /** Views + leadgen — what the line actually cost, which is what the budget has to cover. */
   totalSpend: number;
@@ -63,6 +67,10 @@ export interface PlatformPlanExecution {
   creators: CreatorRow[];
   contents: ContentRow[];
   leads: LeadRow[]; // leadgen campaigns (separate objective, kept out of the views metrics)
+  /** The lead goal in force — the dashboard override where a media manager set one, else the plan. */
+  leadTarget: { leads: number; cpa: number } | null;
+  /** Who last changed the targets from the dashboard, if anyone. */
+  targetsEditedBy: string | null; targetsEditedAt: string | null;
   youtubeFormats: YouTubeFormatRow[];
   /** YouTube creative, per video per ad format, from the Ads API — real TrueView counts and Google's
    *  own format, rather than Windsor ad names and a quartile-derived view. */
@@ -228,6 +236,10 @@ async function fetchYouTube(brand: BrandConfig, from: string, to: string, filter
 export async function getPlatformPlanExecution(brand: BrandConfig): Promise<PlatformPlanExecution | null> {
   const plan = brand.platformPlan;
   if (!plan) return null;
+  // Dashboard overrides sit on top of the signed plan. A field the manager left empty keeps the
+  // signed figure, so the plan stays visible instead of being silently replaced.
+  const targets: PlanTargets = await getPlanTargets(brand.id)
+    .catch(() => ({ lines: {}, leads: null, updatedBy: null, updatedAt: null }));
   const filter = (brand.campaignFilter ?? "").toLowerCase();
   const t = today();
   const asOf = t < plan.flightEnd ? t : plan.flightEnd;
@@ -277,10 +289,21 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
     .map(([platform, e]) => ({ platform, title: platLabelAll[platform] ?? platform, leads: e.leads, leadgenLeads: e.leadgenLeads, leadgenSpend: e.leadgenSpend, cpl: e.leadgenLeads ? e.leadgenSpend / e.leadgenLeads : null }))
     .sort((a, b) => b.leads - a.leads);
 
-  const lines: PlatformLineExecution[] = plan.lines.map((line) => {
-    const a = byPlatform[line.platform] ?? empty();
+  const lines: PlatformLineExecution[] = plan.lines.map((signed) => {
+    const a = byPlatform[signed.platform] ?? empty();
+    const o = targets.lines[signed.platform];
+    const overridden: ("budget" | "thruplay" | "completedViews")[] = [];
+    if (o?.budget != null) overridden.push("budget");
+    if (o?.thruplay != null) overridden.push("thruplay");
+    if (o?.completedViews != null) overridden.push("completedViews");
+    const line: PlatformPlanLine = {
+      ...signed,
+      budget: o?.budget ?? signed.budget,
+      thruplay: o?.thruplay ?? signed.thruplay,
+      completedViews: o?.completedViews ?? signed.completedViews,
+    };
     return {
-      line, actual: a,
+      line, overridden, actual: a,
       totalSpend: a.spend + a.leadSpend,
       spendPct: pct(a.spend + a.leadSpend, line.budget), thruplayPct: pct(a.thruplay, line.thruplay), completedPct: pct(a.completedViews, line.completedViews),
       cpv: a.thruplay ? a.spend / a.thruplay : null,
@@ -365,6 +388,10 @@ export async function getPlatformPlanExecution(brand: BrandConfig): Promise<Plat
     flightStart: plan.flightStart, flightEnd: plan.flightEnd, asOf,
     elapsedDays: daysInclusive(plan.flightStart, asOf), totalDays: daysInclusive(plan.flightStart, plan.flightEnd),
     lines, creators, contents, leads, youtubeFormats, youtubeVideos,
+    leadTarget: targets.leads && targets.leads.leads != null && targets.leads.cpa != null
+      ? { leads: targets.leads.leads, cpa: targets.leads.cpa }
+      : plan.leadTarget ?? null,
+    targetsEditedBy: targets.updatedBy, targetsEditedAt: targets.updatedAt,
     totals: {
       budget, spend, leadSpend, totalSpend, thruplayTarget, thruplay, completedTarget, completedViews,
       spendPct: pct(totalSpend, budget), thruplayPct: pct(thruplay, thruplayTarget), completedPct: pct(completedViews, completedTarget),
