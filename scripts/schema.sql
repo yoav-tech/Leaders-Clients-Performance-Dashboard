@@ -388,3 +388,21 @@ CREATE TABLE IF NOT EXISTS platform_plan_lead_targets (
 ALTER TABLE platform_plan_lead_targets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE platform_plan_lead_targets FORCE  ROW LEVEL SECURITY;
 REVOKE ALL ON platform_plan_lead_targets FROM anon, authenticated;
+
+-- ---- Brand goals a media manager can set from the dashboard ----
+-- ROAS / cost-per-view / cost-per-lead / cost-per-registration and the monthly budget lived only in
+-- brands.ts, so changing a client's target meant a commit and a deploy. A NULL column falls back to
+-- the configured value, which keeps it visible and makes an override deliberate.
+CREATE TABLE IF NOT EXISTS brand_targets (
+  brand_id       text PRIMARY KEY,
+  monthly_budget numeric,
+  target_roas    numeric,
+  target_cpv     numeric,
+  target_cpl     numeric,
+  target_cp_reg  numeric,
+  updated_by     text,
+  updated_at     timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE brand_targets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE brand_targets FORCE  ROW LEVEL SECURITY;
+REVOKE ALL ON brand_targets FROM anon, authenticated;

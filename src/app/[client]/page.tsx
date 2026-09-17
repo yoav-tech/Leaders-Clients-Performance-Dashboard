@@ -35,6 +35,8 @@ import { getCampaignBrandMetrics } from "@/lib/campaignMetrics";
 import ClientSummaryView from "@/components/ClientSummaryView";
 import ClientReportPanels from "@/components/ClientReportPanels";
 import ConclusionsPanel from "@/components/ConclusionsPanel";
+import BrandTargetsEditor from "@/components/BrandTargetsEditor";
+import { resolveBrand, getBrandTargets, targetFieldsFor, TARGET_LABEL, type TargetField } from "@/lib/brandTargets";
 import CommandCenterView from "@/components/CommandCenterView";
 import { getClientReport } from "@/lib/clientReport";
 import { getTopProducts } from "@/lib/topProducts";
@@ -81,6 +83,11 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
   const withConclusions = (view: React.ReactNode) => (
     <div className="space-y-4">
       {view}
+      {!isClient && (
+        <Suspense fallback={null}>
+          <BrandTargets brand={brand} />
+        </Suspense>
+      )}
       <Suspense fallback={null}>
         <ConclusionsPanel brand={brand} from={range.from} to={range.to} canEdit={!isClient} />
       </Suspense>
@@ -137,7 +144,7 @@ async function BrandContent({ brand, range, isClient, sub, tab, asParam }: { bra
   if (isMediaPlan) {
     // Media-plan brands without a campaign profile keep the fixed-flight plan layout.
     const exec = await getMediaPlanExecution(brand);
-    return exec ? <MediaPlanView brand={brand} exec={exec} /> : <div className="panel p-4 text-sm text-[var(--muted)]">No plan data.</div>;
+    return exec ? withConclusions(<MediaPlanView brand={brand} exec={exec} />) : <div className="panel p-4 text-sm text-[var(--muted)]">No plan data.</div>;
   }
   if (isAppInstall) {
     const [appReport, regionReport, budgetRequests, cityDailyBudgets, weekSnap] = await Promise.all([
@@ -236,7 +243,10 @@ export default async function ClientPage({
   // Unknown / not-allowed client → send to the user's first brand (clean URL, no 404 dead-end).
   if (!allowed.some((b) => b.id === client)) redirect(`/${allowed[0].id}`);
   const brandId = client;
-  const brand = getBrand(brandId)!;
+  // Targets a media manager set in the dashboard override the config. Resolved once here and passed
+  // down, because BrandConfig is read synchronously in dozens of places and making all of them
+  // async to fetch one row would be a far larger change than the feature is worth.
+  const brand = await resolveBrand(getBrand(brandId)!);
   // DB-backed brands (ecommerce + views + leads) are ingested, so warm "today" on load. The
   // still-live brands (Colgate snapshot, Haat app) refresh in place without a warm.
   const liveWarm = !brand.googleSnapshot && !brand.appInstall;
@@ -319,5 +329,30 @@ export default async function ClientPage({
         </div>
       )}
     </AppShell>
+  );
+}
+
+// The goals panel, for every report type. Async so the page renders before the row is read.
+async function BrandTargets({ brand }: { brand: BrandConfig }) {
+  const t = await getBrandTargets(brand.id);
+  const cfg: Record<TargetField, number | null> = {
+    monthlyBudget: brand.monthlyBudget ?? null,
+    targetRoas: brand.targetRoas ?? null,
+    targetCpv: brand.targetCpv ?? null,
+    targetCpl: brand.targetCpl ?? null,
+    targetCpReg: brand.targetCpReg ?? null,
+  };
+  return (
+    <BrandTargetsEditor
+      brandId={brand.id}
+      fields={targetFieldsFor(brand).map((k) => ({
+        key: k, label: TARGET_LABEL[k],
+        // `brand` here is already resolved, so the configured value it shows is the one in force.
+        configured: cfg[k],
+        current: t[k],
+      }))}
+      editedBy={t.updatedBy}
+      editedAt={t.updatedAt}
+    />
   );
 }
