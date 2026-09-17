@@ -318,12 +318,12 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
         })}
 
         {exec.youtubeVideos.length > 0 && (
-          <Panel title="תוכן · YouTube" note={`${exec.youtubeVideos.length} סרטונים · לפי פורמט`}>
+          <Panel title="תוכן · YouTube" note={`${exec.youtubeVideos.length} מודעות · לפי פורמט`}>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] border-collapse text-sm">
                 <thead>
                   <tr className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
-                    <th className="px-2 py-1.5 text-right">סרטון</th>
+                    <th className="px-2 py-1.5 text-right">מודעה</th>
                     <th className="px-2 py-1.5 text-left">פורמט</th>
                     <th className="px-2 py-1.5 text-left">אורך</th>
                     <th className="px-2 py-1.5 text-left">הוצאה</th>
@@ -337,7 +337,10 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
                 <tbody className="tabular-nums">
                   {exec.youtubeVideos.map((v, i) => (
                     <tr key={i} className="border-t border-[var(--card-border)]">
-                      <td className="px-2 py-1.5 text-right font-medium">{v.title}</td>
+                      <td className="px-2 py-1.5 text-right font-medium">
+                        {v.title}
+                        {v.videoTitle && <div className="text-[10px] font-normal text-[var(--muted)]">סרטון: {v.videoTitle}</div>}
+                      </td>
                       <td className="px-2 py-1.5 text-left text-[var(--muted)]">{v.label}</td>
                       <td className="px-2 py-1.5 text-left text-[var(--muted)]">{Math.round(v.durationSec)}ש׳</td>
                       <td className="px-2 py-1.5 text-left font-semibold">{formatIls(v.spend)}</td>
@@ -351,7 +354,7 @@ export default function PlatformPlanView({ brand, exec, isClient = false }: { br
                 </tbody>
               </table>
             </div>
-            <div className="mt-2 text-[11px] text-[var(--muted)]">מקור: Google Ads API, קמפייני Leaders בלבד. TrueView נספר אחרת בכל פורמט, ולכן העמודה שניתנת להשוואה בין הפורמטים ובין הפלטפורמות היא עלות לצפייה מלאה.</div>
+            <div className="mt-2 text-[11px] text-[var(--muted)]">מקור: Google Ads API, קמפייני Leaders בלבד. השורות לפי שם המודעה כפי שהוא מופיע בגוגל אדס; כשכותרת הסרטון שבתוכה שונה — היא מצוינת מתחתיה. TrueView נספר אחרת בכל פורמט, ולכן העמודה שניתנת להשוואה בין הפורמטים ובין הפלטפורמות היא עלות לצפייה מלאה.</div>
           </Panel>
         )}
     </div>
